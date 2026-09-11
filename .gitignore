@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large binary (keep dll tracked, ignore cache)
+*.zip
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
