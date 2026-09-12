@@ -234,6 +234,68 @@ def list_monitors() -> list[tuple[int, str]]:
 # Test mode
 # ---------------------------------------------------------------------------
 
+def devicename_for_output_idx(output_idx: int) -> str | None:
+    """Return a monitor identifier string (Linux: just the index as string).
+
+    Keeps the same signature as the original capture.py for compatibility.
+    """
+    return f"monitor:{output_idx}"
+
+
+def list_adapters() -> list[tuple[int, str]]:
+    """List NVIDIA GPUs via nvidia-smi.
+
+    Returns [(dxgi_index, name), ...] matching the original interface.
+    Falls back to [(0, "NVIDIA GPU (nvidia-smi unavailable)")].
+    """
+    try:
+        from gpuinfo_linux import probe
+        gpus = probe()
+        if gpus:
+            return [(g.get("index", i), g.get("name", f"GPU {i}"))
+                    for i, g in enumerate(gpus)]
+    except Exception:
+        pass
+    return [(0, "NVIDIA GPU (nvidia-smi unavailable)")]
+
+
+def monitor_size(devicename: str) -> tuple[int, int] | None:
+    """Return (width, height) for a monitor by its devicename.
+
+    Falls back to the first monitor if devicename is unknown.
+    """
+    try:
+        idx = int(devicename.split(":")[1]) if ":" in devicename else 0
+        from platform_linux import monitor_size as _ms
+        return _ms(idx)
+    except Exception:
+        return None
+
+
+def list_monitors() -> list[tuple[int, int, int, str]]:
+    """Return [(index, width, height, devicename), ...] for each monitor.
+
+    Matches the original capture.py interface.
+    """
+    monitors = []
+    try:
+        from platform_linux import monitor_size as _ms
+        if _HAS_MSS:
+            import mss
+            with mss.mss() as sct:
+                for i, mon in enumerate(sct.monitors[1:], 1):
+                    w, h = mon["width"], mon["height"]
+                    monitors.append((i, w, h, f"monitor:{i}"))
+        else:
+            # Fallback: single monitor
+            sz = _ms(0)
+            if sz:
+                monitors.append((0, sz[0], sz[1], "monitor:0"))
+    except Exception:
+        monitors.append((0, 1920, 1080, "monitor:0"))
+    return monitors
+
+
 if __name__ == "__main__":
     import argparse
 

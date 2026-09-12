@@ -405,4 +405,5 @@ def apply_spout(st, enabled: bool) -> None:
 # Late imports used by functions above — avoid circular deps at module level.
 # These modules are imported here (lazily within functions) because they
 # import pipeline_linux themselves through the state object chain.
-from settings_io import _work_size, hotkey_labels, settings_io  # noqa: E402, F811
+import settings_io
+from settings_io import _work_size, hotkey_labels  # noqa: E402, F811

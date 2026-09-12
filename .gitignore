@@ -18,3 +18,6 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# NVIDIA NR runtime — download from release (too large for git)
+native/nvngx_dlssnr.dll
