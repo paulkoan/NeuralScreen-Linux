@@ -36,6 +36,7 @@ fi
 # Create prefix
 export WINEPREFIX="$PREFIX"
 if [ ! -d "$PREFIX" ]; then
+    mkdir -p "$PREFIX"
     wineboot -u 2>/dev/null || true
     sleep 2
 fi

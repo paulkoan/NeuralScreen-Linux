@@ -19,5 +19,8 @@ Thumbs.db
 *.swp
 *.swo
 
+# Logs
+NeuralScreen.log
+
 # NVIDIA NR runtime — download from release (too large for git)
 native/nvngx_dlssnr.dll
