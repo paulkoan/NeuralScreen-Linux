@@ -1,0 +1,16 @@
+[project]
+name = "neuralscreen-linux"
+version = "0.1.0"
+description = "Linux port of NeuralScreen — DLSS5 neural rendering on your desktop via Wine+VKD3D"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.24",
+    "opencv-python>=4.8",
+    "pygame>=2.5",
+    "av>=12",
+    "mss>=9",
+    "pysdl2>=0.9",
+]
+
+[tool.uv]
+native-tls = false
