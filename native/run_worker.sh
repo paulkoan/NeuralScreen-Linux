@@ -25,8 +25,9 @@ export WINE="${WINE:-wine}"
 # Auto-create prefix
 if [ ! -d "$PREFIX" ]; then
     echo "[run_worker] Creating Wine prefix at $PREFIX" >&2
+    mkdir -p "$PREFIX"
     WINEDLLOVERRIDES="" wineboot -u 2>/dev/null || true
-    sleep 1
+    sleep 2
 fi
 
 # Check deps
