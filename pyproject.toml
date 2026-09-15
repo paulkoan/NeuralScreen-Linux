@@ -12,5 +12,20 @@ dependencies = [
     "pysdl2>=0.9",
 ]
 
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
 [tool.uv]
 native-tls = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The tests import protocol.py and minimal/ from the repo root, so the root has
+# to be on sys.path. conftest.py adds it too; this keeps plain `pytest` working.
+pythonpath = ["."]
+addopts = "-ra"
+# tests/test_m0_env_gate.py is skipped unless NX_RUN_M0=1 is set: it needs the
+# GPU box, Wine and the 159 MB NVIDIA runtime, none of which exist in CI.
+filterwarnings = [
+    "ignore::DeprecationWarning:mss",
+]
