@@ -1,0 +1,102 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0 -- /home/paul/dev/NeuralScreen-Linux/.venv/bin/python
+rootdir: /home/paul/dev/NeuralScreen-Linux
+configfile: pyproject.toml
+collecting ... collected 71 items
+
+tests/test_capture_display.py::test_capture_reports_a_resolution SKIPPED [  1%]
+tests/test_capture_display.py::test_capture_returns_rgba_uint8 SKIPPED   [  2%]
+tests/test_capture_display.py::test_capture_consecutive_frames_have_the_same_shape SKIPPED [  4%]
+tests/test_capture_display.py::test_capture_rejects_a_missing_monitor SKIPPED [  5%]
+tests/test_capture_display.py::test_list_monitors SKIPPED (Xvfb not ...) [  7%]
+tests/test_capture_display.py::test_display_headless_presents_without_a_window SKIPPED [  8%]
+tests/test_capture_display.py::test_display_rejects_a_wrong_size SKIPPED [  9%]
+tests/test_capture_display.py::test_display_rejects_a_wrong_dtype SKIPPED [ 11%]
+tests/test_capture_display.py::test_display_can_be_created_twice_in_a_row SKIPPED [ 12%]
+tests/test_capture_display.py::test_display_polls_without_events SKIPPED [ 14%]
+tests/test_cli_end_to_end.py::test_cli_runs_and_writes_both_pngs SKIPPED [ 15%]
+tests/test_cli_end_to_end.py::test_cli_before_and_after_differ SKIPPED   [ 16%]
+tests/test_cli_end_to_end.py::test_cli_pngs_match_the_capture_resolution SKIPPED [ 18%]
+tests/test_cli_end_to_end.py::test_cli_list_monitors_runs SKIPPED (X...) [ 19%]
+tests/test_cli_end_to_end.py::test_cli_reports_a_dead_worker SKIPPED     [ 21%]
+tests/test_m0_env_gate.py::test_worker_binary_is_present PASSED          [ 22%]
+tests/test_m0_env_gate.py::test_nr_runtime_is_present PASSED             [ 23%]
+tests/test_m0_env_gate.py::test_sidecar_dlls_are_present PASSED          [ 25%]
+tests/test_m0_env_gate.py::test_wine_is_available PASSED                 [ 26%]
+tests/test_m0_env_gate.py::test_m0_uses_the_canonical_environment PASSED [ 28%]
+tests/test_m0_env_gate.py::test_m0_no_ngx_core_not_found_error PASSED    [ 29%]
+tests/test_m0_env_gate.py::test_m0_no_platform_error PASSED              [ 30%]
+tests/test_m0_env_gate.py::test_m0_worker_runs PASSED                    [ 32%]
+tests/test_m0_env_gate.py::test_m0_ngx_initialises PASSED                [ 33%]
+tests/test_m0_env_gate.py::test_m0_feature18_is_created PASSED           [ 35%]
+tests/test_m0_env_gate.py::test_m0_evaluates_succeed FAILED              [ 36%]
+tests/test_pipeline_mock.py::test_work_size[1920-1080-1920-1080] PASSED  [ 38%]
+tests/test_pipeline_mock.py::test_work_size[2560-1440-2560-1440] PASSED  [ 39%]
+tests/test_pipeline_mock.py::test_work_size[3840-2160-2560-1440] PASSED  [ 40%]
+tests/test_pipeline_mock.py::test_work_size[100-100-100-100] PASSED      [ 42%]
+tests/test_pipeline_mock.py::test_work_size[101-101-100-100] PASSED      [ 43%]
+tests/test_pipeline_mock.py::test_work_size_never_exceeds_the_source PASSED [ 45%]
+tests/test_pipeline_mock.py::test_worker_starts_and_sends_its_header PASSED [ 46%]
+tests/test_pipeline_mock.py::test_one_frame_round_trip PASSED            [ 47%]
+tests/test_pipeline_mock.py::test_frame_indices_are_paired PASSED        [ 49%]
+tests/test_pipeline_mock.py::test_stop_terminates_the_worker PASSED      [ 50%]
+tests/test_pipeline_mock.py::test_pipeline_runs_n_frames PASSED          [ 52%]
+tests/test_pipeline_mock.py::test_pipeline_frames_differ_frame_to_frame PASSED [ 53%]
+tests/test_pipeline_mock.py::test_pipeline_reports_worker_death PASSED   [ 54%]
+tests/test_pipeline_mock.py::test_pipeline_quits_on_display_event PASSED [ 56%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoHeader-<10I4f2I-64] PASSED [ 57%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoFrameHeader-<4Iq-24] PASSED [ 59%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoResultHeader-<5Iq-28] PASSED [ 60%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoResizeCmd-<10I4f2I-64] PASSED [ 61%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoResizeAck-<4Iq-24] PASSED [ 63%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoShmCmd-<4Iq64s-88] PASSED [ 64%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoShmAck-<4Iq-24] PASSED [ 66%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoWindowCmd-<4Iq-24] PASSED [ 67%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoWindowAck-<4Iq-24] PASSED [ 69%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoMotionCmd-<4Iq-24] PASSED [ 70%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoMotionAck-<4Iq-24] PASSED [ 71%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoDdaCmd-<4Iq-24] PASSED [ 73%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoDdaAck-<4Iq-24] PASSED [ 74%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoWgcCmd-<4IqQ-32] PASSED [ 76%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoWgcAck-<4Iq-24] PASSED [ 77%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoGrayCmd-<4Iq64s-88] PASSED [ 78%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoGrayAck-<4Iq-24] PASSED [ 80%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoOutCmd-<4Iq64s-88] PASSED [ 81%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoOutAck-<4Iq-24] PASSED [ 83%]
+tests/test_protocol_sizes.py::test_cpp_static_asserts_agree PASSED       [ 84%]
+tests/test_protocol_sizes.py::test_header_is_64_bytes_packed PASSED      [ 85%]
+tests/test_protocol_sizes.py::test_frame_header_pts_offset PASSED        [ 87%]
+tests/test_protocol_sizes.py::test_magic_values PASSED                   [ 88%]
+tests/test_worker_env_consistency.py::test_the_overrides_are_not_empty PASSED [ 90%]
+tests/test_worker_env_consistency.py::test_python_constant_is_usable_as_a_wine_override PASSED [ 91%]
+tests/test_worker_env_consistency.py::test_shell_scripts_use_the_same_overrides[run_worker.sh] PASSED [ 92%]
+tests/test_worker_env_consistency.py::test_shell_scripts_use_the_same_overrides[m0_env_gate.sh] PASSED [ 94%]
+tests/test_worker_env_consistency.py::test_shell_scripts_use_the_same_overrides[wine_ngx_setup.sh] PASSED [ 95%]
+tests/test_worker_env_consistency.py::test_python_module_sets_it PASSED  [ 97%]
+tests/test_worker_env_consistency.py::test_ns_override_wins PASSED       [ 98%]
+tests/test_worker_env_consistency.py::test_enable_nvapi_is_set_everywhere PASSED [100%]
+
+=================================== FAILURES ===================================
+__________________________ test_m0_evaluates_succeed ___________________________
+tests/test_m0_env_gate.py:168: in test_m0_evaluates_succeed
+    assert good >= 250, f"only {good}/{total} evaluates succeeded"
+E   AssertionError: only 0/300 evaluates succeeded
+E   assert 0 >= 250
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_capture_display.py:22: Xvfb not installed
+SKIPPED [1] tests/test_capture_display.py:29: Xvfb not installed
+SKIPPED [1] tests/test_capture_display.py:39: Xvfb not installed
+SKIPPED [1] tests/test_capture_display.py:46: Xvfb not installed
+SKIPPED [1] tests/test_capture_display.py:52: Xvfb not installed
+SKIPPED [1] tests/test_capture_display.py:63: Xvfb not installed
+SKIPPED [1] tests/test_capture_display.py:73: Xvfb not installed
+SKIPPED [1] tests/test_capture_display.py:80: Xvfb not installed
+SKIPPED [1] tests/test_capture_display.py:87: Xvfb not installed
+SKIPPED [1] tests/test_capture_display.py:97: Xvfb not installed
+SKIPPED [1] tests/test_cli_end_to_end.py:33: Xvfb not installed
+SKIPPED [1] tests/test_cli_end_to_end.py:53: Xvfb not installed
+SKIPPED [1] tests/test_cli_end_to_end.py:75: Xvfb not installed
+SKIPPED [1] tests/test_cli_end_to_end.py:91: Xvfb not installed
+SKIPPED [1] tests/test_cli_end_to_end.py:97: Xvfb not installed
+FAILED tests/test_m0_env_gate.py::test_m0_evaluates_succeed - AssertionError:...
+================== 1 failed, 55 passed, 15 skipped in 12.92s ===================

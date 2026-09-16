@@ -1,0 +1,7 @@
+capture 2560x1440  ->  work 2560x1440 (NGX ceiling 2560x1440)
+worker: bash /home/paul/dev/NeuralScreen-Linux/native/run_worker.sh
+pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+frames: 30 done, 0 skipped, 3.134s (9.57 fps), worker exit 0
+  before -> /tmp/tmp.JrhV97MGHv/before.png
+  after  -> /tmp/tmp.JrhV97MGHv/after.png

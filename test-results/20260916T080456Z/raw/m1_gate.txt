@@ -1,0 +1,41 @@
+==============================================================
+ M1 — live pipeline gate (MVP end to end)
+==============================================================
+
+  [32m✓[0m wine: wine-11.17 (Staging)
+  [32m✓[0m worker: nvngx.dll (156K)
+  [32m✓[0m NR runtime: nvngx_dlssnr.dll (159M)
+
+--- python -m minimal --frames 30 (the live path) ---
+capture 2560x1440  ->  work 2560x1440 (NGX ceiling 2560x1440)
+worker: bash /home/paul/dev/NeuralScreen-Linux/native/run_worker.sh
+pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+frames: 30 done, 0 skipped, 3.134s (9.57 fps), worker exit 0
+  before -> /tmp/tmp.JrhV97MGHv/before.png
+  after  -> /tmp/tmp.JrhV97MGHv/after.png
+
+  exit code: 0   elapsed: 7s
+
+--- verdict ---
+  [32m✓[0m the MVP exited 0
+  [32m✓[0m before.png written (16K)
+  [32m✓[0m after.png written (284K)
+
+--- did the pass change the frame? ---
+  size              2560x1440
+  mean abs diff     0.0095  (0 = byte-identical)
+  p99 abs diff      0.00
+  PSNR              68.34210742616935
+  after is blank    True
+  after == before   False
+  [31m✗[0m the output is blank — the pass ran and produced nothing
+  [33m![0m no dlss5-feed-host.log — the worker did not write one
+
+  artifacts -> test-results/20260916T080456Z/raw/m1/  (before.png, after.png, analysis.txt, mvp.txt)
+
+==============================================================
+ RESULT: FAIL — see the stage lines above.
+ M0 (--test) already proved NGX init and feature create work; this
+ gate is about the live path, which is a different set of calls.
+==============================================================

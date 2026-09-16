@@ -1,0 +1,187 @@
+==============================================================
+ M0 — environment gate
+==============================================================
+
+--- prerequisites ---
+  [32m✓[0m wine: wine-11.17 (Staging)
+  [32m✓[0m GPU: NVIDIA GeForce RTX 4080 SUPER, 615.71.09, 8.9
+  [32m✓[0m compute capability 8.9 is in the runtime's kernel set (sm_75/86/89/120)
+  [32m✓[0m Vulkan ICD: nvidia_icd.json
+  [32m✓[0m nvngx.dll (156K)
+  [32m✓[0m nvngx_dlssnr.dll (159M)
+  [32m✓[0m SpoutDX.dll (212K)
+  [32m✓[0m Spout.dll (280K)
+
+--- running: wine native/nvngx.dll --test ---
+  WINEPREFIX=/home/paul/.neuralscreen/wine
+  WINEDLLOVERRIDES=d3d12=n,b;d3d12core=n,b;d3d11=n,b;dxgi=n,b;nvapi64=n,b;nvofapi64=n,b;nvngx_dlssnr=n
+  DXVK_ENABLE_NVAPI=1
+  NS_NGX_VIA_CORE=<unset>
+  NGXCore registry:  FullPath REG_SZ Z:\usr\lib\nvidia\wine
+
+01b0:fixme:winediag:loader_init wine-staging 11.17 is a testing version containing experimental patches.
+01b0:fixme:winediag:loader_init Please mention your exact version when filing bug reports on winehq.org.
+09:05:14.501  dlss5-feed-host64 (built Sep 11 2026 17:26:14)
+info:  Game: nvngx.dll
+info:  DXVK: v3.1.1
+info:  Build: x86_64 gcc 16.2.0
+info:  Vulkan: Found vkGetInstanceProcAddr in winevulkan.dll @ 0x6ffff79279c0
+info:  Extension providers:
+info:    Platform WSI
+info:    OpenVR
+info:  OpenVR: could not open registry key, status 2
+info:  OpenVR: Failed to locate module
+info:    OpenXR
+info:  Enabled instance extensions:
+info:    VK_KHR_get_surface_capabilities2
+info:    VK_KHR_surface
+info:    VK_KHR_surface_maintenance1
+info:    VK_KHR_win32_surface
+info:  Found device: NVIDIA GeForce RTX 4080 SUPER (NVIDIA 615.71.9)
+info:  Found device: Intel(R) UHD Graphics 770 (ADL-S GT1) (Intel open-source Mesa driver 26.2.2)
+info:  Found device: llvmpipe (LLVM 22.1.8, 256 bits) (llvmpipe 26.2.2)
+info:    Skipping: Software driver
+09:05:14.561  [host] adapter 0: NVIDIA GeForce RTX 4080 SUPER vendor=0x10DE
+09:05:14.561  [host] adapter 1: Intel(R) UHD Graphics 770 (ADL-S GT1) vendor=0x8086
+warn:  DxgiAdapter::QueryInterface: Unknown interface query
+warn:  f0db4c7f-fe5a-42a2-bd62-f2a6cf6fc83e
+143796.734:01ac:01b0:info:vkd3d-proton:vkd3d_instance_apply_application_workarounds: Program name: "nvngx.dll" (hash: 506733f4bfc12916)
+143796.734:01ac:01b0:info:vkd3d-proton:vkd3d_instance_deduce_config_flags_from_environment: shader_cache is used, global_pipeline_cache is enforced.
+143796.734:01ac:01b0:info:vkd3d-proton:vkd3d_config_flags_init_once: VKD3D_CONFIG=''.
+143796.739:01ac:01b0:info:vkd3d-proton:vkd3d_get_vk_version: vkd3d-proton - applicationVersion: 3.0.1.
+143796.739:01ac:01b0:info:vkd3d-proton:vkd3d_instance_init: vkd3d-proton - build: 3b10bd7a7ec6a73.
+143796.772:01ac:01b0:info:vkd3d-proton:vkd3d_physical_device_info_init_maint9: Implementation supports eliding QFOT for non-compressed optimal images.
+143796.772:01ac:01b0:info:vkd3d-proton:vkd3d_physical_device_info_init_maint10: Implementation can copy depth aspect on compute queue.
+143796.772:01ac:01b0:info:vkd3d-proton:vkd3d_physical_device_info_init_maint10: Implementation can copy depth aspect on transfer queue.
+143796.772:01ac:01b0:info:vkd3d-proton:vkd3d_physical_device_info_init_maint10: Implementation can copy stencil aspect on compute queue.
+143797.120:01ac:01b0:info:vkd3d-proton:vkd3d_memory_info_decide_hvv_usage: Topology: Device heaps are split. Assuming small BAR situation.
+143797.120:01ac:01b0:info:vkd3d-proton:vkd3d_memory_info_upload_hvv_memory_properties: Topology: HVV usage is not allowed, using HOST_COHERENT for UPLOAD.
+143797.121:01ac:01b0:info:vkd3d-proton:vkd3d_bindless_state_get_bindless_flags: Enabling fast paths for advanced ExecuteIndirect() graphics and compute (EXT_dgc).
+143797.121:01ac:01b0:info:vkd3d-proton:vkd3d_bindless_state_get_bindless_flags: Device supports VK_EXT_mutable_descriptor_type.
+143797.121:01ac:01b0:info:vkd3d-proton:vkd3d_bindless_state_add_binding: Device supports VK_EXT_descriptor_buffer!
+143797.121:01ac:01b0:info:vkd3d-proton:vkd3d_bindless_state_add_binding: Device supports VK_EXT_descriptor_buffer!
+143797.121:01ac:01b0:info:vkd3d-proton:vkd3d_bindless_state_add_binding: Device supports VK_EXT_descriptor_buffer!
+143797.124:01ac:01b0:info:vkd3d-proton:d3d12_device_caps_init_shader_model: Enabling support for SM 6.6.
+143797.124:01ac:01b0:info:vkd3d-proton:d3d12_device_caps_init_shader_model: Enabling support for SM 6.7.
+143797.124:01ac:01b0:info:vkd3d-proton:d3d12_device_caps_init_shader_model: Enabling support for SM 6.8.
+143797.124:01ac:01b0:fixme:vkd3d-proton:d3d12_device_caps_init_feature_options1: TotalLaneCount = 7680, may be inaccurate.
+143797.124:01ac:01b0:info:vkd3d-proton:d3d12_device_determine_ray_tracing_tier: DXR support enabled.
+143797.124:01ac:01b0:info:vkd3d-proton:d3d12_device_determine_ray_tracing_tier: DXR 1.1 support enabled.
+143797.124:01ac:01b0:info:vkd3d-proton:d3d12_device_caps_init_feature_level: DX Ultimate supported!
+143797.124:01ac:01b0:info:vkd3d-proton:vkd3d_pipeline_library_init_disk_cache: Remapping VKD3D_SHADER_CACHE to: vkd3d-proton.cache.
+143797.124:01ac:01b0:info:vkd3d-proton:vkd3d_pipeline_library_init_disk_cache: Attempting to load disk cache from: vkd3d-proton.cache.
+09:05:14.952  [host] DRED settings unavailable (settings1=0x80004002, settings=0x80004002)
+143797.124:01ac:01d8:info:vkd3d-proton:vkd3d_pipeline_library_disk_thread_main: Performing async setup of stream archive ...
+09:05:14.952  [pure] standalone D3D12 device ready; no swapchain or carrier modules
+143797.124:01ac:01d8:info:vkd3d-proton:vkd3d_pipeline_library_disk_cache_merge: No write cache exists. No need to merge any disk caches.
+143797.125:01ac:01d8:info:vkd3d-proton:vkd3d_pipeline_library_disk_cache_initial_setup: Merging pipeline libraries took 0.165 ms.
+143797.125:01ac:01d8:info:vkd3d-proton:vkd3d_pipeline_library_disk_cache_initial_setup: Failed to map read-only cache: vkd3d-proton.cache.
+143797.125:01ac:01d8:info:vkd3d-proton:vkd3d_pipeline_library_disk_thread_main: Done performing async setup of stream archive.
+01b0:fixme:d3dkmt:NtGdiDdDDIQueryAdapterInfo type 48 not handled.
+01b0:fixme:d3dkmt:NtGdiDdDDIQueryAdapterInfo type 48 not handled.
+01b0:fixme:cryptasn:CryptDecodeObjectEx Unsupported decoder for lpszStructType 1.3.6.1.4.1.311.2.1.4
+01b0:fixme:cryptasn:CryptDecodeObjectEx Unsupported decoder for lpszStructType 1.3.6.1.4.1.311.2.1.4
+143797.169:01ac:01b0:info:nvapi64:nvapi_QueryInterface (0xad298d3f): Unknown function ID
+143797.169:01ac:01b0:info:nvapi64:DXVK-NVAPI v0.9.2 NVAPI gcc 16.1.0 x86_64 release (nvngx.dll)
+143797.169:01ac:01b0:info:nvapi64:Successfully acquired Vulkan vkGetInstanceProcAddr @ 0x6ffff79279c0
+143797.170:01ac:01b0:info:nvapi64:NvAPI Device: NVIDIA GeForce RTX 4080 SUPER (615.71.9)
+err:   readMonitorEdidFromKey: Failed to get EDID reg key size
+err:   DXGI: Failed to parse display metadata + colorimetry info, using blank.
+143797.171:01ac:01b0:info:nvapi64:NvAPI Output: \\.\DISPLAY1
+err:   readMonitorEdidFromKey: Failed to get EDID reg key size
+err:   DXGI: Failed to parse display metadata + colorimetry info, using blank.
+143797.171:01ac:01b0:info:nvapi64:NvAPI Output: \\.\DISPLAY2
+143797.172:01ac:01b0:info:nvapi64:<-NvAPI_Initialize: OK
+143797.172:01ac:01b0:info:nvapi64:nvapi_QueryInterface (0x33c7358c): Unknown function ID
+143797.172:01ac:01b0:info:nvapi64:nvapi_QueryInterface (0x593e8644): Unknown function ID
+143797.172:01ac:01b0:info:nvapi64:<-NvAPI_DRS_CreateSession: OK
+143797.172:01ac:01b0:info:nvapi64:<-NvAPI_DRS_LoadSettings: OK
+143797.172:01ac:01b0:info:nvapi64:<-NvAPI_DRS_GetBaseProfile: OK
+143797.172:01ac:01b0:info:nvapi64:<-NvAPI_DRS_GetSetting (0x10afb76b/Unknown): Setting not found
+143797.172:01ac:01b0:info:nvapi64:<-NvAPI_SYS_GetDriverAndBranchVersion: OK
+143797.172:01ac:01b0:info:nvapi64:<-NvAPI_EnumPhysicalGPUs: OK
+143797.172:01ac:01b0:info:nvapi64:<-NvAPI_DRS_GetSetting (0x10e41df2/Unknown): Setting not found
+143797.172:01ac:01b0:info:nvapi64:<-NvAPI_GPU_GetArchInfo: OK
+143797.172:01ac:01b0:info:nvapi64:<-NvAPI_GetLogicalGPUFromPhysicalGPU: OK
+143797.172:01ac:01b0:info:nvapi64:<-NvAPI_GPU_GetLogicalGpuInfo: OK
+01b0:fixme:d3dkmt:NtGdiDdDDIQueryAdapterInfo type 48 not handled.
+143797.172:01ac:01b0:info:nvapi64:<-NvAPI_DRS_CreateSession: OK
+143797.172:01ac:01b0:info:nvapi64:nvapi_QueryInterface (0xa782ea46): Unknown function ID
+143797.172:01ac:01b0:info:nvapi64:<-NvAPI_DRS_FindApplicationByName: OK
+143797.172:01ac:01b0:info:nvapi64:<-NvAPI_DRS_GetProfileInfo: OK
+143797.172:01ac:01b0:info:nvapi64:<-NvAPI_DRS_DestroySession: OK
+143797.172:01ac:01b0:info:nvapi64:<-NvAPI_DRS_GetSetting (0x10ecf5a4/Unknown): Setting not found
+143797.172:01ac:01b0:info:nvapi64:<-NvAPI_DRS_GetSetting (0x10afb764/Unknown): Setting not found
+01b0:fixme:cryptasn:CryptDecodeObjectEx Unsupported decoder for lpszStructType 1.3.6.1.4.1.311.2.1.4
+01b0:fixme:cryptasn:CryptDecodeObjectEx Unsupported decoder for lpszStructType 1.3.6.1.4.1.311.2.1.4
+09:05:15.182  [host] NVSDK_NGX_D3D12_Init -> 0x00000001 (Success)
+143797.355:01ac:01b0:info:nvapi64:<-NvAPI_Initialize: OK
+143797.355:01ac:01b0:info:nvapi64:<-NvAPI_EnumPhysicalGPUs: OK
+143797.355:01ac:01b0:info:nvapi64:<-NvAPI_GPU_GetArchInfo: OK
+09:05:15.183  [arch] patch installed: 1 cards cached, architecture 0x190 (spoofed to the DLL's accepted value)
+143797.393:01ac:01b0:info:nvapi64:<-NvAPI_Initialize: OK
+143797.393:01ac:01b0:info:nvapi64:<-NvAPI_DRS_CreateSession: OK
+143797.393:01ac:01b0:info:nvapi64:<-NvAPI_DRS_LoadSettings: OK
+143797.393:01ac:01b0:info:nvapi64:<-NvAPI_DRS_GetBaseProfile: OK
+143797.393:01ac:01b0:info:nvapi64:<-NvAPI_DRS_FindApplicationByName: OK
+143797.393:01ac:01b0:info:nvapi64:<-NvAPI_DRS_GetSetting (0x10afb76b/Unknown): Setting not found
+143797.393:01ac:01b0:info:nvapi64:<-NvAPI_D3D12_CreateCubinComputeShaderWithName: Invalid argument
+143797.393:01ac:01b0:info:nvapi64:<-NvAPI_D3D12_CreateCubinComputeShaderEx: Invalid argument
+143797.393:01ac:01b0:info:nvapi64:<-NvAPI_D3D12_CreateCubinComputeShaderExV2: Invalid pointer
+143797.393:01ac:01b0:info:nvapi64:<-NvAPI_D3D12_GetCudaMergedTextureSamplerObject: Invalid pointer
+143797.393:01ac:01b0:info:nvapi64:<-NvAPI_D3D12_GetCudaIndependentDescriptorObject: Invalid pointer
+143797.393:01ac:01b0:info:nvapi64:nvapi_QueryInterface (NvAPI_D3D12_CreateCuModule): Not implemented method
+143797.393:01ac:01b0:info:nvapi64:<-NvAPI_EnumPhysicalGPUs: OK
+143797.393:01ac:01b0:info:nvapi64:<-NvAPI_GetLogicalGPUFromPhysicalGPU: OK
+143797.393:01ac:01b0:info:nvapi64:<-NvAPI_GPU_GetLogicalGpuInfo: OK
+143797.393:01ac:01b0:info:nvapi64:<-NvAPI_D3D12_GetGraphicsCapabilities (sm_89): OK
+143797.393:01ac:01b0:info:nvapi64:<-NvAPI_DRS_FindApplicationByName: OK
+143797.393:01ac:01b0:info:nvapi64:<-NvAPI_DRS_GetSetting (0x10afb76a/Unknown): Setting not found
+09:05:15.221  [pure] direct DLSSNR Init_Ext -> 0x00000001 (Success)
+09:05:15.221  [host] --test: 640x360 synthetic DLAA
+143798.512:01ac:01b0:info:nvapi64:<-NvAPI_D3D12_CaptureUAVInfo: OK
+143798.512:01ac:01b0:info:nvapi64:<-NvAPI_D3D12_GetCudaIndependentDescriptorObject: Invalid argument
+143798.517:01ac:01b0:info:nvapi64:<-NvAPI_D3D12_CreateCubinComputeShaderExV2: OK
+09:05:16.609  [pure] direct feature 18 ready: 640x360 preset=0 result=0x00000001
+09:05:16.617  [host] evaluate failed 0xBAD00004 (?)
+09:05:16.618  [host] --test finished: 0/300 evaluates succeeded
+09:05:16.618  [host] check the host's ReShade.log for 'feature 18 created' / 'evaluation succeeded'
+143798.791:01ac:01b0:info:nvapi64:<-NvAPI_D3D12_DestroyCubinComputeShader: OK
+143798.807:01ac:01b0:info:nvapi64:<-NvAPI_DRS_DestroySession: OK
+
+  exit code: 1   elapsed: 3s
+
+--- verdict ---
+  [31m✗[0m the worker exited 1
+  [32m✓[0m produced dlss5-feed-host.log (13 lines)
+  [32m✓[0m NGX initialised: 09:05:15.182  [host] NVSDK_NGX_D3D12_Init -> 0x00000001 (Success)
+  [32m✓[0m NGX feature 18 created
+  [31m✗[0m --test finished: 0/300 — fewer than 250
+
+--- NVAPI (dxvk-nvapi) ---
+  143797.169:01ac:01b0:info:nvapi64:nvapi_QueryInterface (0xad298d3f): Unknown function ID
+  143797.169:01ac:01b0:info:nvapi64:DXVK-NVAPI v0.9.2 NVAPI gcc 16.1.0 x86_64 release (nvngx.dll)
+  143797.169:01ac:01b0:info:nvapi64:Successfully acquired Vulkan vkGetInstanceProcAddr @ 0x6ffff79279c0
+  143797.170:01ac:01b0:info:nvapi64:NvAPI Device: NVIDIA GeForce RTX 4080 SUPER (615.71.9)
+  143797.171:01ac:01b0:info:nvapi64:NvAPI Output: \\.\DISPLAY1
+  143797.171:01ac:01b0:info:nvapi64:NvAPI Output: \\.\DISPLAY2
+  143797.172:01ac:01b0:info:nvapi64:<-NvAPI_Initialize: OK
+  143797.172:01ac:01b0:info:nvapi64:nvapi_QueryInterface (0x33c7358c): Unknown function ID
+  143797.172:01ac:01b0:info:nvapi64:nvapi_QueryInterface (0x593e8644): Unknown function ID
+  143797.172:01ac:01b0:info:nvapi64:<-NvAPI_DRS_CreateSession: OK
+  143797.172:01ac:01b0:info:nvapi64:<-NvAPI_DRS_LoadSettings: OK
+  143797.172:01ac:01b0:info:nvapi64:<-NvAPI_DRS_GetBaseProfile: OK
+
+--- the log's own explanation ---
+  09:05:14.952  [host] DRED settings unavailable (settings1=0x80004002, settings=0x80004002)
+  09:05:15.182  [host] NVSDK_NGX_D3D12_Init -> 0x00000001 (Success)
+  09:05:15.221  [pure] direct DLSSNR Init_Ext -> 0x00000001 (Success)
+  09:05:16.609  [pure] direct feature 18 ready: 640x360 preset=0 result=0x00000001
+  09:05:16.617  [host] evaluate failed 0xBAD00004 (?)
+
+  artifacts -> test-results/20260916T080456Z/raw/
+
+==============================================================
+ RESULT: FAIL — stop here. The port is not viable until this passes.
+ The log above names the stage. Do not build downstream on this.
+==============================================================
