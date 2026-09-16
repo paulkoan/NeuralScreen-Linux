@@ -202,21 +202,41 @@ VKD3D_VER="3.0.1"
 NVAPI_VER="0.9.2"
 
 nv_ver() { strings -a "$SYS32/nvapi64.dll"   2>/dev/null | grep -oE '^v?0\.9\.[0-9]+' | sort -u | head -1; }
-vk_ver() { strings -a "$SYS32/d3d12core.dll" 2>/dev/null | grep -oE '^3\.0\.[0-9]+'   | sort -u | head -1; }
+vk_ver() { strings -a "$SYS32/d3d12core.dll" 2>/dev/null | grep -oE '^3\.[0-9]+\.[0-9]+' | sort -u | head -1; }
 
+have() { [ -s "$SYS32/$1" ] && echo 1 || echo 0; }
 have_dxvk=1
-for f in dxgi.dll d3d11.dll; do [ -s "$SYS32/$f" ] || have_dxvk=0; done
+for f in dxgi.dll d3d11.dll; do [ "$(have "$f")" = "1" ] || have_dxvk=0; done
 have_vkd3d=1
-for f in d3d12.dll d3d12core.dll; do [ -s "$SYS32/$f" ] || have_vkd3d=0; done
+for f in d3d12.dll d3d12core.dll; do [ "$(have "$f")" = "1" ] || have_vkd3d=0; done
 have_nvapi=1
-[ -s "$SYS32/nvapi64.dll" ] || have_nvapi=0
+[ "$(have nvapi64.dll)" = "1" ] || have_nvapi=0
 
-echo "     present now: dxvk-nvapi $(nv_ver || echo missing) / vkd3d-proton $(vk_ver || echo missing)"
+# Report presence explicitly, in BOTH modes: --check that silently omits this is
+# how a missing DXVK dxgi.dll went unnoticed for a whole round. dxvk-nvapi names
+# it directly when it cannot initialise:
+#   "Querying Vulkan entry point from DXGI factory failed, please ensure that
+#    DXVK's dxgi.dll (version 2.1 or newer) is present"
+for f in dxgi.dll d3d11.dll d3d12.dll d3d12core.dll nvapi64.dll nvofapi64.dll; do
+    if [ "$(have "$f")" = "1" ]; then
+        ok "$f present ($(du -h "$SYS32/$f" | cut -f1))"
+    else
+        warn "$f MISSING from system32"
+    fi
+done
+echo "     versions: dxvk-nvapi $(nv_ver || echo '?') / vkd3d-proton $(vk_ver || echo '?')"
 
-NEED_INSTALL=0
-[ "$have_dxvk"  = "0" ] && { warn "DXVK's dxgi.dll/d3d11.dll are missing from system32"; NEED_INSTALL=1; }
-[ "$have_vkd3d" = "0" ] && { warn "vkd3d-proton's d3d12.dll/d3d12core.dll are missing"; NEED_INSTALL=1; }
-[ "$have_nvapi" = "0" ] && { warn "dxvk-nvapi's nvapi64.dll is missing from system32"; NEED_INSTALL=1; }
+if [ "$have_dxvk" = "0" ]; then
+    warn "DXVK's dxgi.dll/d3d11.dll are missing — dxvk-nvapi CANNOT initialise"
+    warn "without them (it needs their extension points), which fails NGX's"
+    warn "platform check with 0xBAD00002."
+fi
+if [ "$have_vkd3d" = "0" ]; then
+    warn "vkd3d-proton's d3d12.dll/d3d12core.dll are missing"
+fi
+if [ "$have_nvapi" = "0" ]; then
+    warn "dxvk-nvapi's nvapi64.dll is missing"
+fi
 
 if [ "$CHECK_ONLY" = "1" ]; then
     warn "skipped (--check); re-run without --check to install"
@@ -298,10 +318,20 @@ echo ""
 echo "--- 5. the DLL overrides the worker must be launched with ---"
 cat <<'EOF'
 
-    WINEDLLOVERRIDES="d3d12,d3d12core,nvapi64,dxgi=n,b;nvngx_dlssnr=n"
+    WINEDLLOVERRIDES="d3d12=n,b;d3d12core=n,b;d3d11=n,b;dxgi=n,b;nvapi64=n,b;nvofapi64=n,b;nvngx_dlssnr=n"
+    DXVK_ENABLE_NVAPI=1
 
-  Without d3d12/d3d12core here, Wine loads its own old vkd3d and NGX cannot
-  reach the GPU. native/run_worker.sh and tools/m0_env_gate.sh now set this.
+  Every entry matters:
+    d3d12 / d3d12core  vkd3d-proton, not Wine's old builtin vkd3d
+    d3d11 / dxgi       DXVK — dxvk-nvapi needs their extension points and
+                       cannot initialise without them
+    nvapi64 / nvofapi64 dxvk-nvapi
+    nvngx_dlssnr        the NR runtime itself
+    DXVK_ENABLE_NVAPI   without it dxvk-nvapi leaves the NGX/DLSS part of
+                        NVAPI disabled and NGX's platform check fails
+
+  native/run_worker.sh and tools/m0_env_gate.sh set this, and
+  tests/test_worker_env_consistency.py fails if any copy of the string drifts.
 
 EOF
 

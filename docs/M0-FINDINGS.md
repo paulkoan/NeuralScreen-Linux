@@ -7,6 +7,7 @@ gate: each failure names the next missing piece.
 |---|---|---|
 | `20260916T044806Z` | `0xBAD00001` FAIL_FeatureNotSupported | NGX Core not found at all |
 | `20260916T051433Z` | `0xBAD00002` FAIL_PlatformError | NGX Core now loads; NVAPI cannot report the GPU to it |
+| `20260916T063248Z` | `0xBAD00002` still, but NVAPI now *explains itself* | DXVK's dxgi.dll was never installed — the setup had only been run with `--check` |
 
 **What the first run proved and the second confirmed** — the expensive half:
 
@@ -22,7 +23,68 @@ killed the port outright; it is cleared.
 
 ---
 
-# Round 2 — `0xBAD00002` FAIL_PlatformError
+# Round 3 — `0xBAD00002`, and NVAPI finally says why
+
+The round-2 changes took effect: dxvk-nvapi loaded (`DXVK-NVAPI v0.9.2 ... x86_64
+release (nvngx.dll)`) and `DXVK_ENABLE_NVAPI=1` was clearly in force, because it
+was logging at all. Then it stated the cause itself:
+
+```
+nvapi64:Querying Vulkan entry point from DXGI factory failed, please ensure
+         that DXVK's dxgi.dll (version 2.1 or newer) is present
+nvapi64:<-NvAPI_Initialize: NVIDIA or other suitable device not found or
+         initialization failed
+```
+
+**DXVK was never installed.** dxvk-nvapi reaches the Vulkan entry point through
+DXVK's `dxgi.dll` extension points; without that file `NvAPI_Initialize` fails,
+NGX Core gets no platform answer, and init returns `0xBAD00002`. `tools/
+wine_ngx_setup.sh --check` showed it plainly — `vkd3d-proton missing`, and no
+DXVK files at all — but its section 4 was skipped as a check.
+
+That was a **workflow bug in my own harness**, not a missing piece of
+understanding. `tools/run_tests.sh --report --m0` ran the setup with `--check`,
+so following my own instructions diagnosed the prefix without ever configuring
+it. The gate then reported the same `0xBAD00002` with nothing saying the setup
+had never been applied.
+
+Fixes:
+
+- `run_tests.sh --m0` now runs `wine_ngx_setup.sh` **without** `--check` (it is
+  idempotent), snapshots the prefix afterwards, and stores the setup output as
+  `raw/wine_ngx_setup.txt`.
+- The setup script reports the presence of every layer file in **both** modes.
+  A `--check` that silently omitted that is how this went unnoticed for a round.
+- The gate was reading only `dlss5-feed-host.log` for its NVAPI section, so it
+  printed "no NVAPI output at all" while the answer sat in Wine's console — the
+  worker's stage logs and dxvk-nvapi's `nvapi64:` lines go to different streams.
+  It now captures both.
+- The gate detects that exact dxvk-nvapi message and quotes the fix back.
+- `tests/test_worker_env_consistency.py` now also covers
+  `tools/wine_ngx_setup.sh`, and it immediately earned its keep: it failed on
+  this change because the setup script never mentioned `DXVK_ENABLE_NVAPI`.
+
+## What to run now
+
+```bash
+git pull
+tools/wine_ngx_setup.sh          # no --check: this is the step that installs DXVK
+tools/m0_env_gate.sh
+```
+
+or simply `tools/run_tests.sh --report --m0`, which now does both.
+
+## Confidence
+
+Higher than round 2, because this failure was not inferred — dxvk-nvapi printed
+the cause and the missing file was independently visible in the setup snapshot.
+It is still not proven until the gate exits 0. If `NvAPI_Initialize` succeeds
+and init passes, the next thing to watch is **feature 18 create**, where the
+CuBIN path needs dxvk-nvapi ≥ 0.9.2 against vkd3d-proton ≥ 3.0.1.
+
+---
+
+# Round 2 — `0xBAD00002` FAIL_PlatformError (kept)
 
 Round 1's diagnosis was right and its fix worked: the registry entry took effect
 (`NGXCore registry: FullPath REG_SZ Z:\usr\lib\nvidia\wine`), and the error moved

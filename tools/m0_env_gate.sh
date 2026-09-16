@@ -152,14 +152,24 @@ fi
 echo ""
 
 START=$(date +%s)
-( cd "$NATIVE" && timeout 600 wine nvngx.dll --test )
-RC=$?
+WINE_OUT="$(mktemp)"
+( cd "$NATIVE" && timeout 600 wine nvngx.dll --test ) 2>&1 | tee "$WINE_OUT"
+RC=${PIPESTATUS[0]}
 ELAPSED=$(( $(date +%s) - START ))
 echo ""
 echo "  exit code: $RC   elapsed: ${ELAPSED}s"
 
+# Both streams, because the diagnostics are split between them: the worker's own
+# stage logs go to dlss5-feed-host.log, while dxvk-nvapi's `nvapi64:` lines go to
+# Wine's console. Reading only the log made the NVAPI section below report
+# "no NVAPI output at all" while the answer was sitting in the console output.
 COMBINED=""
 [ -f "$LOG" ] && COMBINED="$(cat "$LOG")"
+if [ -s "$WINE_OUT" ]; then
+    COMBINED="$COMBINED
+$(cat "$WINE_OUT")"
+fi
+rm -f "$WINE_OUT"
 
 echo ""
 echo "--- verdict ---"
@@ -274,6 +284,27 @@ echo "--- NVAPI (dxvk-nvapi) ---"
 NVLOG="$(echo "$COMBINED" | grep -iE "nvapi|NvAPI_Initialize|GetArchInfo|DXVK_ENABLE_NVAPI" | head -12)"
 if [ -n "$NVLOG" ]; then
     echo "$NVLOG" | sed 's/^/  /'
+    # The specific, actionable failure dxvk-nvapi reports when DXVK is not
+    # actually installed. It names the fix itself, so quote it back.
+    if echo "$COMBINED" | grep -qi "Querying Vulkan entry point from DXGI factory failed"; then
+        echo ""
+        fail "dxvk-nvapi cannot reach DXVK's DXGI — NvAPI_Initialize failed, so"
+        fail "NGX Core gets no platform answer and returns 0xBAD00002."
+        cat <<'REMEDY'
+
+     dxvk-nvapi needs DXVK's OWN dxgi.dll (and d3d11.dll) in the prefix: it
+     reaches the Vulkan entry point through their extension points. Wine's
+     builtin dxgi will not do, and neither will an override pointing at a file
+     that is not there.
+
+     tools/wine_ngx_setup.sh section 4 installs them, but only WITHOUT --check.
+     Running `run_tests.sh --report --m0` before this fix ran the setup with
+     --check, so nothing was ever installed.
+
+     Fix:  tools/wine_ngx_setup.sh          (no --check)
+REMEDY
+        STATUS=1
+    fi
 else
     warn "no NVAPI output at all — dxvk-nvapi's nvapi64.dll is probably not"
     warn "being loaded, or DXVK_ENABLE_NVAPI=1 is not taking effect"

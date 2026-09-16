@@ -140,13 +140,20 @@ else
     STATUS=$?
 fi
 
-# --- Wine/NGX environment snapshot ------------------------------------------
+# --- Wine/NGX environment: CONFIGURE it, then snapshot it --------------------
+# Deliberately not --check. The point of this step is to leave the prefix in a
+# state where the gate below can pass; running only the diagnosis is exactly
+# what let a missing DXVK dxgi.dll go unnoticed for a whole round, with the
+# gate reporting 0xBAD00002 and nothing saying the setup had never been applied.
 if [ "$WANT_M0" = "1" ] && [ "$WANT_REPORT" = "1" ]; then
     if [ -x tools/wine_ngx_setup.sh ]; then
         echo ""
         echo "=============================================================="
-        echo " Wine NGX environment (--check)"
+        echo " Wine NGX setup (APPLYING, then snapshotting)"
         echo "=============================================================="
+        tools/wine_ngx_setup.sh 2>&1 | tee "$OUT/raw/wine_ngx_setup.txt"
+        echo ""
+        echo "--- after setup: the prefix as it now stands ---"
         tools/wine_ngx_setup.sh --check 2>&1 | tee "$OUT/raw/wine_ngx_environment.txt"
     fi
 fi
@@ -186,6 +193,8 @@ if [ "$WANT_REPORT" = "1" ]; then
         echo "|---|---|"
         echo "| \`raw/pytest.txt\` | full pytest output |"
         echo "| \`raw/environment.txt\` | GPU, driver, Wine, Vulkan, session |"
+        [ -f "$OUT/raw/wine_ngx_setup.txt" ] && echo "| \`raw/wine_ngx_setup.txt\` | what the NGX/DXVK setup applied |"
+        [ -f "$OUT/raw/wine_ngx_environment.txt" ] && echo "| \`raw/wine_ngx_environment.txt\` | the prefix after setup |"
         [ -f "$OUT/raw/m0_gate.txt" ] && echo "| \`raw/m0_gate.txt\` | M0 gate output |"
         [ -f "$OUT/raw/dlss5-feed-host.log" ] && echo "| \`raw/dlss5-feed-host.log\` | the worker's own log |"
         echo ""

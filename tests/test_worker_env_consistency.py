@@ -29,11 +29,12 @@ from minimal.worker import DLL_OVERRIDES, ENABLE_NVAPI
 REPO = Path(__file__).resolve().parent.parent
 RUN_WORKER = REPO / "native" / "run_worker.sh"
 M0_GATE = REPO / "tools" / "m0_env_gate.sh"
+NGX_SETUP = REPO / "tools" / "wine_ngx_setup.sh"
 
 
 def _sources() -> list[tuple[str, str]]:
     out = []
-    for path in (RUN_WORKER, M0_GATE):
+    for path in (RUN_WORKER, M0_GATE, NGX_SETUP):
         if path.is_file():
             out.append((path.name, path.read_text(errors="replace")))
     return out
