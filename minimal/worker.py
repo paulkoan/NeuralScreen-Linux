@@ -33,20 +33,29 @@ WORK_MAX_H = 1440
 FIRST_FRAME_TIMEOUT = 60.0
 
 
-def work_size(width: int, height: int) -> tuple[int, int]:
+def work_size(width: int, height: int, scale: float = 1.0) -> tuple[int, int]:
     """The NGX work resolution for a frame of width x height.
 
-    Same rules as settings_io._work_size, kept local so the MVP does not drag
-    the whole settings subsystem in: never larger than the source frame, never
-    larger than the 1440p NGX ceiling, and rounded down to even numbers.
+    Mirrors settings_io._work_size, the product's rule, so a measurement here
+    means something there. `scale` is the product's `work_scale`: the network
+    works on a fraction of the frame and the result is scaled back to full, so
+    a smaller scale buys frame rate at the cost of the effect's own resolution.
+
+    Never larger than the source frame, never larger than the 1440p NGX
+    ceiling. At 1:1 the frame is used unrounded: rounding to even once turned a
+    539-pixel-high window into a 540-high work size — larger than the frame it
+    came from — and the worker died on the header. A downscale therefore rounds
+    DOWN, and an odd size at 1:1 stays on the path the product verified.
     """
     w, h = int(width), int(height)
+    if scale < 1.0:
+        w = max(64, int(width * scale) // 2 * 2)
+        h = max(64, int(height * scale) // 2 * 2)
     if w > WORK_MAX_W or h > WORK_MAX_H:
         k = min(WORK_MAX_W / w, WORK_MAX_H / h)
-        w, h = max(64, int(w * k)), max(64, int(h * k))
-    w -= w % 2
-    h -= h % 2
-    return max(64, w), max(64, h)
+        w = max(64, int(w * k) // 2 * 2)
+        h = max(64, int(h * k) // 2 * 2)
+    return min(w, int(width)), min(h, int(height))
 
 
 def default_launcher() -> list[str]:
@@ -84,12 +93,22 @@ DLL_OVERRIDES = (
 ENABLE_NVAPI = "1"
 
 
-def worker_env(base: dict | None = None) -> dict:
-    """The environment to launch the worker with."""
+def worker_env(base: dict | None = None, nr_small: bool = False) -> dict:
+    """The environment to launch the worker with.
+
+    nr_small is the product's NS_NR_SMALL: the network runs on a scaled-down
+    frame and the worker scales the result back up to full size, so the output
+    stays full resolution while the neural cost drops with the pixel count. It
+    is the only mechanism that actually buys frame rate — handing the network
+    the whole screen at a smaller *work* size ("upscaling" mode) does not,
+    because it still processes full-res pixels.
+    """
     env = dict(os.environ if base is None else base)
     env["WINEDLLOVERRIDES"] = env.get("NS_WINEDLLOVERRIDES", DLL_OVERRIDES)
     env.setdefault("DXVK_ENABLE_NVAPI", ENABLE_NVAPI)
     env.setdefault("WINEPREFIX", os.path.expanduser("~/.neuralscreen/wine"))
+    if nr_small:
+        env["NS_NR_SMALL"] = "1"
     return env
 
 
@@ -99,10 +118,18 @@ class Worker:
     def __init__(self, width: int, height: int, work_w: int, work_h: int,
                  params: dict, warmup: int = 2,
                  cmd: list[str] | None = None,
-                 cwd: Path | None = None):
+                 cwd: Path | None = None,
+                 full_w: int = 0, full_h: int = 0,
+                 nr_small: bool = False):
         self.width, self.height = int(width), int(height)
         self.work_w, self.work_h = int(work_w), int(work_h)
         self.params = params
+        # Non-zero means "the colour frame is this big and the work size is
+        # something else", which is what the worker needs in order to scale the
+        # network's result back up to the full frame. Zero keeps the path the
+        # MVP has always used: colour and work are the same size.
+        self.full_w, self.full_h = int(full_w), int(full_h)
+        self.nr_small = bool(nr_small)
         self.warmup = int(warmup)
         self.cmd = cmd or default_launcher()
         self.cwd = cwd or NATIVE_DIR
@@ -117,9 +144,14 @@ class Worker:
         """Start the process and send the stream header.
 
         The header tells the worker the work resolution and the NR parameters.
-        full_w/full_h stay 0 (legacy 1:1 path): the MVP works at the frame's own
-        resolution, scaled to the NGX ceiling, and lets the worker hand back the
-        same size. The upscaling path is a later milestone.
+
+        full_w/full_h stay 0 on the default path: colour and work are the same
+        size and the worker hands back what it was given. With --work-scale they
+        carry the real frame size instead, which is what lets the worker scale
+        the network's result back up to the full frame — and NS_NR_SMALL=1 in
+        the environment is what makes the network actually run on the smaller
+        frame. Without that variable a smaller work size changes nothing: the
+        feature is handed full-res pixels either way.
         """
         self.proc = subprocess.Popen(
             self.cmd,
@@ -127,7 +159,7 @@ class Worker:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=worker_env(),
+            env=worker_env(nr_small=self.nr_small),
         )
         threading.Thread(target=self._drain_stderr, daemon=True,
                          name="worker-stderr").start()
@@ -143,7 +175,7 @@ class Worker:
             self.params["auto_mask"], self.params["ui_correction"],
             self.params["intensity"], self.params["local_tone"],
             self.params["local_structure"], self.params["skin_structure"],
-            0, 0,
+            self.full_w, self.full_h,
         )
         self.proc.stdin.write(header)
         self.proc.stdin.flush()

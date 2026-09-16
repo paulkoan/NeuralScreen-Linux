@@ -37,7 +37,8 @@ class Pipeline:
     def __init__(self, *, monitor: int = 0, params: dict | None = None,
                  fullscreen: bool = False, headless: bool = False,
                  warmup: int = 2, worker_cmd: list[str] | None = None,
-                 worker_cwd: Path | None = None, capture=None, display=None):
+                 worker_cwd: Path | None = None, capture=None, display=None,
+                 work_scale: float = 1.0):
         self.params = dict(params or DEFAULT_PARAMS)
         self.warmup = warmup
         self.headless = headless
@@ -45,11 +46,26 @@ class Pipeline:
         # Injected sources let the tests drive the loop without a screen or a GPU.
         self.capture = capture if capture is not None else Capture(monitor_idx=monitor)
         self.width, self.height = self.capture.resolution
-        self.work_w, self.work_h = work_size(self.width, self.height)
+        # work_scale is the product's own performance dial: the network works on
+        # a fraction of the frame and the result is scaled back to full, so the
+        # output stays full size while the neural cost drops with the square of
+        # the scale. At 1.0 it works at full resolution.
+        self.work_scale = float(work_scale)
+        self.work_w, self.work_h = work_size(self.width, self.height, work_scale)
+        # A scale below 1 only means anything with the product's nr_small mode:
+        # the network is handed a scaled-down frame and its result is scaled
+        # back to full size. The distinction matters — shrinking the *work* size
+        # while still feeding the network full-res pixels is a no-op, which is
+        # the trap the upstream comment records ("handing it the full screen ...
+        # is why work_scale never bought anything").
+        self.nr_small = self.work_scale < 1.0
 
         self.worker = Worker(
             self.width, self.height, self.work_w, self.work_h, self.params,
-            warmup=self.warmup, cmd=worker_cmd, cwd=worker_cwd)
+            warmup=self.warmup, cmd=worker_cmd, cwd=worker_cwd,
+            full_w=self.width if self.nr_small else 0,
+            full_h=self.height if self.nr_small else 0,
+            nr_small=self.nr_small)
 
         if display is not None:
             self.display = display

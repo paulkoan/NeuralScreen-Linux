@@ -27,7 +27,7 @@ sys.path.insert(0, str(REPO))
     (2560, 1440, 2560, 1440),   # exactly the ceiling
     (3840, 2160, 2560, 1440),   # 4K scales down to the ceiling
     (100, 100, 100, 100),       # small frames pass through
-    (101, 101, 100, 100),       # odd sizes round down to even
+    (101, 101, 101, 101),       # odd at 1:1: the frame, unrounded
 ])
 def test_work_size(w, h, expect_w, expect_h):
     assert work_size(w, h) == (expect_w, expect_h)
@@ -35,9 +35,80 @@ def test_work_size(w, h, expect_w, expect_h):
 
 def test_work_size_never_exceeds_the_source():
     """The work resolution must never be larger than the frame it came from."""
-    for w, h in [(640, 480), (1920, 1080), (1000, 700)]:
+    for w, h in [(640, 480), (1920, 1080), (1000, 700), (101, 539)]:
         ww, wh = work_size(w, h)
         assert ww <= w and wh <= h
+
+
+@pytest.mark.parametrize("scale,expect_w,expect_h", [
+    (1.0, 2560, 1440),   # full resolution
+    (0.5, 1280, 720),    # half in each axis: a quarter of the pixels
+    (0.75, 1920, 1080),
+])
+def test_work_scale_is_the_performance_dial(scale, expect_w, expect_h):
+    """The product's `work_scale`, and the reason it exists here.
+
+    The network works on a fraction of the frame and the worker scales the
+    result back to full, so lowering the scale leaves the output size alone and
+    takes the neural cost down with the square of it. That is the lever for
+    frame rate; it is not a way to get more resolution.
+    """
+    assert work_size(2560, 1440, scale) == (expect_w, expect_h)
+
+
+def test_work_scale_never_exceeds_the_source():
+    """Whatever the scale, the network is never given more pixels than exist."""
+    for scale in (0.25, 0.5, 1.0):
+        for w, h in [(640, 480), (1920, 1080), (3840, 2160), (101, 539)]:
+            ww, wh = work_size(w, h, scale)
+            assert ww <= w and wh <= h, f"scale {scale} on {w}x{h} gave {ww}x{wh}"
+
+
+def test_work_scale_rounds_down_and_floors():
+    """A downscale rounds down (never up onto the frame) and floors at 64."""
+    assert work_size(1000, 700, 0.999) == (998, 698)  # 999 -> 998, 699 -> 698
+    assert work_size(100, 100, 0.01) == (64, 64)      # floored, not vanished
+
+
+def test_a_work_scale_below_one_switches_on_nr_small(fake_capture, fake_display,
+                                                     mock_worker_cmd):
+    """The scale only does anything with the product's nr_small mode.
+
+    Shrinking the work size on its own is a no-op — the feature is handed the
+    full screen either way, which is the trap the upstream source records
+    ("handing it the full screen ... is why work_scale never bought anything").
+    So a scale below 1 must tell the worker the real frame size AND set
+    NS_NR_SMALL, and the default path must leave both untouched.
+    """
+    from minimal.worker import worker_env
+
+    full = Pipeline(capture=fake_capture, display=fake_display, headless=True,
+                    worker_cmd=mock_worker_cmd, worker_cwd=REPO)
+    assert full.nr_small is False
+    assert (full.worker.full_w, full.worker.full_h) == (0, 0)
+    assert "NS_NR_SMALL" not in worker_env({})
+
+    small = Pipeline(capture=fake_capture, display=fake_display, headless=True,
+                     worker_cmd=mock_worker_cmd, worker_cwd=REPO, work_scale=0.5)
+    assert small.nr_small is True
+    assert (small.worker.full_w, small.worker.full_h) == (small.width, small.height)
+    assert small.work_w * 2 == full.work_w
+    assert worker_env({}, nr_small=True)["NS_NR_SMALL"] == "1"
+
+
+def test_the_scaled_path_still_returns_full_size_frames(fake_capture, fake_display,
+                                                       mock_worker_cmd):
+    """Colour in at full size, motion at the work size, output back at full size.
+
+    That is the whole point of the mode: the neural cost falls but everything
+    downstream still sees full-resolution frames.
+    """
+    pipe = Pipeline(capture=fake_capture, display=fake_display, headless=True,
+                    worker_cmd=mock_worker_cmd, worker_cwd=REPO, work_scale=0.5)
+    passed = pipe.run(frames=2)
+    assert passed["frames_done"] == 2
+    assert passed["frames_skipped"] == 0
+    assert passed["after"].shape[:2] == (pipe.height, pipe.width)
 
 
 # --- the worker wrapper ---------------------------------------------------

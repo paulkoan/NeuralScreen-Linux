@@ -266,6 +266,14 @@ REMEDY
 run_variant pass synthetic
 PASS_STATUS=$VARIANT_STATUS
 
+# Same source, same transport, same effect settings as `pass` — only the
+# resolution the network itself works at differs. This is the experiment that
+# decides whether shrinking the network's workload buys frame rate on real
+# hardware: if `scaled` is not meaningfully quicker than `pass`, the cost is
+# not in the network and no amount of downscaling will help.
+run_variant scaled synthetic "" "--work-scale 0.5"
+SCALED_STATUS=$VARIANT_STATUS
+
 # The control. Same source and same worker as `pass`, effect dialled to zero:
 # whatever still changes is the transport, not the network. Without this, "the
 # pass changed the frame" cannot distinguish the two, and the effect numbers
@@ -295,7 +303,7 @@ fi
 
 # --- copy artifacts out -----------------------------------------------------
 if [ -n "$OUT" ]; then
-    for v in pass baseline capture; do
+    for v in pass scaled baseline capture; do
         mkdir -p "$OUT/$v"
         cp -f "$T/$v/before.png" "$OUT/$v/" 2>/dev/null || true
         cp -f "$T/$v/after.png" "$OUT/$v/" 2>/dev/null || true
@@ -313,7 +321,7 @@ if [ -n "$OUT" ]; then
         echo "driver:            $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>&1 | head -1)"
     } > "$OUT/m1_environment.txt" 2>&1
     echo ""
-    echo "  artifacts -> $OUT/{pass,capture}/"
+    echo "  artifacts -> $OUT/{pass,scaled,baseline,capture}/"
 fi
 
 # --- summary ----------------------------------------------------------------
@@ -342,6 +350,18 @@ if [ "$CAPTURE_STATUS" = "0" ]; then
 else
     echo "  capture  FAIL — no usable screen frame (see the variant output)."
 fi
+echo ""
+echo "  per-frame cost by variant — the point of the run:"
+for v in pass scaled baseline capture; do
+    line=$(grep -m1 '^timing:' "$T/$v/mvp.txt" 2>/dev/null || true)
+    printf '    %-9s %s\n' "$v" "${line:-<no timing recorded>}"
+done
+echo ""
+echo "  pass vs scaled is the experiment: same source, same transport, same"
+echo "  effect, only the resolution the network works at differs. If scaled is"
+echo "  not meaningfully quicker, the cost is not in the network — and the"
+echo "  product's own figure for the network is 1.5 ms + 1.51 ms per megapixel"
+echo "  (a 5070 Ti), which at 2560x1440 is about 7 ms."
 echo ""
 echo "  The artifact that decides the milestone is pass/after.png next to"
 echo "  pass/before.png — look at them. A pair of numbers can agree on a"

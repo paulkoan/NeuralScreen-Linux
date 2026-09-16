@@ -119,3 +119,29 @@ def test_the_cli_fails_fast_on_a_bad_parameter():
     assert proc.returncode == 2, f"expected exit 2, got {proc.returncode}"
     assert "bad --param" in proc.stderr
     assert "nope" in proc.stderr
+
+
+# --- the work scale --------------------------------------------------------
+
+def test_help_documents_the_work_scale():
+    """The performance dial has to be discoverable from the tool itself."""
+    proc = subprocess.run([sys.executable, "-m", "minimal", "--help"],
+                          cwd=REPO, capture_output=True, text=True, timeout=120)
+    assert proc.returncode == 0, proc.stderr
+    assert "--work-scale" in proc.stdout
+
+
+def test_the_work_scale_defaults_to_full_resolution():
+    from minimal.__main__ import build_parser
+    assert build_parser().parse_args([]).work_scale == 1.0
+
+
+@pytest.mark.parametrize("bad", ["0", "-0.5", "1.5", "2"])
+def test_a_work_scale_outside_the_range_is_rejected(bad):
+    """Above 1 would ask for more pixels than the frame has and the worker
+    refuses; 0 or less asks for nothing. Both fail before the screen opens."""
+    proc = subprocess.run([sys.executable, "-m", "minimal", "--work-scale", bad],
+                          cwd=REPO, capture_output=True, text=True, timeout=120)
+    assert proc.returncode == 2, f"--work-scale {bad} gave {proc.returncode}"
+    assert "bad --work-scale" in proc.stderr
+    assert "not in (0, 1]" in proc.stderr

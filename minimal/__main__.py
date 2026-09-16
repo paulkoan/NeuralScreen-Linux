@@ -66,6 +66,13 @@ def build_parser() -> argparse.ArgumentParser:
                    help="override an NR parameter; repeatable. Known: "
                         + ", ".join(sorted(DEFAULT_PARAMS))
                         + ". e.g. --param intensity=0 to dial the effect off")
+    p.add_argument("--work-scale", type=float, default=1.0, metavar="F",
+                   help="fraction of the frame the network works on, 0<F<=1 "
+                        "(default 1.0). The result is scaled back to full size, "
+                        "so this buys frame rate without shrinking the output: "
+                        "the cost falls with the square of the scale. Lower it "
+                        "if the pass is too slow, at the cost of the effect's "
+                        "own resolution")
     p.add_argument("--windowed", action="store_true",
                    help="draw in a window instead of fullscreen")
     p.add_argument("--headless", action="store_true",
@@ -98,11 +105,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"bad --param: {exc}", file=sys.stderr)
         return 2
 
+    if not 0.0 < args.work_scale <= 1.0:
+        # Above 1 would ask the network for more pixels than the frame has,
+        # which the worker refuses; 0 would ask for a zero-pixel frame.
+        print(f"bad --work-scale: {args.work_scale} is not in (0, 1]",
+              file=sys.stderr)
+        return 2
+
     try:
         source = open_capture(args.source, monitor=args.monitor,
                               input_image=args.input_image)
         pipe = Pipeline(fullscreen=not args.windowed, headless=args.headless,
-                        capture=source, params=params)
+                        capture=source, params=params,
+                        work_scale=args.work_scale)
     except (CaptureError, DisplayError) as exc:
         print(f"startup failed: {exc}", file=sys.stderr)
         return 2
@@ -111,7 +126,8 @@ def main(argv: list[str] | None = None) -> int:
           + (f" ({args.input_image})" if args.source == "image" else "")
           + f"  capture {pipe.width}x{pipe.height}  ->  "
           f"work {pipe.work_w}x{pipe.work_h} "
-          f"(NGX ceiling {WORK_MAX_W}x{WORK_MAX_H})")
+          f"(work scale {pipe.work_scale:.2f}, "
+          f"NGX ceiling {WORK_MAX_W}x{WORK_MAX_H})")
     # Printed because a diff is only interpretable alongside the settings that
     # produced it, and a report is read long after the command line is gone.
     print("params: " + " ".join(f"{k}={pipe.params[k]}" for k in sorted(pipe.params)))
