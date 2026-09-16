@@ -124,3 +124,50 @@ def test_open_capture_image_reads_the_file(tmp_path):
     cap = open_capture("image", input_image=path)
     assert cap.resolution == (70, 40)
     assert cap.grab().shape == (40, 70, 4)
+
+
+# --- writing a frame out ---------------------------------------------------
+
+def test_save_png_round_trips_the_colours(tmp_path):
+    """A saved frame must have the colours the frame had."""
+    import cv2
+
+    from minimal.capture import save_png
+    frame = np.zeros((2, 2, 4), dtype=np.uint8)
+    frame[..., 0] = 200          # R
+    frame[..., 1] = 100          # G
+    frame[..., 2] = 50           # B
+    frame[..., 3] = 255          # A
+
+    path = tmp_path / "frame.png"
+    save_png(path, frame)
+    back = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+
+    assert back.shape == (2, 2, 3), (
+        f"expected an opaque 3-channel PNG, got {back.shape}; an alpha channel "
+        "gets flattened against a background by anything downstream")
+    b, g, r = (int(back[0, 0, i]) for i in range(3))
+    assert (r, g, b) == (200, 100, 50), f"channels are wrong: RGB came back as {(r, g, b)}"
+
+
+def test_the_old_channel_reversal_is_not_equivalent(tmp_path):
+    """Prove the round-trip test above bites, using the bug that shipped.
+
+    `frame[..., ::-1]` looks like an RGBA->BGRA swap and is not one: it reverses
+    all four channels, so the file's alpha ends up holding the red channel.
+    """
+    import cv2
+
+    from minimal.capture import save_png
+    frame = np.zeros((1, 1, 4), dtype=np.uint8)
+    frame[..., 0], frame[..., 1], frame[..., 2], frame[..., 3] = 200, 100, 50, 255
+
+    good, bad = tmp_path / "good.png", tmp_path / "bad.png"
+    save_png(good, frame)
+    cv2.imwrite(str(bad), frame[..., ::-1])
+
+    assert not np.array_equal(cv2.imread(str(good), cv2.IMREAD_UNCHANGED),
+                              cv2.imread(str(bad), cv2.IMREAD_UNCHANGED))
+    assert cv2.imread(str(bad), cv2.IMREAD_UNCHANGED).shape[2] == 4, (
+        "the buggy form also drags an alpha channel along, which is the half "
+        "that made the captured desktop render as a white sheet")

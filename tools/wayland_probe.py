@@ -219,9 +219,9 @@ def main(argv: list[str] | None = None) -> int:
         ok(f"the frame has content (std {std:.2f})")
 
     if args.save_frame:
-        import cv2
-        cv2.imwrite(args.save_frame, frames[-1][..., ::-1])   # RGBA -> BGRA
-        ok(f"wrote {args.save_frame}")
+        from minimal.capture import save_png
+        save_png(args.save_frame, frames[-1])
+        ok(f"wrote {args.save_frame} (opaque PNG, 3 channels)")
 
     print()
     print("=" * 62)

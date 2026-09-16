@@ -196,3 +196,24 @@ def open_capture(source: str, *, monitor: int = 0, input_image=None,
             raise CaptureError("--source image needs --input-image PATH")
         return ImageCapture(input_image)
     raise CaptureError(f"unknown source: {source}")
+
+
+def save_png(path, frame: np.ndarray) -> None:
+    """Write an (H, W, 4) RGBA frame as an OPAQUE 3-channel PNG.
+
+    Two decisions, both of them consequences of a real bug:
+
+    * **Three channels, not four.** A screenshot has no meaningful alpha. Writing
+      one invites anything downstream to flatten the image against a background,
+      and Telegram does exactly that when it converts an uploaded photo to JPEG —
+      which is how a captured desktop ended up looking like a white sheet.
+
+    * **Reorder with `[2, 1, 0]`, never `[..., ::-1]`.** cv2 works in BGR, so
+      going from RGBA needs the red and blue swapped. `::-1` reverses *all four*
+      channels, turning RGBA into ABGR: the file's blue gets the alpha, its green
+      the blue, its red the green, and its alpha the **red channel**. With that
+      alpha, compositing over white produced a frame at roughly 19% opacity —
+      the washed-out image that cost a round of diagnosis.
+    """
+    import cv2
+    cv2.imwrite(str(path), np.ascontiguousarray(frame[:, :, [2, 1, 0]]))
