@@ -1,0 +1,8 @@
+size              2560x1440
+mean abs diff     0.0095  (0 = byte-identical)
+p99 abs diff      0.00
+PSNR              68.34210742616935
+before is blank   True
+after is blank    True
+after == before   False
+VERDICT the output is blank

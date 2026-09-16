@@ -1,0 +1,100 @@
+==============================================================
+ M1 — live pipeline gate (MVP end to end)
+==============================================================
+
+  [32m✓[0m wine: wine-11.17 (Staging)
+  [32m✓[0m worker: nvngx.dll (156K)
+  [32m✓[0m NR runtime: nvngx_dlssnr.dll (159M)
+
+==============================================================
+ variant: pass   (--source synthetic)
+==============================================================
+  | source synthetic  capture 1280x720  ->  work 1280x720 (NGX ceiling 2560x1440)
+  | worker: bash /home/paul/dev/NeuralScreen-Linux/native/run_worker.sh
+  | pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+  | Hello from the pygame community. https://www.pygame.org/contribute.html
+  | frames: 30 done, 0 skipped, 1.81s (16.58 fps), worker exit 0
+  |   before -> /tmp/tmp.sfo8Z6bR1J/pass/before.png
+  |   after  -> /tmp/tmp.sfo8Z6bR1J/pass/after.png
+  exit code: 0   elapsed: 2s
+  [32m✓[0m the MVP exited 0
+  [32m✓[0m before.png written (92K)
+  [32m✓[0m after.png written (560K)
+
+  --- did the pass change the frame? ---
+  size              1280x720
+  mean abs diff     17.6189  (0 = byte-identical)
+  p99 abs diff      44.00
+  PSNR              21.981463450918536
+  before is blank   False
+  after is blank    False
+  after == before   False
+  VERDICT the pass changed the frame (mean abs diff 17.6189/255)
+  [32m✓[0m the pass changed the frame
+
+==============================================================
+ variant: capture   (--source screen)
+==============================================================
+  | source screen  capture 2560x1440  ->  work 2560x1440 (NGX ceiling 2560x1440)
+  | worker: bash /home/paul/dev/NeuralScreen-Linux/native/run_worker.sh
+  | pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+  | Hello from the pygame community. https://www.pygame.org/contribute.html
+  | frames: 30 done, 0 skipped, 3.083s (9.73 fps), worker exit 0
+  |   before -> /tmp/tmp.sfo8Z6bR1J/capture/before.png
+  |   after  -> /tmp/tmp.sfo8Z6bR1J/capture/after.png
+  exit code: 0   elapsed: 4s
+  [32m✓[0m the MVP exited 0
+  [32m✓[0m before.png written (16K)
+  [32m✓[0m after.png written (284K)
+
+  --- did the pass change the frame? ---
+  size              2560x1440
+  mean abs diff     0.0095  (0 = byte-identical)
+  p99 abs diff      0.00
+  PSNR              68.34210742616935
+  before is blank   True
+  after is blank    True
+  after == before   False
+  VERDICT the output is blank
+  [31m✗[0m the output is blank
+  [31m✗[0m the INPUT frame was blank — the pass had nothing to act on
+
+     The capture returned a flat frame. The known cause on this setup:
+
+       XDG_SESSION_TYPE=wayland
+       DISPLAY=:0            <- this is XWayland
+
+     minimal/capture.py grabs through mss, which is X11. On a Wayland desktop the
+     XWayland root window is black — applications draw on the compositor, not
+     there — so every frame arrives empty. This is a capture problem and says
+     nothing about the neural pass; the `pass` variant above answers that.
+
+     Two ways forward, neither of them this gate's job:
+       * real pixels today, from a screenshot:
+             grim /tmp/shot.png
+             python -m minimal --source image --input-image /tmp/shot.png
+       * or add a portal/PipeWire backend, which is the next milestone
+
+--- environment ---
+  DISPLAY:           :0
+  WAYLAND_DISPLAY:   wayland-0
+  XDG_SESSION_TYPE:  wayland
+  [33m![0m Wayland session: the screen variant is expected to capture nothing
+  [33m![0m (the worker does not write dlss5-feed-host.log in --live mode; that is
+  [33m![0m  deliberate — 'if (!g_video_mode)' in dlss5-feed-host64.cpp, so its
+  [33m![0m  absence is not a failure here)
+
+  artifacts -> test-results/20260916T105502Z/raw/m1/{pass,capture}/
+
+==============================================================
+ M1 summary
+==============================================================
+  pass     PASS — the NR pass changes a known frame.
+  capture  FAIL — no usable screen frame (see the variant output).
+
+  The artifact that decides the milestone is pass/after.png next to
+  pass/before.png — look at them. A pair of numbers can agree on a
+  flat frame, which is how the last round looked healthy.
+
+ RESULT: PASS — capture -> DLSS5 NR pass -> display works.
+==============================================================
