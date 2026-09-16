@@ -1,5 +1,28 @@
 # NeuralScreen
 
+> ## 🚧 Linux port — this is the upstream Windows README below
+>
+> **Do not start with `python main_linux.py`.** That is the legacy port entry
+> point; it needs a `config.json` that is not in this repository and will fail
+> with `FileNotFoundError`, which tells you nothing useful.
+>
+> The active work is the MVP in **[`minimal/`](minimal/README.md)**, with the
+> plan and milestones in **[`docs/MVP-PLAN.md`](docs/MVP-PLAN.md)**.
+>
+> ```bash
+> ls native/nvngx_dlssnr.dll    # 159 MB, gitignored — must be supplied
+> tools/m0_env_gate.sh          # START HERE: can NGX run under Wine at all?
+> tools/run_tests.sh --report   # the test suite (works with no GPU)
+> python -m minimal             # the MVP: capture -> DLSS5 pass -> display
+> ```
+>
+> `tools/m0_env_gate.sh` is the gate. If it fails, the port is not viable and
+> nothing downstream is worth building — it prints exactly which stage failed.
+>
+> Everything from here down describes the **Windows** program.
+
+---
+
 **NVIDIA's DLSS 5 neural renderer, applied to your whole Windows desktop in
 real time.** Everything on screen — games, video, photos — goes through the
 same neural network that DLSS 5 games use, and comes back sharper.
