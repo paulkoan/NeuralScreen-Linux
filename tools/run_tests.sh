@@ -19,6 +19,32 @@ if [ ! -x "$PYTHON" ]; then
     PYTHON="$(command -v python3)"
 fi
 
+# pytest is not in the runtime dependency set, so a fresh venv does not have it.
+# The first M0 run on the GPU box reported only "No module named pytest" and an
+# empty report — check first and say something useful.
+if ! "$PYTHON" -c "import pytest" >/dev/null 2>&1; then
+    echo "pytest is not installed for $PYTHON — installing it now."
+    if command -v uv >/dev/null 2>&1; then
+        UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/uvcache}" \
+            uv pip install --python "$PYTHON" pytest >/dev/null 2>&1
+    fi
+    if ! "$PYTHON" -c "import pytest" >/dev/null 2>&1; then
+        "$PYTHON" -m pip install pytest >/dev/null 2>&1 || true
+    fi
+    if ! "$PYTHON" -c "import pytest" >/dev/null 2>&1; then
+        echo ""
+        echo "Could not install pytest. Install it yourself, then re-run:"
+        echo "    uv pip install --python $PYTHON pytest"
+        echo "    # or: $PYTHON -m pip install pytest"
+        echo "    # or: uv sync --extra test"
+        echo ""
+        echo "Without it the test suite cannot run at all."
+        exit 3
+    fi
+    echo "pytest installed."
+    echo ""
+fi
+
 WANT_REPORT=0
 WANT_M0=0
 for arg in "$@"; do

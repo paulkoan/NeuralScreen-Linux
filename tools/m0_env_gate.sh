@@ -96,8 +96,23 @@ echo "--- running: wine native/nvngx.dll --test ---"
 rm -f "$LOG"
 
 export WINEPREFIX="${WINEPREFIX:-$HOME/.neuralscreen/wine}"
-export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:-}nvngx_dlssnr=n"
+# The native translation layers MUST be overridden, or Wine loads its builtin
+# d3d12 (old vkd3d) and builtin nvapi64 and NGX cannot see the NVIDIA GPU —
+# which surfaces as NVSDK_NGX_D3D12_Init -> 0xBAD00001 (FeatureNotSupported).
+export WINEDLLOVERRIDES="${NS_WINEDLLOVERRIDES:-d3d12,d3d12core,nvapi64,dxgi=n,b;nvngx_dlssnr=n}"
 echo "  WINEPREFIX=$WINEPREFIX"
+echo "  WINEDLLOVERRIDES=$WINEDLLOVERRIDES"
+
+# The worker's NGX loader finds NGX Core through the registry on Wine (its D3DKMT
+# and same-directory paths both fail there). Warn if that is not set up yet.
+NGXREG="$(timeout 60 wine reg query 'HKLM\SOFTWARE\NVIDIA Corporation\Global\NGXCore' 2>/dev/null | grep -iE 'FullPath|NGXPath' | head -1)"
+if [ -n "$NGXREG" ]; then
+    echo "  NGXCore registry: $(echo "$NGXREG" | tr -s ' ')"
+else
+    echo "  NGXCore registry: NOT SET"
+    echo "     -> NGX Core will not be found and init will fail with 0xBAD00001."
+    echo "     -> run: tools/wine_ngx_setup.sh   (then re-run this gate)"
+fi
 echo ""
 
 START=$(date +%s)
@@ -149,6 +164,27 @@ if echo "$COMBINED" | grep -q "NVSDK_NGX_D3D12_Init"; then
     else
         fail "NGX init failed: $NLINE"
         STATUS=1
+        if echo "$NLINE" | grep -q "0xBAD00001"; then
+            cat <<'REMEDY'
+
+     0xBAD00001 = FAIL_FeatureNotSupported, and at the INIT stage it does not
+     mean "unsupported GPU" — it means NGX Core was never found. The worker's
+     NGX loader (strings: NGXGetPathUsingQAI / NGXGetPathFromRegistry /
+     "NGXCore not found next to the application") can only reach the core
+     through the registry under Wine:
+
+       * the QAI path needs D3DKMT, unimplemented in Wine
+         (`fixme:d3dkmt:NtGdiDdDDIQueryAdapterInfo type 48 not handled`)
+       * "next to the application" collides with the worker itself, whose file
+         name IS nvngx.dll, so it loads a module with no exports
+       * so only HKLM\...\NGXCore remains
+
+     Fix:  tools/wine_ngx_setup.sh
+     Then re-run this gate. It also sets the d3d12/d3d12core/nvapi64/dxgi
+     overrides, without which Wine uses its builtin d3d12 and nvapi64 and NGX
+     cannot see the physical GPU either.
+REMEDY
+        fi
     fi
 else
     fail "never reached NGX init — died earlier"

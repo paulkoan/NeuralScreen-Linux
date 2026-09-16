@@ -79,18 +79,35 @@ back.
 
 ### M0 — Environment gate (runs on your box) ◀ **start here**
 
-Script: `tools/m0_env_gate.sh`.
+Two scripts, in order:
 
-Runs `wine native/nvngx.dll --test`. This needs no game, no display window and no
-Python: it builds a D3D12 device, creates NGX feature 18, and runs 300 evaluates
-on a synthetic 640×360 pattern.
+```bash
+tools/wine_ngx_setup.sh    # make the prefix able to load NGX Core
+tools/m0_env_gate.sh       # prove it
+```
+
+`tools/wine_ngx_setup.sh` installs the driver's NGX bridge DLLs and points the
+registry at them, and reports the translation-layer versions. This is not
+optional: the first gate run failed with `NVSDK_NGX_D3D12_Init -> 0xBAD00001`
+purely because nothing had registered NGX Core — see
+**[M0-FINDINGS.md](M0-FINDINGS.md)** for the full diagnosis, which is not
+guesswork: the worker's own strings and an existing Linux port of the same
+feature both say the same thing.
+
+`tools/m0_env_gate.sh` then runs `wine native/nvngx.dll --test`. This needs no
+game, no display window and no Python: it builds a D3D12 device, creates NGX
+feature 18, and runs 300 evaluates on a synthetic 640×360 pattern.
 
 **PASS** = exit 0 **and** `dlss5-feed-host.log` contains
 `[pure] direct feature 18 ready` **and** `--test finished: N/300` with `N >= 250`.
 
-If this fails, stop the port and read the log — the failure code names the stage
-(`Init_NGX` return, `D3D12CreateDevice` HRESULT, `no NVIDIA adapter found`).
-Nothing downstream is worth building until this passes.
+Already proven on the RTX 4080 box (driver 615.71.09, Wine 11.17 Staging): Wine
+runs the worker, DXGI enumerates the NVIDIA adapter at vendor `0x10DE`, and
+`D3D12CreateDevice` succeeds. Only the NGX Core load was missing.
+
+If it fails, the log names the stage (`Init_NGX` code, `D3D12CreateDevice`
+HRESULT, `no NVIDIA adapter found`) and the gate prints the remedy for the
+`0xBAD00001` case. Nothing downstream is worth building until this passes.
 
 ### M1 — Pipeline skeleton against a mock worker (runs here)
 

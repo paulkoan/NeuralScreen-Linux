@@ -19,7 +19,11 @@ if [ "${1:-}" = "--prefix" ] && [ -n "${2:-}" ]; then
 fi
 
 export WINEPREFIX="$PREFIX"
-export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:-}nvngx_dlssnr=n"
+# The native translation layers MUST be overridden or Wine loads its builtin
+# d3d12 (old vkd3d) and builtin nvapi64, and NGX cannot see the NVIDIA GPU.
+# Symptom when missing: NVSDK_NGX_D3D12_Init -> 0xBAD00001 (FeatureNotSupported).
+# d3d12/d3d12core come from vkd3d-proton, nvapi64 from dxvk-nvapi, dxgi from DXVK.
+export WINEDLLOVERRIDES="${NS_WINEDLLOVERRIDES:-d3d12,d3d12core,nvapi64,dxgi=n,b;nvngx_dlssnr=n}"
 export WINE="${WINE:-wine}"
 
 # Auto-create prefix

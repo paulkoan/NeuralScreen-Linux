@@ -11,13 +11,15 @@
 >
 > ```bash
 > ls native/nvngx_dlssnr.dll    # 159 MB, gitignored — must be supplied
-> tools/m0_env_gate.sh          # START HERE: can NGX run under Wine at all?
+> tools/wine_ngx_setup.sh       # 1. make the prefix able to load NGX Core
+> tools/m0_env_gate.sh          # 2. START HERE: can NGX run under Wine at all?
 > tools/run_tests.sh --report   # the test suite (works with no GPU)
 > python -m minimal             # the MVP: capture -> DLSS5 pass -> display
 > ```
 >
 > `tools/m0_env_gate.sh` is the gate. If it fails, the port is not viable and
 > nothing downstream is worth building — it prints exactly which stage failed.
+> The first run's diagnosis is in [`docs/M0-FINDINGS.md`](docs/M0-FINDINGS.md).
 >
 > Everything from here down describes the **Windows** program.
 
