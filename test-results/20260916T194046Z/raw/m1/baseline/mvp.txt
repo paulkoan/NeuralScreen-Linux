@@ -1,0 +1,9 @@
+source synthetic  capture 1280x720  ->  work 1280x720 (work scale 1.00, NGX ceiling 2560x1440)
+params: auto_mask=0 intensity=0.0 local_structure=0.0 local_tone=0.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+worker: bash /home/paul/dev/NeuralScreen-Linux/native/run_worker.sh
+pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+frames: 30 done, 0 skipped, 1.967s (15.25 fps), worker exit 0
+timing: capture 5.3ms  send 43.0ms  recv 8.9ms  display 0.5ms   (total 57.7ms/frame, 17.3 fps)
+  before -> /tmp/tmp.Sd14jychQ4/baseline/before.png
+  after  -> /tmp/tmp.Sd14jychQ4/baseline/after.png
