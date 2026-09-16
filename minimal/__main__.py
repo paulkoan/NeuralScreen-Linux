@@ -23,10 +23,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--frames", type=int, default=0,
                    help="stop after N frames (0 = until the window is closed)")
     p.add_argument("--monitor", type=int, default=0, help="screen index (default 0)")
-    p.add_argument("--source", choices=("screen", "synthetic", "image"),
-                   default="screen",
-                   help="where frames come from: the screen (default), a "
-                        "generated test card, or a still image")
+    p.add_argument("--source", choices=("auto", "screen", "wayland", "synthetic", "image"),
+                   default="auto",
+                   help="where frames come from: auto (portal on Wayland, X11 "
+                        "grab otherwise), screen, wayland, a generated test "
+                        "card, or a still image")
     p.add_argument("--input-image", metavar="PATH",
                    help="the frame to replay with --source image")
     p.add_argument("--windowed", action="store_true",

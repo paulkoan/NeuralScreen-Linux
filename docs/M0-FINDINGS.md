@@ -12,7 +12,8 @@ gate: each failure names the next missing piece.
 | `20260916T065756Z` | `0xBAD00004` FAIL_FeatureNotFound | **init and feature 18 create now succeed**; the failure has moved to evaluate |
 | `20260916T074715Z` | direct unchanged; **via-core fails earlier, at create** (`0xBAD0000B`) | NGX Core cannot create feature 18 at all — and `--test` evaluates through the Core, so M0 was measuring a path the product does not use |
 | `20260916T080456Z` | M1: both frames black | capture is X11/`mss` on a **Wayland** session → XWayland root is empty. Said nothing about the pass; M1 now separates the two questions |
-| `20260916T101147Z` | M1 **pass PASS**, capture FAIL | **the NR pass transforms the frame** (mean 15.89/255 against a known card, PSNR 22.7 dB). Capture still blocked on Wayland |
+| `20260916T105502Z` | M1 **pass PASS** (17.62, matched pair), capture FAIL | pass confirmed, deterministic run-to-run; capture still the only gap |
+| — | Wayland backend built | portal + PipeWire capture (`--source auto`), plus `tools/wayland_probe.py` to test capture with no Wine. Not yet run on a compositor |
 
 **What the first run proved and the second confirmed** — the expensive half:
 
@@ -28,7 +29,81 @@ killed the port outright; it is cleared.
 
 ---
 
-# Round 8 — the pass works. Verified, and the first number was 3x too big.
+# Round 9 — the Wayland capture backend (portal + PipeWire)
+
+Target: KDE Plasma on Wayland. Approach chosen deliberately over shelling out to
+a screenshot tool per frame — the portal is one implementation for every
+compositor, and it prompts the user once rather than once per frame.
+
+## The spec detail that would have cost a round
+
+The PipeWire file descriptor **does not come from `Start`**. It is its own call:
+
+```xml
+<method name="OpenPipeWireRemote">
+  <arg type="o" name="session_handle" direction="in"/>
+  <arg type="a{sv}" name="options" direction="in"/>
+  <arg type="h" name="fd" direction="out"/>
+</method>
+```
+
+A client that waits for the fd on the Start response waits forever. Read from
+`data/org.freedesktop.portal.ScreenCast.xml` rather than inferred, because both
+arrangements look equally plausible from the outside.
+
+Second detail: since interface **version 6**, the node id in the `streams` tuple
+is deprecated for targeting — node ids are reused after destruction, so a
+hotplug or a resolution change can make a stale id point at another stream.
+`pipewire-serial` with `target-object` is the supported way, and the node id is
+only a fallback for older backends. `ScreenCast.pipewire_target` prefers the
+serial and the probe reports the interface version so the choice is visible.
+
+## Choices worth naming
+
+| | chose | over | why |
+|---|---|---|---|
+| D-Bus | `jeepney` | `dbus-python` | pure Python; `dbus-python` needs libdbus headers to build |
+| PipeWire | `gst-launch-1.0` subprocess | PyGObject + `pipewiresrc` | avoids needing gobject-introspection built; the pipeline is visible in `ps` while it runs |
+
+The protocol needs to *receive* a file descriptor, which rules out most
+lightweight D-Bus clients. jeepney decodes an `h` out-argument into a
+`FileDescriptor` with `to_raw_fd()`, and `open_dbus_connection(enable_fds=True)`
+is required to get it at all. Also worth recording: jeepney's `filter()` only
+registers locally and does **not** send `AddMatch` — without sending it
+explicitly, no signal is ever delivered.
+
+## `tools/wayland_probe.py` — the iteration device
+
+The lesson from rounds 7 and 8 is that capture and the pass must be separable.
+The probe needs no Wine, no GPU and no worker: it walks the session,
+dependencies, GStreamer, the portal, the handshake and then reads real frames,
+reporting per-channel standard deviation and optionally writing one out.
+
+Each step prints before it acts, so a failure names itself — and the same
+standard-deviation check that caught two black frames in round 7 is the last
+thing it does. Verified here against a machine with no bus and no GStreamer: it
+reports all three problems with the correct package names rather than raising.
+
+## One bug found while testing
+
+`PortalCapture.close()` closes the fd it was handed. The first version of the
+test helper passed a made-up number, and the close took out an unrelated
+descriptor owned by pytest — a real failure, not a flake. The helper now opens a
+devnull descriptor, so the test closes something it actually owns.
+
+## Confidence
+
+- The handshake, the fd source and the targeting rule: **verified against the
+  portal's own interface definition**, not from memory.
+- The pipeline string, the options encoding, the response parsing and the fd
+  ownership: **verified** — 25 new tests, no display needed.
+- That the screen appears, and that frames arrive non-black: **not established.**
+  No session bus and no compositor exist on the analysis box. That is what
+  `tools/wayland_probe.py` is for; it is the first thing to run.
+
+---
+
+# Round 8 — the pass works. Verified, and the first number was 3x too big. (kept)
 
 `20260916T101147Z` ran M1 with both variants. The gate said:
 

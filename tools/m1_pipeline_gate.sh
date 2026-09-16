@@ -198,24 +198,29 @@ run_variant() {
     if [ "$before_blank" = "True" ]; then
         fail "the INPUT frame was blank — the pass had nothing to act on"
         VARIANT_STATUS=1
-        if [ "$source" = "screen" ]; then
+        if [ "$source" != "synthetic" ]; then
             cat <<'REMEDY'
 
-     The capture returned a flat frame. The known cause on this setup:
+     The capture returned a flat frame. Work through these in order:
 
-       XDG_SESSION_TYPE=wayland
-       DISPLAY=:0            <- this is XWayland
+     1. Run the capture on its own, with no Wine and no worker involved:
 
-     minimal/capture.py grabs through mss, which is X11. On a Wayland desktop the
-     XWayland root window is black — applications draw on the compositor, not
-     there — so every frame arrives empty. This is a capture problem and says
-     nothing about the neural pass; the `pass` variant above answers that.
+          tools/wayland_probe.py --save-frame /tmp/shot.png
 
-     Two ways forward, neither of them this gate's job:
-       * real pixels today, from a screenshot:
-             grim /tmp/shot.png
-             python -m minimal --source image --input-image /tmp/shot.png
-       * or add a portal/PipeWire backend, which is the next milestone
+        That checks the session, jeepney, GStreamer's pipewiresrc element, the
+        portal, does the ScreenCast handshake and reads real frames. It is much
+        faster to iterate with than this gate, and it names the step that fails.
+
+     2. If it reports the X11 grab was used: minimal/capture.py goes through mss,
+        which is X11. On a Wayland desktop the XWayland root window is black —
+        applications draw on the compositor, not there — so every frame arrives
+        empty. That is a capture problem and says nothing about the neural pass;
+        the `pass` variant above is what answers that.
+
+     3. Real pixels immediately, from any screenshot tool:
+
+          grim /tmp/shot.png        # or spectacle -b -n -o /tmp/shot.png
+          python -m minimal --source image --input-image /tmp/shot.png
 REMEDY
         fi
     fi
@@ -225,7 +230,10 @@ REMEDY
 run_variant pass synthetic
 PASS_STATUS=$VARIANT_STATUS
 
-run_variant capture screen
+# "auto" is what the product does: the portal on a Wayland session, the X11 grab
+# otherwise. Naming it explicitly here means the gate tests the same decision the
+# user's own runs go through.
+run_variant capture auto
 CAPTURE_STATUS=$VARIANT_STATUS
 
 # --- environment ------------------------------------------------------------
@@ -252,9 +260,10 @@ if [ -n "$OUT" ]; then
     done
     {
         echo "date:              $(date -u)"
+        echo "XDG_SESSION_TYPE:  ${XDG_SESSION_TYPE:-}"
+        echo "XDG_CURRENT_DESKTOP: ${XDG_CURRENT_DESKTOP:-}"
         echo "DISPLAY:           ${DISPLAY:-}"
         echo "WAYLAND_DISPLAY:   ${WAYLAND_DISPLAY:-}"
-        echo "XDG_SESSION_TYPE:  ${XDG_SESSION_TYPE:-}"
         echo "frames pushed:     $FRAMES"
         echo "wine:              $(wine --version 2>&1)"
         echo "driver:            $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>&1 | head -1)"

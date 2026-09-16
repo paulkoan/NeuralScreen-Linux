@@ -12,6 +12,8 @@ uses, so swapping the backend later touches nothing else:
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 try:
@@ -164,11 +166,29 @@ def open_capture(source: str, *, monitor: int = 0, input_image=None,
                  width: int | None = None, height: int | None = None):
     """Build the frame source named by --source.
 
-    \"screen\" is the real thing; \"synthetic\" and \"image\" exist so the pass can
-    be exercised without a working screen capture.
+    \"auto\" picks per session: Wayland desktops get the portal (mss would hand
+    back the black XWayland root), everything else gets the X11 grab. \"synthetic\"
+    and \"image\" exist so the pass can be exercised without any real capture.
     """
+    if source == "auto":
+        source = "wayland" if os.environ.get("XDG_SESSION_TYPE") == "wayland" else "screen"
+        if source == "wayland":
+            # Fall back rather than refuse: on a Wayland session with no portal,
+            # an X11 grab is often still the only thing that works (XWayland),
+            # and a black frame is more diagnosable than a startup failure.
+            from minimal.capture_wayland import requirements
+            usable, why = requirements()
+            if not usable:
+                print(f"  ! Wayland capture unavailable ({why}); "
+                      f"falling back to the X11 grab, which may return black")
+                source = "screen"
     if source == "screen":
         return Capture(monitor_idx=monitor)
+    if source == "wayland":
+        # Imported lazily: it pulls in jeepney, and the other sources must keep
+        # working on machines where that is not installed.
+        from minimal.capture_wayland import PortalCapture
+        return PortalCapture(monitor_idx=monitor)
     if source == "synthetic":
         return SyntheticCapture(width or 1280, height or 720)
     if source == "image":

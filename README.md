@@ -12,14 +12,18 @@
 > ```bash
 > ls native/nvngx_dlssnr.dll    # 159 MB, gitignored — must be supplied
 > tools/wine_ngx_setup.sh       # 1. make the prefix able to load NGX Core
-> tools/m0_env_gate.sh          # 2. START HERE: can NGX run under Wine at all?
-> tools/run_tests.sh --report --m0 --push   # gate + suite, then push the report
+> tools/m0_env_gate.sh          # 2. can NGX run under Wine at all?
+> tools/wayland_probe.py        # 3. can we capture the screen? (no Wine needed)
+> tools/run_tests.sh --report --m0 --m1 --push  # all gates + suite, then push
 > python -m minimal             # the MVP: capture -> DLSS5 pass -> display
 > ```
 >
-> `tools/m0_env_gate.sh` is the gate. If it fails, the port is not viable and
-> nothing downstream is worth building — it prints exactly which stage failed.
-> The first run's diagnosis is in [`docs/M0-FINDINGS.md`](docs/M0-FINDINGS.md).
+> `tools/m0_env_gate.sh` and `tools/m1_pipeline_gate.sh` are the gates. Between
+> them they answer two separate questions — can NGX run under Wine at all, and
+> does a frame come back out of the pass changed. `tools/wayland_probe.py`
+> answers a third on its own, with no Wine involved: whether screen capture
+> works, which on Wayland means the XDG portal rather than an X11 grab.
+> The diagnoses are in [`docs/M0-FINDINGS.md`](docs/M0-FINDINGS.md).
 >
 > Everything from here down describes the **Windows** program.
 
