@@ -14,6 +14,7 @@ gate: each failure names the next missing piece.
 | `20260916T080456Z` | M1: both frames black | capture is X11/`mss` on a **Wayland** session → XWayland root is empty. Said nothing about the pass; M1 now separates the two questions |
 | `20260916T105502Z` | M1 **pass PASS** (17.62, matched pair), capture FAIL | pass confirmed, deterministic run-to-run; capture still the only gap |
 | — | Wayland backend built | portal + PipeWire capture (`--source auto`), plus `tools/wayland_probe.py` to test capture with no Wine. Not yet run on a compositor |
+| `20260916T152209Z` | **M1 both variants PASS** | **the MVP runs end to end on a live desktop**: portal capture, 30/30 frames, no skips, 2560x1440, pass changes the screen by 4.55/255 (17.62 on the test card). 3.31 fps |
 
 **What the first run proved and the second confirmed** — the expensive half:
 
@@ -29,7 +30,86 @@ killed the port outright; it is cleared.
 
 ---
 
-# Round 9 — the Wayland capture backend (portal + PipeWire)
+# Round 10 — the MVP runs end to end on the real screen
+
+`20260916T152209Z`. Both variants passed, and this is the first run where the
+whole loop worked on a live desktop:
+
+```
+variant: capture   (--source auto)
+  pipeline: gst-launch-1.0 -q pipewiresrc fd=5 path=188 ! videoconvert
+            ! videoscale ! video/x-raw,format=RGBA,width=2560,height=1440
+            ! queue max-size-buffers=1 leaky=downstream ! fdsink fd=1
+  ✓ before.png written (1.3M)   ✓ after.png written (2.5M)
+  VERDICT the pass changed the frame (mean abs diff 4.5459/255)
+frames: 30 done, 0 skipped, 9.073s (3.31 fps), worker exit 0
+RESULT: PASS — capture -> DLSS5 NR pass -> display works.
+```
+
+Capture through the portal, 30 frames, **no skips**, at 2560x1440.
+
+## What the pass does to a real desktop
+
+| variant | source | mean abs diff | p99 | PSNR |
+|---|---|---|---|---|
+| `pass` | synthetic test card | **17.6189** | 44.00 | 21.98 dB |
+| `capture` | the real screen | **4.5459** | 39.00 | 30.68 dB |
+
+The same pass, ten times more visible on the test card than on the desktop. That
+is not a contradiction: the card is nothing but structure and gradients, while
+the captured screen is 95% near-black background and flat UI. An effect that
+scales with content shows up where the content is.
+
+Broken down by how bright the input pixel was:
+
+| input luminance | share of pixels | mean change |
+|---|---|---|
+| dark (background, terminal) | 95.0% | 3.62 |
+| mid (window chrome, panels) | 3.5% | 14.79 |
+| bright (text, whites) | 1.6% | **38.35** |
+
+So it works hardest on text. Visually it survives that: read at 1:1 the glyphs in
+`after.png` are as crisp as in `before.png`, and a 12x-amplified difference map
+is a smooth wash across the whole frame — brightest over the wallpaper's detail
+and the window chrome — rather than a halo around letterforms. Only 1.1% of
+pixels are byte-identical, 25.7% move by more than 4/255, and the maximum
+anywhere is 63/255.
+
+Both PNGs are opaque RGBA (alpha 255 throughout), so nothing was flattened on
+the way out this time — `_save_rgba` was always correct; it was the probe's
+writer that was not.
+
+## What this does *not* establish: the control
+
+4.5459/255 is a real, structured change, but a diff cannot say who made it.
+Every frame travels to Wine as a texture and back, so some of it could be the
+round trip rather than the network — and the synthetic variant cannot separate
+them either, because it goes through the same transport.
+
+So the effect can now be dialled to zero without editing code:
+
+```
+--param intensity=0 --param local_tone=0 --param local_structure=0
+```
+
+and `m1_pipeline_gate.sh` runs that as a third variant, `baseline`: same source,
+same worker, effect off. Whatever still changes is the floor, and the report
+treats it as a measurement rather than a pass/fail. Subtract it before reading
+the effect variants as the network's work.
+
+`--param` is also the tuning dial for the text result above. It validates names
+against the defaults, so a typo fails at the CLI with the real names rather than
+being silently dropped by a worker that never sees it.
+
+## Also worth recording
+
+**3.31 fps.** 30 frames at 2560x1440 in 9.07s. The loop is correct; it is not yet
+fast. That is the practical gap between this and "the DLSS5 pass on your whole
+desktop", and it is now measurable rather than theoretical.
+
+---
+
+# Round 9 — the Wayland capture backend (portal + PipeWire) (kept)
 
 Target: KDE Plasma on Wayland. Approach chosen deliberately over shelling out to
 a screenshot tool per frame — the portal is one implementation for every

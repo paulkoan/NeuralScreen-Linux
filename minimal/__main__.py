@@ -12,8 +12,40 @@ import traceback
 
 from minimal.capture import CaptureError, list_monitors, open_capture
 from minimal.display import DisplayError
-from minimal.loop import Pipeline
+from minimal.loop import DEFAULT_PARAMS, Pipeline
 from minimal.worker import WORK_MAX_H, WORK_MAX_W
+
+
+def parse_params(overrides: list[str] | None) -> dict:
+    """DEFAULT_PARAMS with `--param NAME=VALUE` overrides applied.
+
+    Exists so a run can be changed without editing code — in particular so the
+    effect can be dialled to zero, which is the only way to tell the neural
+    pass's contribution to a frame from the contribution of sending that frame
+    through the worker and back. Without such a control, "the pass is working"
+    and "the transport perturbs pixels" look the same in a diff.
+
+    Names are checked against the defaults rather than passed through, so a typo
+    fails here with the list of real names instead of being quietly ignored by a
+    worker that never sees it.
+    """
+    params = dict(DEFAULT_PARAMS)
+    for item in overrides or []:
+        name, sep, value = item.partition("=")
+        name = name.strip()
+        if not sep:
+            raise ValueError(f"--param needs NAME=VALUE, got {item!r}")
+        if name not in DEFAULT_PARAMS:
+            raise ValueError(
+                f"unknown parameter {name!r} — known: "
+                f"{', '.join(sorted(DEFAULT_PARAMS))}")
+        default = DEFAULT_PARAMS[name]
+        try:
+            params[name] = float(value) if isinstance(default, float) else int(value)
+        except ValueError:
+            want = "a number" if isinstance(default, float) else "an integer"
+            raise ValueError(f"--param {name}={value}: expected {want}")
+    return params
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +62,10 @@ def build_parser() -> argparse.ArgumentParser:
                         "card, or a still image")
     p.add_argument("--input-image", metavar="PATH",
                    help="the frame to replay with --source image")
+    p.add_argument("--param", action="append", metavar="NAME=VALUE",
+                   help="override an NR parameter; repeatable. Known: "
+                        + ", ".join(sorted(DEFAULT_PARAMS))
+                        + ". e.g. --param intensity=0 to dial the effect off")
     p.add_argument("--windowed", action="store_true",
                    help="draw in a window instead of fullscreen")
     p.add_argument("--headless", action="store_true",
@@ -57,10 +93,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
+        params = parse_params(args.param)
+    except ValueError as exc:
+        print(f"bad --param: {exc}", file=sys.stderr)
+        return 2
+
+    try:
         source = open_capture(args.source, monitor=args.monitor,
                               input_image=args.input_image)
         pipe = Pipeline(fullscreen=not args.windowed, headless=args.headless,
-                        capture=source)
+                        capture=source, params=params)
     except (CaptureError, DisplayError) as exc:
         print(f"startup failed: {exc}", file=sys.stderr)
         return 2
@@ -70,6 +112,9 @@ def main(argv: list[str] | None = None) -> int:
           + f"  capture {pipe.width}x{pipe.height}  ->  "
           f"work {pipe.work_w}x{pipe.work_h} "
           f"(NGX ceiling {WORK_MAX_W}x{WORK_MAX_H})")
+    # Printed because a diff is only interpretable alongside the settings that
+    # produced it, and a report is read long after the command line is gone.
+    print("params: " + " ".join(f"{k}={pipe.params[k]}" for k in sorted(pipe.params)))
     print(f"worker: {' '.join(pipe.worker.cmd)}")
 
     try:

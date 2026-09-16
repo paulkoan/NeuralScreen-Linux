@@ -37,6 +37,19 @@
 # PASS = the MVP exits 0, both frames exist, the input was not blank, and the
 #        pass measurably altered the frame.
 #
+# THREE VARIANTS
+#
+#   pass      --source synthetic   a known test card — the effect
+#   baseline  --source synthetic   the same input with the effect dialled to zero
+#   capture   --source auto        the real screen
+#
+# `baseline` is a control, not a pass/fail: every frame travels through Wine as a
+# texture and back, so part of any before/after difference can be the round trip
+# rather than the network. Running the same input with intensity/local_tone/
+# local_structure at zero bounds that contribution, and it can then be subtracted
+# before the effect numbers are read as the network's work. It is a measurement
+# and is reported as one.
+#
 # A no-op pass exits 0 and looks perfectly healthy, which is the failure this
 # gate exists to catch. tools/frame_diff.py holds that judgement and is
 # separately exercisable.
@@ -137,7 +150,7 @@ trap 'rm -rf "$T"' EXIT
 # --- one variant ------------------------------------------------------------
 # Sets VARIANT_STATUS: 0 = this variant behaved, 1 = it did not.
 run_variant() {
-    local variant="$1" source="$2" input="${3:-}"
+    local variant="$1" source="$2" input="${3:-}" extra="${4:-}" kind="${5:-effect}"
     local dir="$T/$variant"
     mkdir -p "$dir"
     local before="$dir/before.png" after="$dir/after.png"
@@ -145,11 +158,15 @@ run_variant() {
     echo ""
     echo "=============================================================="
     echo " variant: $variant   (--source $source${input:+ --input-image $input})"
+    [ -n "$extra" ] && echo "          $extra"
     echo "=============================================================="
 
     local args=(--frames "$FRAMES" --headless --source "$source"
                 --save-before "$before" --save-after "$after")
     [ -n "$input" ] && args+=(--input-image "$input")
+    # Deliberately word-split: $extra carries several flags as one string.
+    # shellcheck disable=SC2206
+    [ -n "$extra" ] && args+=($extra)
 
     local start elapsed rc
     start=$(date +%s)
@@ -184,11 +201,30 @@ run_variant() {
     local drc=$?
     sed 's/^/  /' "$dir/analysis.txt"
 
-    case "$drc" in
-        0) pass "the pass changed the frame" ;;
-        *) fail "$(grep '^VERDICT' "$dir/analysis.txt" | sed 's/^VERDICT //')"
-           VARIANT_STATUS=1 ;;
-    esac
+    if [ "$kind" = "control" ]; then
+        # A control is a measurement, not a pass/fail. With the effect dialled
+        # off, a small difference is the EXPECTED result: it bounds what the
+        # transport (RGBA -> texture -> RGBA through Wine) does on its own, so
+        # that number can be subtracted from the effect variants before reading
+        # them as the network's work. A large one is still not a failure — it
+        # means the effect variants overstate the network, and the report says so.
+        local cmad
+        cmad="$(grep -oP 'mean abs diff\s+\K[0-9.]+' "$dir/analysis.txt" || echo '?')"
+        echo "  control variant: the diff below is the floor, not the effect"
+        if awk -v m="${cmad:-99}" 'BEGIN{exit !(m < 1.0)}'; then
+            pass "with the effect off the frame barely moves (mean abs diff $cmad/255)"
+        else
+            warn "with the effect off the frame still moves by $cmad/255 — the"
+            warn "transport perturbs pixels, so subtract that from the other"
+            warn "variants before reading their diff as the network's work"
+        fi
+    else
+        case "$drc" in
+            0) pass "the pass changed the frame" ;;
+            *) fail "$(grep '^VERDICT' "$dir/analysis.txt" | sed 's/^VERDICT //')"
+               VARIANT_STATUS=1 ;;
+        esac
+    fi
 
     # An empty INPUT is a different failure from a failed pass, and it is the one
     # that wasted a round: with a blank input the pass has nothing to act on, so
@@ -230,6 +266,14 @@ REMEDY
 run_variant pass synthetic
 PASS_STATUS=$VARIANT_STATUS
 
+# The control. Same source and same worker as `pass`, effect dialled to zero:
+# whatever still changes is the transport, not the network. Without this, "the
+# pass changed the frame" cannot distinguish the two, and the effect numbers
+# would be read as the network's work when part of them is the round trip.
+run_variant baseline synthetic "" \
+    "--param intensity=0 --param local_tone=0 --param local_structure=0" control
+BASELINE_STATUS=$VARIANT_STATUS
+
 # "auto" is what the product does: the portal on a Wayland session, the X11 grab
 # otherwise. Naming it explicitly here means the gate tests the same decision the
 # user's own runs go through.
@@ -251,7 +295,7 @@ fi
 
 # --- copy artifacts out -----------------------------------------------------
 if [ -n "$OUT" ]; then
-    for v in pass capture; do
+    for v in pass baseline capture; do
         mkdir -p "$OUT/$v"
         cp -f "$T/$v/before.png" "$OUT/$v/" 2>/dev/null || true
         cp -f "$T/$v/after.png" "$OUT/$v/" 2>/dev/null || true
@@ -284,6 +328,14 @@ if [ "$PASS_STATUS" = "0" ]; then
     echo "  pass     PASS — the NR pass changes a known frame."
 else
     echo "  pass     FAIL — the pass did not change a known frame."
+fi
+if [ "$BASELINE_STATUS" = "0" ]; then
+    echo "  baseline measured — see the variant output for the transport floor;"
+    echo "           subtract it from 'pass' and 'capture' before reading those"
+    echo "           as the network's work."
+else
+    echo "  baseline FAIL — the control run did not complete."
+    STATUS=1
 fi
 if [ "$CAPTURE_STATUS" = "0" ]; then
     echo "  capture  PASS — a real screen frame comes through."
