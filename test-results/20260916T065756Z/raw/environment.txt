@@ -1,0 +1,36 @@
+date:      Wed 16 Sep 06:57:56 UTC 2026
+hostname:  zone
+uname:     Linux zone 7.1.11-zen1-1-zen #1 ZEN SMP PREEMPT_DYNAMIC Fri, 28 Aug 2026 03:35:56 +0000 x86_64 GNU/Linux
+python:    Python 3.11.15
+session:   XDG_SESSION_TYPE=wayland DISPLAY=:0 WAYLAND_DISPLAY=wayland-0
+desktop:   KDE
+
+--- GPU ---
+index, name, driver_version, memory.total [MiB], compute_cap
+0, NVIDIA GeForce RTX 4080 SUPER, 615.71.09, 16376 MiB, 8.9
+
+--- graphics stack ---
+wine         /usr/bin/wine
+winecfg      /usr/bin/winecfg
+vulkaninfo   /usr/bin/vulkaninfo
+glxinfo      /usr/bin/glxinfo
+wine:       wine-11.17 (Staging)
+
+--- native/ ---
+total 162844
+drwxr-xr-x 1 paul paul       196 Sep 16 07:43 .
+drwxr-xr-x 1 paul paul       876 Sep 16 07:57 ..
+-rw-r--r-- 1 paul paul    235963 Sep 11 22:06 dlss5-feed-host64.cpp
+-rw-r--r-- 1 paul paul       475 Sep 16 07:43 dlss5-feed-host.log
+-rw-r--r-- 1 paul paul    157184 Sep 11 22:06 nvngx.dll
+-rw-r--r-- 1 paul paul 165840496 Sep 11 22:12 nvngx_dlssnr.dll
+-rwxr-xr-x 1 paul paul      1942 Sep 16 07:21 run_worker.sh
+-rw-r--r-- 1 paul paul    284160 Sep 12 14:17 Spout.dll
+-rw-r--r-- 1 paul paul    215552 Sep 12 14:17 SpoutDX.dll
+
+--- vulkan ICDs ---
+intel_hasvk_icd.json
+intel_icd.json
+lvp_icd.json
+nvidia_icd.json
+radeon_icd.json
