@@ -1,14 +1,82 @@
-# M0 findings — the first gate run on the RTX 4080 SUPER
+# M0 findings — the gate runs on the RTX 4080 SUPER
+
+Two runs so far. The error code is walking forward, which is the point of the
+gate: each failure names the next missing piece.
+
+| run | result | meaning |
+|---|---|---|
+| `20260916T044806Z` | `0xBAD00001` FAIL_FeatureNotSupported | NGX Core not found at all |
+| `20260916T051433Z` | `0xBAD00002` FAIL_PlatformError | NGX Core now loads; NVAPI cannot report the GPU to it |
+
+**What the first run proved and the second confirmed** — the expensive half:
+
+```
+[host] adapter 0: NVIDIA GeForce RTX 4080 SUPER vendor=0x10DE
+[pure] standalone D3D12 device ready; no swapchain or carrier modules
+```
+
+Wine runs the PE with all its static imports, DXGI enumerates the card at vendor
+`0x10DE` (the worker rejects anything else), and `D3D12CreateDevice` succeeds.
+D3D12 over Wine + VKD3D works on this machine. That was the risk that could have
+killed the port outright; it is cleared.
+
+---
+
+# Round 2 — `0xBAD00002` FAIL_PlatformError
+
+Round 1's diagnosis was right and its fix worked: the registry entry took effect
+(`NGXCore registry: FullPath REG_SZ Z:\usr\lib\nvidia\wine`), and the error moved
+on. Round 2 is a *different* failure, not a repeat.
+
+`0xBAD00002` at the init stage means NGX Core loaded and ran, then asked the
+platform about the GPU and did not get a usable answer. Under Wine that answer
+has to come from **dxvk-nvapi**, and dxvk-nvapi's requirements are explicit in
+its own README (`## Wine / Wine-Staging`):
+
+- copy `nvapi64.dll` / `nvofapi64.dll` into the prefix's `system32`
+- **copy `nvngx.dll` / `_nvngx.dll` into `system32`** (round 1 did this)
+- ensure **DXVK**'s `dxgi.dll` is installed and used — *"Using Wine's D3D11 or
+  DXGI implementation will fail"*
+- **set `DXVK_ENABLE_NVAPI=1`** — *"to disable DXVK's nvapiHack in DXVK"*
+
+Round 1's overrides covered `d3d12,d3d12core,nvapi64,dxgi` but **not `d3d11`**,
+and `DXVK_ENABLE_NVAPI` was never set — the GPU box's environment dump confirms
+it: the variable is simply absent.
+
+`native/run_worker.sh` and `tools/m0_env_gate.sh` now set:
+
+```
+WINEDLLOVERRIDES="d3d12=n,b;d3d12core=n,b;d3d11=n,b;dxgi=n,b;nvapi64=n,b;nvofapi64=n,b;nvngx_dlssnr=n"
+DXVK_ENABLE_NVAPI=1
+DXVK_NVAPI_LOG_LEVEL=info        # so NvAPI_Initialize shows up in the output
+```
+
+and `tools/wine_ngx_setup.sh` now **installs** the layers rather than only
+reporting them — DXVK `3.1.1`, vkd3d-proton `3.0.1`, dxvk-nvapi `0.9.2` (the
+versions the reference project pins; `0.9.2` is the one that passes 64-bit CuBIN
+calls to vkd3d-proton `3.0.1+`, which matters at feature-create).
+
+The gate now prints every `NvAPI_*` line it sees. If NVAPI never answered, that
+is the next thing to chase, and it will say so instead of leaving us to infer it.
+
+## Confidence
+
+Round 1 was a hypothesis confirmed by the change in error code. Round 2 is the
+same kind of step: the binding constraint moved from "NGX Core missing" to
+"NGX Core cannot see the platform", and dxvk-nvapi is the only thing under Wine
+that can supply the platform answer. It is still not proven until the gate exits
+0.
+
+---
+
+## Round 1 detail (kept — the reasoning is still what round 2 builds on)
 
 **Where:** `test-results/20260916T044806Z/` (pushed from the GPU box)
 **Verdict:** FAIL — `NVSDK_NGX_D3D12_Init -> 0xBAD00001`
-**But the important half passed.**
 
 The gate and the tests need to be read separately: the pytest suite never ran on
-the GPU box, and the M0 result is not the dead end the script's own verdict
-implies.
-
----
+the GPU box (`No module named pytest`), and the M0 result was not the dead end
+the script's own verdict implied.
 
 ## What passed (this is the expensive part)
 

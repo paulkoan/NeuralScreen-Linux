@@ -97,11 +97,20 @@ rm -f "$LOG"
 
 export WINEPREFIX="${WINEPREFIX:-$HOME/.neuralscreen/wine}"
 # The native translation layers MUST be overridden, or Wine loads its builtin
-# d3d12 (old vkd3d) and builtin nvapi64 and NGX cannot see the NVIDIA GPU —
-# which surfaces as NVSDK_NGX_D3D12_Init -> 0xBAD00001 (FeatureNotSupported).
-export WINEDLLOVERRIDES="${NS_WINEDLLOVERRIDES:-d3d12,d3d12core,nvapi64,dxgi=n,b;nvngx_dlssnr=n}"
+# dxgi/d3d11/d3d12/nvapi64. Two distinct failures follow:
+#   0xBAD00001 FAIL_FeatureNotSupported — NGX Core not found at all
+#   0xBAD00002 FAIL_PlatformError       — NGX Core found, but NVAPI cannot
+#                                          report the GPU to it
+export WINEDLLOVERRIDES="${NS_WINEDLLOVERRIDES:-d3d12=n,b;d3d12core=n,b;d3d11=n,b;dxgi=n,b;nvapi64=n,b;nvofapi64=n,b;nvngx_dlssnr=n}"
+# Without this dxvk-nvapi leaves the NGX/DLSS part of NVAPI disabled, and NGX
+# Core cannot establish the platform.
+export DXVK_ENABLE_NVAPI="${DXVK_ENABLE_NVAPI:-1}"
+# Ask dxvk-nvapi to log, so 'NvAPI_Initialize' / 'NvAPI_GPU_GetArchInfo' show up
+# in the worker's output and prove whether NVAPI answered.
+export DXVK_NVAPI_LOG_LEVEL="${DXVK_NVAPI_LOG_LEVEL:-info}"
 echo "  WINEPREFIX=$WINEPREFIX"
 echo "  WINEDLLOVERRIDES=$WINEDLLOVERRIDES"
+echo "  DXVK_ENABLE_NVAPI=$DXVK_ENABLE_NVAPI"
 
 # The worker's NGX loader finds NGX Core through the registry on Wine (its D3DKMT
 # and same-directory paths both fail there). Warn if that is not set up yet.
@@ -180,9 +189,25 @@ if echo "$COMBINED" | grep -q "NVSDK_NGX_D3D12_Init"; then
        * so only HKLM\...\NGXCore remains
 
      Fix:  tools/wine_ngx_setup.sh
-     Then re-run this gate. It also sets the d3d12/d3d12core/nvapi64/dxgi
-     overrides, without which Wine uses its builtin d3d12 and nvapi64 and NGX
-     cannot see the physical GPU either.
+REMEDY
+        fi
+        if echo "$NLINE" | grep -q "0xBAD00002"; then
+            cat <<'REMEDY'
+
+     0xBAD00002 = FAIL_PlatformError. NGX Core IS being found and loaded now,
+     but its platform check fails — it cannot get a usable answer about the GPU.
+     Under Wine that answer has to come from dxvk-nvapi, and dxvk-nvapi needs:
+
+       * DXVK's dxgi.dll AND d3d11.dll in the prefix (it uses their extension
+         points; Wine's builtin dxgi/d3d11 will not do)
+       * vkd3d-proton's d3d12.dll + d3d12core.dll
+       * DXVK_ENABLE_NVAPI=1 — without it the NGX/DLSS part of NVAPI is off
+       * all of the above overridden native-first in WINEDLLOVERRIDES
+
+     Check the "NvAPI_Initialize" / "NvAPI_GPU_GetArchInfo" lines below: absent
+     or failing means NVAPI never answered.
+
+     Fix:  tools/wine_ngx_setup.sh   (installs DXVK / vkd3d-proton / dxvk-nvapi)
 REMEDY
         fi
     fi
@@ -216,6 +241,17 @@ else
     STATUS=1
 fi
 
+# --- what NVAPI said (this is what NGX needs for its platform check) --------
+echo ""
+echo "--- NVAPI (dxvk-nvapi) ---"
+NVLOG="$(echo "$COMBINED" | grep -iE "nvapi|NvAPI_Initialize|GetArchInfo|DXVK_ENABLE_NVAPI" | head -12)"
+if [ -n "$NVLOG" ]; then
+    echo "$NVLOG" | sed 's/^/  /'
+else
+    warn "no NVAPI output at all — dxvk-nvapi's nvapi64.dll is probably not"
+    warn "being loaded, or DXVK_ENABLE_NVAPI=1 is not taking effect"
+fi
+
 # --- what the log says about the failure, if it failed ----------------------
 if [ "$STATUS" != "0" ] && [ -f "$LOG" ]; then
     echo ""
@@ -227,7 +263,20 @@ fi
 # --- copy artifacts out -----------------------------------------------------
 if [ -n "$OUT" ]; then
     cp "$LOG" "$OUT/" 2>/dev/null || true
-    env > "$OUT/m0_environment.txt" 2>&1
+    # Only the variables that matter: a full `env` dump is 100+ lines of noise
+    # and hides the ones this gate is about.
+    {
+        echo "date:              $(date -u)"
+        echo "WINEPREFIX:        ${WINEPREFIX:-}"
+        echo "WINEDLLOVERRIDES:  ${WINEDLLOVERRIDES:-}"
+        echo "DXVK_ENABLE_NVAPI: ${DXVK_ENABLE_NVAPI:-}"
+        echo "DXVK_NVAPI_LOG_LEVEL: ${DXVK_NVAPI_LOG_LEVEL:-}"
+        echo "DISPLAY:           ${DISPLAY:-}"
+        echo "WAYLAND_DISPLAY:   ${WAYLAND_DISPLAY:-}"
+        echo "XDG_SESSION_TYPE:  ${XDG_SESSION_TYPE:-}"
+        echo "wine:              $(wine --version 2>&1)"
+        echo "driver:            $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>&1 | head -1)"
+    } > "$OUT/m0_environment.txt" 2>&1
     echo ""
     echo "  artifacts -> $OUT/"
 fi

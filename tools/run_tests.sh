@@ -140,6 +140,17 @@ else
     STATUS=$?
 fi
 
+# --- Wine/NGX environment snapshot ------------------------------------------
+if [ "$WANT_M0" = "1" ] && [ "$WANT_REPORT" = "1" ]; then
+    if [ -x tools/wine_ngx_setup.sh ]; then
+        echo ""
+        echo "=============================================================="
+        echo " Wine NGX environment (--check)"
+        echo "=============================================================="
+        tools/wine_ngx_setup.sh --check 2>&1 | tee "$OUT/raw/wine_ngx_environment.txt"
+    fi
+fi
+
 # --- M0 gate, run separately so its log is captured verbatim ----------------
 if [ "$WANT_M0" = "1" ] && [ "$WANT_REPORT" = "1" ]; then
     if [ -x tools/m0_env_gate.sh ]; then

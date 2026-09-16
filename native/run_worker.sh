@@ -20,10 +20,19 @@ fi
 
 export WINEPREFIX="$PREFIX"
 # The native translation layers MUST be overridden or Wine loads its builtin
-# d3d12 (old vkd3d) and builtin nvapi64, and NGX cannot see the NVIDIA GPU.
-# Symptom when missing: NVSDK_NGX_D3D12_Init -> 0xBAD00001 (FeatureNotSupported).
-# d3d12/d3d12core come from vkd3d-proton, nvapi64 from dxvk-nvapi, dxgi from DXVK.
-export WINEDLLOVERRIDES="${NS_WINEDLLOVERRIDES:-d3d12,d3d12core,nvapi64,dxgi=n,b;nvngx_dlssnr=n}"
+# dxgi/d3d11/d3d12/nvapi64. dxvk-nvapi needs DXVK's dxgi AND d3d11 extension
+# points, and vkd3d-proton's d3d12 — through Wine's builtins NGX Core loads but
+# its platform check then fails (0xBAD00002 FAIL_PlatformError) because NVAPI
+# cannot report the GPU.
+#
+#   d3d12/d3d12core  <- vkd3d-proton
+#   dxgi/d3d11       <- DXVK
+#   nvapi64          <- dxvk-nvapi
+#   nvngx_dlssnr     <- the NR runtime itself, never a builtin
+export WINEDLLOVERRIDES="${NS_WINEDLLOVERRIDES:-d3d12=n,b;d3d12core=n,b;d3d11=n,b;dxgi=n,b;nvapi64=n,b;nvofapi64=n,b;nvngx_dlssnr=n}"
+# dxvk-nvapi requires this to disable DXVK's nvapiHack; without it the NGX/DLSS
+# part of NVAPI stays off and NGX cannot establish the platform.
+export DXVK_ENABLE_NVAPI="${DXVK_ENABLE_NVAPI:-1}"
 export WINE="${WINE:-wine}"
 
 # Auto-create prefix

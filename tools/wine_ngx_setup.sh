@@ -192,25 +192,106 @@ fi
 # --- 4. the translation layers ----------------------------------------------
 echo ""
 echo "--- 4. translation layers (DXVK / vkd3d-proton / dxvk-nvapi) ---"
-echo "     (Wine's builtin d3d12 and nvapi64 cannot see the NVIDIA GPU; the"
-echo "      native ones must be present AND overridden — see 5 below)"
+echo "     Wine's builtin dxgi/d3d11/d3d12/nvapi64 cannot carry NGX: dxvk-nvapi"
+echo "     needs DXVK's dxgi and d3d11 extension points, and vkd3d-proton's"
+echo "     d3d12. Without them NGX Core loads but its platform check fails"
+echo "     (0xBAD00002 FAIL_PlatformError) because NVAPI cannot report the GPU."
 
-for f in dxgi.dll d3d12.dll d3d12core.dll nvapi64.dll; do
-    if [ -s "$SYS32/$f" ]; then
-        ok "$f present ($(du -h "$SYS32/$f" | cut -f1))"
+DXVK_VER="3.1.1"
+VKD3D_VER="3.0.1"
+NVAPI_VER="0.9.2"
+
+nv_ver() { strings -a "$SYS32/nvapi64.dll"   2>/dev/null | grep -oE '^v?0\.9\.[0-9]+' | sort -u | head -1; }
+vk_ver() { strings -a "$SYS32/d3d12core.dll" 2>/dev/null | grep -oE '^3\.0\.[0-9]+'   | sort -u | head -1; }
+
+have_dxvk=1
+for f in dxgi.dll d3d11.dll; do [ -s "$SYS32/$f" ] || have_dxvk=0; done
+have_vkd3d=1
+for f in d3d12.dll d3d12core.dll; do [ -s "$SYS32/$f" ] || have_vkd3d=0; done
+have_nvapi=1
+[ -s "$SYS32/nvapi64.dll" ] || have_nvapi=0
+
+echo "     present now: dxvk-nvapi $(nv_ver || echo missing) / vkd3d-proton $(vk_ver || echo missing)"
+
+NEED_INSTALL=0
+[ "$have_dxvk"  = "0" ] && { warn "DXVK's dxgi.dll/d3d11.dll are missing from system32"; NEED_INSTALL=1; }
+[ "$have_vkd3d" = "0" ] && { warn "vkd3d-proton's d3d12.dll/d3d12core.dll are missing"; NEED_INSTALL=1; }
+[ "$have_nvapi" = "0" ] && { warn "dxvk-nvapi's nvapi64.dll is missing from system32"; NEED_INSTALL=1; }
+
+if [ "$CHECK_ONLY" = "1" ]; then
+    warn "skipped (--check); re-run without --check to install"
+else
+    command -v zstd >/dev/null 2>&1 || NEED_ZSTD=1
+    T="$(mktemp -d)"
+    trap 'rm -rf "$T"' EXIT
+
+    if [ "$have_dxvk" = "0" ]; then
+        echo "     fetching DXVK $DXVK_VER ..."
+        if curl -sfL -o "$T/dxvk.tar.gz" \
+            "https://github.com/doitsujin/dxvk/releases/download/v$DXVK_VER/dxvk-$DXVK_VER.tar.gz" \
+            && tar xzf "$T/dxvk.tar.gz" -C "$T"; then
+            for f in dxgi.dll d3d11.dll d3d10core.dll; do
+                src="$(find "$T" -path '*/x64/*' -name "$f" -print -quit)"
+                [ -n "$src" ] || { warn "DXVK archive has no x64/$f"; continue; }
+                [ -f "$SYS32/$f" ] && cp -f "$SYS32/$f" "$SYS32/$f.bak_builtin" 2>/dev/null
+                cp -f "$src" "$SYS32/$f" && ok "installed DXVK $f"
+            done
+        else
+            bad "could not fetch/extract DXVK $DXVK_VER"
+        fi
     else
-        warn "$f not in system32 — the matching native build should be there"
+        ok "DXVK dxgi.dll + d3d11.dll already present"
     fi
-done
 
-NVVER="$(strings -a "$SYS32/nvapi64.dll" 2>/dev/null | grep -oE '^v?0\.9\.[0-9]+' | sort -u | head -1)"
-VKVER="$(strings -a "$SYS32/d3d12core.dll" 2>/dev/null | grep -oE '^3\.0\.[0-9]+' | sort -u | head -1)"
-echo "     dxvk-nvapi ${NVVER:-?} / vkd3d-proton ${VKVER:-?}"
-if [ "$NVVER" != "v0.9.2" ] && [ "$NVVER" != "0.9.2" ]; then
-    warn "dxvk-nvapi 0.9.2 is the version that passes 64-bit CuBIN calls"
-    warn "to VKD3D-Proton 3.0.1+; older builds fail the feature-18 create step."
-    warn "Only upgrade if NGX initialises but feature 18 still fails."
+    if [ "$have_vkd3d" = "0" ]; then
+        echo "     fetching vkd3d-proton $VKD3D_VER ..."
+        if ! command -v zstd >/dev/null 2>&1; then
+            bad "zstd is required to unpack vkd3d-proton (install it and re-run)"
+        elif curl -sfL -o "$T/vkd3d.tar.zst" \
+            "https://github.com/HansKristian-Work/vkd3d-proton/releases/download/v$VKD3D_VER/vkd3d-proton-$VKD3D_VER.tar.zst" \
+            && zstd -dq "$T/vkd3d.tar.zst" -o "$T/vkd3d.tar" && tar xf "$T/vkd3d.tar" -C "$T"; then
+            for f in d3d12.dll d3d12core.dll; do
+                src="$(find "$T" -path '*/x64/*' -name "$f" -print -quit)"
+                [ -n "$src" ] || { warn "vkd3d archive has no x64/$f"; continue; }
+                [ -f "$SYS32/$f" ] && cp -f "$SYS32/$f" "$SYS32/$f.bak_builtin" 2>/dev/null
+                cp -f "$src" "$SYS32/$f" && ok "installed vkd3d-proton $f"
+            done
+        else
+            bad "could not fetch/extract vkd3d-proton $VKD3D_VER"
+        fi
+    else
+        ok "vkd3d-proton d3d12.dll + d3d12core.dll already present"
+    fi
+
+    if [ "$have_nvapi" = "0" ]; then
+        echo "     fetching dxvk-nvapi $NVAPI_VER ..."
+        if curl -sfL -o "$T/nvapi.tar.gz" \
+            "https://github.com/jp7677/dxvk-nvapi/releases/download/v$NVAPI_VER/dxvk-nvapi-v$NVAPI_VER.tar.gz" \
+            && tar xzf "$T/nvapi.tar.gz" -C "$T"; then
+            for f in nvapi64.dll nvofapi64.dll; do
+                src="$(find "$T" -path '*/x64/*' -name "$f" -print -quit)"
+                [ -n "$src" ] || { warn "dxvk-nvapi archive has no x64/$f"; continue; }
+                cp -f "$src" "$SYS32/$f" && ok "installed dxvk-nvapi $f"
+            done
+        else
+            bad "could not fetch/extract dxvk-nvapi $NVAPI_VER"
+        fi
+    else
+        ok "dxvk-nvapi nvapi64.dll already present"
+    fi
+
+    echo "     now: dxvk-nvapi $(nv_ver || echo missing) / vkd3d-proton $(vk_ver || echo missing)"
 fi
+
+# --- 4b. NGX Core must also be beside system32's nvngx.dll ------------------
+# dxvk-nvapi's own docs ask for the driver's nvngx.dll / _nvngx.dll in system32
+# for DLSS. Section 2 put them there; this just confirms it.
+echo ""
+echo "--- 4b. driver NGX DLLs in system32 ---"
+for f in nvngx.dll _nvngx.dll; do
+    if [ -s "$SYS32/$f" ]; then ok "$f ($(du -h "$SYS32/$f" | cut -f1))"
+    else warn "$f missing from system32"; fi
+done
 
 # --- 5. report the overrides to use -----------------------------------------
 echo ""
