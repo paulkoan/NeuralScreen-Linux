@@ -1,0 +1,14 @@
+  CreateSession
+  session /org/freedesktop/portal/desktop/session/1_3326830/nsl_port
+  SelectSources
+  Start  (the compositor will ask you to choose a screen)
+  stream node=188 serial=None 2560x1440
+  OpenPipeWireRemote
+  pipeline pid 263920: gst-launch-1.0 -q pipewiresrc fd=5 path=188 ! videoconvert ! videoscale ! video/x-raw,format=RGBA,width=2560,height=1440,pixel-aspect-ratio=1/1 ! queue max-size-buffers=1 leaky=downstream ! fdsink fd=1
+source auto  capture 2560x1440  ->  work 2560x1440 (NGX ceiling 2560x1440)
+worker: bash /home/paul/dev/NeuralScreen-Linux/native/run_worker.sh
+pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+frames: 30 done, 0 skipped, 9.073s (3.31 fps), worker exit 0
+  before -> /tmp/tmp.LGivYVAHpc/capture/before.png
+  after  -> /tmp/tmp.LGivYVAHpc/capture/after.png
