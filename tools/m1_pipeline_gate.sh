@@ -40,6 +40,14 @@
 # A no-op pass exits 0 and looks perfectly healthy, which is the failure this
 # gate exists to catch. tools/frame_diff.py holds that judgement and is
 # separately exercisable.
+#
+# The before/after pair MUST come from one iteration. It did not at first: the
+# pipeline kept the first captured frame against the last processed one, so on a
+# test card whose only moving part is a bar the comparison measured bar motion as
+# if it were the pass, reporting 48.7/255 where the real effect was 15.8/255.
+# minimal/loop.py now keeps a matched pair, and
+# tests/test_pipeline_mock.py::test_saved_pair_comes_from_the_same_iteration
+# fails if that regresses.
 
 set -uo pipefail
 

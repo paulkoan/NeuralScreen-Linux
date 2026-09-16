@@ -92,7 +92,13 @@ class Pipeline:
         self.worker.start()
         started = time.monotonic()
         index = 0
-        first_before = None
+        # The pair kept for --save-before/--save-after must come from ONE
+        # iteration. Saving the first input against the last output measures
+        # whatever moved on screen in between as if it were the pass: on the
+        # synthetic test card, whose only moving part is a bar, that inflated the
+        # reported difference from 15.8/255 to 48.7/255 — a 3x overstatement of
+        # the thing being measured.
+        pair_before = None
         last_after = None
 
         try:
@@ -106,14 +112,13 @@ class Pipeline:
                     break
 
                 before = self.capture.grab()
-                if first_before is None:
-                    first_before = before.copy()
 
                 self.worker.send(index, before, self.zero_motion, index == 0, pts=index)
                 after = self.worker.recv(index, 60.0)
                 if after is None:
                     self.frames_skipped += 1
                 else:
+                    pair_before = before
                     last_after = after
                     self.frames_done += 1
                     self.display.show(after)
@@ -127,8 +132,8 @@ class Pipeline:
 
         elapsed = time.monotonic() - started
 
-        if save_before and first_before is not None:
-            _save_rgba(save_before, first_before)
+        if save_before and pair_before is not None:
+            _save_rgba(save_before, pair_before)
         if save_after and last_after is not None:
             _save_rgba(save_after, last_after)
 
@@ -139,7 +144,7 @@ class Pipeline:
             "seconds": round(elapsed, 3),
             "fps": round(self.frames_done / elapsed, 2) if elapsed > 0 else 0.0,
             "worker_exit": self.worker.proc.returncode if self.worker.proc else None,
-            "before": first_before,
+            "before": pair_before,
             "after": last_after,
         }
 

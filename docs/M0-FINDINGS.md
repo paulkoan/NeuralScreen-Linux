@@ -12,6 +12,7 @@ gate: each failure names the next missing piece.
 | `20260916T065756Z` | `0xBAD00004` FAIL_FeatureNotFound | **init and feature 18 create now succeed**; the failure has moved to evaluate |
 | `20260916T074715Z` | direct unchanged; **via-core fails earlier, at create** (`0xBAD0000B`) | NGX Core cannot create feature 18 at all — and `--test` evaluates through the Core, so M0 was measuring a path the product does not use |
 | `20260916T080456Z` | M1: both frames black | capture is X11/`mss` on a **Wayland** session → XWayland root is empty. Said nothing about the pass; M1 now separates the two questions |
+| `20260916T101147Z` | M1 **pass PASS**, capture FAIL | **the NR pass transforms the frame** (mean 15.89/255 against a known card, PSNR 22.7 dB). Capture still blocked on Wayland |
 
 **What the first run proved and the second confirmed** — the expensive half:
 
@@ -27,7 +28,76 @@ killed the port outright; it is cleared.
 
 ---
 
-# Round 7 — the frame was empty, and M1 was measuring capture, not the pass
+# Round 8 — the pass works. Verified, and the first number was 3x too big.
+
+`20260916T101147Z` ran M1 with both variants. The gate said:
+
+```
+ variant: pass   (--source synthetic)     exit code: 0
+  ✓ before.png written (88K)   ✓ after.png written (560K)
+  VERDICT the pass changed the frame (mean abs diff 48.6669/255)
+ variant: capture (--source screen)       exit code: 0
+  VERDICT the output is blank
+  ✗ the INPUT frame was blank — the pass had nothing to act on
+ M1 summary
+  pass     PASS
+  capture  FAIL
+```
+
+So the `pass` variant passes and the `capture` variant still fails for the
+Wayland reason from round 7 — which is now a clean separation rather than one
+ambiguous result. 30 frames, 0 skipped, 14.71 fps, worker exit 0.
+
+## But 48.67/255 was not the pass
+
+That is far too large for a neural pass, so the frames were checked directly
+rather than trusted. `before.png` is the test card exactly. `after.png` is the
+same card with its white bar at a **different column**: 0-159 versus 203-362.
+
+203 is `29 * 7` — the test card's bar advances 7px per grab, and the pair being
+compared was frame 0's input against frame 29's output. **The comparison was
+measuring the bar moving, not the pass.** The pipeline kept `first_before` and
+`last_after`; nothing said those had to be the same frame.
+
+The gradient is time-independent, so comparing each frame against the *known*
+card isolates the pass with no reliance on the pipeline at all (both bar regions
+excluded, 1120 of 1280 columns):
+
+| frame | vs the known test card |
+|---|---|
+| `before` | mean **0.50**, max 1.0 — it is the card (1/255 is G's 127.5 rounding) |
+| `after` | mean **15.89**, p99 41.65, max 51.6 |
+
+`before` vs `after` on those columns: mean 15.78, PSNR 22.72 dB. The G channel,
+which is constant along every row in the input, comes back varying by up to 42.9.
+The bar, pure 255 in the input, returns at 233.9.
+
+**The pass is genuinely transforming the frame.** Mean 15.8/255 is a real render,
+not a rounding artefact — but it is 6.2% of full scale, which is a strong look,
+and the params (intensity, local tone, structure, style) are worth revisiting
+once this loop is doing it live on a real screen.
+
+## Fixed
+
+`minimal/loop.py` now keeps `pair_before` from the same iteration as
+`last_after`. `tests/test_pipeline_mock.py::test_saved_pair_comes_from_the_same_iteration`
+pins it: with the old logic it fails, with the fix it passes (checked by
+reverting `loop.py` alone and re-running).
+
+## Confidence
+
+- The NR pass runs through the live path under Wine and changes the frame:
+  **verified.** The measurement does not depend on the pipeline's own bookkeeping
+  — it compares the output against a test card that is known by construction.
+- It was previously reported as 3x larger than it is: **was wrong, now corrected.**
+- The capture variant failing on Wayland: unchanged from round 7.
+- M0's `--test` evaluate failure (`0xBAD00004`): still a proxy artefact
+  (round 6), and now demonstrably not a blocker — the live path it predicted
+  would behave differently does.
+
+---
+
+# Round 7 — the frame was empty, and M1 was measuring capture, not the pass (kept)
 
 `20260916T080456Z` ran the M1 gate for the first time. It reported:
 

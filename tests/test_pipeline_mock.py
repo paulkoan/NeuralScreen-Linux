@@ -133,6 +133,39 @@ def test_pipeline_frames_differ_frame_to_frame(fake_capture, fake_display,
     assert frames[0].shape == shown[2].shape
 
 
+def test_saved_pair_comes_from_the_same_iteration(fake_capture, fake_display,
+                                                  mock_worker_cmd, tmp_path):
+    """--save-before and --save-after must describe ONE frame.
+
+    Saving the first input against the last output measures whatever moved on
+    screen in between as though it were the pass. On the synthetic test card,
+    whose only moving part is a bar, that turned a 15.8/255 difference into
+    48.7/255 — three times the effect actually being measured.
+
+    FakeCapture changes its blue channel by +3 per grab, so the first and last
+    inputs are distinguishable: over 5 frames the last input is grab #5.
+    """
+    from tests.conftest import FakeCapture
+
+    pipe = Pipeline(capture=fake_capture, display=fake_display,
+                    headless=True, worker_cmd=mock_worker_cmd,
+                    worker_cwd=REPO)
+    before_png, after_png = tmp_path / "before.png", tmp_path / "after.png"
+    summary = pipe.run(frames=5, save_before=str(before_png),
+                       save_after=str(after_png))
+
+    assert before_png.exists() and after_png.exists()
+
+    src = FakeCapture(320, 180)
+    for _ in range(4):
+        src.grab()
+    fifth = src.grab()          # what frame index 4 was fed
+
+    assert np.array_equal(summary["before"], fifth), (
+        "the saved input is not the one from the same iteration as the output — "
+        "it looks like the first frame was kept instead")
+
+
 def test_pipeline_reports_worker_death(fake_capture, fake_display):
     """A worker that dies mid-run must be reported, not silently looped."""
     cmd = [sys.executable, str(REPO / "tests" / "mock_worker.py"), "--fail", "2"]

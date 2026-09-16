@@ -34,7 +34,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--headless", action="store_true",
                    help="run without presenting (for tests and CI)")
     p.add_argument("--save-before", metavar="PATH",
-                   help="write the first captured frame as a PNG")
+                   help="write the frame the pass was given, from the same "
+                        "iteration as --save-after, as a PNG")
     p.add_argument("--save-after", metavar="PATH",
                    help="write the last processed frame as a PNG")
     p.add_argument("--list-monitors", action="store_true",
