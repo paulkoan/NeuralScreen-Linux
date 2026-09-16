@@ -15,6 +15,7 @@ gate: each failure names the next missing piece.
 | `20260916T105502Z` | M1 **pass PASS** (17.62, matched pair), capture FAIL | pass confirmed, deterministic run-to-run; capture still the only gap |
 | — | Wayland backend built | portal + PipeWire capture (`--source auto`), plus `tools/wayland_probe.py` to test capture with no Wine. Not yet run on a compositor |
 | `20260916T152209Z` | **M1 both variants PASS** | **the MVP runs end to end on a live desktop**: portal capture, 30/30 frames, no skips, 2560x1440, pass changes the screen by 4.55/255 (17.62 on the test card). 3.31 fps |
+| `20260916T155332Z` | M1 three variants; **baseline is byte-identical** | the transport is **lossless**: effect off returns the same SHA256. So the pass's numbers are entirely the network, and `intensity=0 local_tone=0 local_structure=0` is a verified bypass |
 
 **What the first run proved and the second confirmed** — the expensive half:
 
@@ -30,7 +31,58 @@ killed the port outright; it is cleared.
 
 ---
 
-# Round 10 — the MVP runs end to end on the real screen
+# Round 11 — the control answers it: the floor is exactly zero
+
+`20260916T155332Z`. Round 10 could not say whether the 4.55/255 was the network
+or the trip through Wine. It is the network, and the control proves it:
+
+```
+variant: baseline   --param intensity=0 --param local_tone=0 --param local_structure=0
+  ✓ before.png written (92K)   ✓ after.png written (92K)
+  VERDICT the pass returned the input unchanged (mean abs diff 0.0000/255, PSNR inf)
+```
+
+Not "small" — **byte-identical**:
+
+```
+33184b06882216bde54b58c54702828bdca6ebdcf0c1689edecd7244b31eb99e  before.png
+33184b06882216bde54b58c54702828bdca6ebdcf0c1689edecd7244b31eb99e  after.png
+  max abs difference 0.0    pixels differing at all: 0
+```
+
+So a frame can go out to Wine, through vkd3d-proton and NGX, and back with
+nothing altered. The transport contributes nothing, there is no floor to
+subtract, and every number in round 10 is attributable to the network:
+
+| variant | mean abs diff | attributable to |
+|---|---|---|
+| `pass` (synthetic card) | 17.6189 | the network, entirely |
+| `capture` (real screen) | 4.4313 | the network, entirely |
+| `baseline` (effect off) | **0.0000** | — |
+
+On the real screen the pass touches **100% of pixels**, mean 4.43/255, max 75.
+
+## Two things this buys
+
+**A verified bypass.** `intensity=0 local_tone=0 local_structure=0` is a
+byte-exact passthrough, not an approximation of one. That is a usable product
+feature — a way to switch the effect off without restarting or unloading
+anything — and M1 now re-proves passthrough integrity on every run, so a future
+regression in the transport would surface as the baseline ceasing to be zero.
+
+**The effect is content-dependent, so the number is not a constant.** 4.55 in
+round 10, 4.43 here: the same pass on a different desktop frame. Read the figure
+as "how much this screen was changed", not as a property of the pass.
+
+## Still open
+
+- **3.31 fps** (22s for 30 frames on this run). Correct loop, not yet fast.
+- Whether 38/255 on text is the right strength now that it is tunable.
+- Everything else in the MVP: the pass is the only thing wired up so far.
+
+---
+
+# Round 10 — the MVP runs end to end on the real screen (kept)
 
 `20260916T152209Z`. Both variants passed, and this is the first run where the
 whole loop worked on a live desktop:
