@@ -62,26 +62,75 @@ class Pipeline:
         self.zero_motion = np.zeros((self.work_h, self.work_w, 2), dtype=np.float16)
         self.frames_done = 0
         self.frames_skipped = 0
+        # Per-stage times in seconds, one entry per completed frame.
+        #
+        # The whole reason this exists: "4.2 fps" says nothing about what to fix.
+        # Measured at 1280x720 the loop spends ~67ms/frame with the effect dialled
+        # to zero and ~97ms with it on, which points at the worker but cannot
+        # separate capture, the pipe write, the worker's own work and the display
+        # upload from one another. Any optimisation before that split is a guess.
+        self.timings: dict[str, list[float]] = {
+            "capture": [], "send": [], "recv": [], "display": [],
+        }
+        #: The frame the last process_one fed the worker (for a matched pair).
+        self.last_input: np.ndarray | None = None
 
     # -- one iteration -----------------------------------------------------
 
-    def process_one(self, index: int, timeout: float = 60.0) -> np.ndarray | None:
-        """Grab, send, receive one frame. Returns the processed RGBA or None
-        if the worker returned no pixels (a skipped evaluation)."""
-        frame = self.capture.grab()
+    def _timed(self, name: str, fn, *args, **kwargs):
+        t0 = time.monotonic()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            self.timings[name].append(time.monotonic() - t0)
+
+    def process_one(self, index: int, timeout: float = 60.0,
+                    present: bool = True) -> np.ndarray | None:
+        """Grab, send, present, receive one frame.
+
+        Returns the processed RGBA, or None if the worker returned no pixels
+        (a skipped evaluation). `self.last_input` holds the frame this call fed
+        the worker, so a caller can keep a matched before/after pair without
+        re-implementing the grab.
+
+        This is the only implementation of a frame step. `run` delegates to it:
+        the two used to be separate copies of the same sequence, which is how an
+        earlier matched-pair fix landed in one and not the other.
+        """
+        frame = self._timed("capture", self.capture.grab)
         if frame.shape[:2] != (self.height, self.width):
             raise RuntimeError(
                 f"capture returned {frame.shape[:2]}, expected "
                 f"{(self.height, self.width)} — the screen changed size")
+        self.last_input = frame
 
         reset = index == 0
-        self.worker.send(index, frame, self.zero_motion, reset, pts=index)
-        result = self.worker.recv(index, timeout)
+        self._timed("send", self.worker.send, index, frame, self.zero_motion,
+                    reset, pts=index)
+        result = self._timed("recv", self.worker.recv, index, timeout)
         if result is None:
             self.frames_skipped += 1
             return None
         self.frames_done += 1
+        if present and self.display is not None:
+            self._timed("display", self.display.show, result)
         return result
+
+    def timing_summary(self) -> dict:
+        """Mean seconds per stage, plus the total and the implied frame rate.
+
+        Includes 'send' and 'recv' separately because they are different things:
+        send is our own byte traffic into the worker, recv is us waiting for the
+        worker to finish (its processing plus the pixels coming back).
+        """
+        def mean(xs: list[float]) -> float:
+            return sum(xs) / len(xs) if xs else 0.0
+
+        stamps = {k: mean(v) for k, v in self.timings.items()}
+        total = sum(stamps.values())
+        return {**stamps, "total": total,
+                "fps": (1.0 / total) if total > 0 else 0.0,
+                "count": len(self.timings["recv"])}
 
     def run(self, frames: int = 0, save_before: str | None = None,
             save_after: str | None = None, on_frame=None) -> dict:
@@ -111,17 +160,12 @@ class Pipeline:
                 if "quit" in self.display.poll_events():
                     break
 
-                before = self.capture.grab()
-
-                self.worker.send(index, before, self.zero_motion, index == 0, pts=index)
-                after = self.worker.recv(index, 60.0)
-                if after is None:
-                    self.frames_skipped += 1
-                else:
-                    pair_before = before
+                after = self.process_one(index, present=True)
+                if after is not None:
+                    # process_one keeps the input it fed for this iteration, so
+                    # the saved pair can never straddle two frames.
+                    pair_before = self.last_input
                     last_after = after
-                    self.frames_done += 1
-                    self.display.show(after)
                     if on_frame is not None:
                         on_frame(index, after)
                 index += 1
@@ -146,6 +190,7 @@ class Pipeline:
             "worker_exit": self.worker.proc.returncode if self.worker.proc else None,
             "before": pair_before,
             "after": last_after,
+            "timing": self.timing_summary(),
         }
 
     def close(self) -> None:

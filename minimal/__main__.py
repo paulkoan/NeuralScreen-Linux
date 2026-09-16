@@ -135,6 +135,15 @@ def main(argv: list[str] | None = None) -> int:
           f"{summary['frames_skipped']} skipped, "
           f"{summary['seconds']}s ({summary['fps']} fps), "
           f"worker exit {summary['worker_exit']}")
+    # Where the time actually goes. "4.2 fps" alone cannot be acted on: the fix
+    # is completely different depending on whether the frame is lost in the
+    # capture, in our own bytes down the pipe, or waiting on the worker.
+    t = summary.get("timing", {})
+    if t.get("count"):
+        parts = [f"{k} {1000 * t[k]:.1f}ms"
+                 for k in ("capture", "send", "recv", "display") if k in t]
+        print(f"timing: {'  '.join(parts)}   "
+              f"(total {1000 * t['total']:.1f}ms/frame, {t['fps']:.1f} fps)")
     if args.save_before:
         print(f"  before -> {args.save_before}")
     if args.save_after:

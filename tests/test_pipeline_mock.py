@@ -175,6 +175,52 @@ def test_pipeline_reports_worker_death(fake_capture, fake_display):
         pipe.run(frames=6)
 
 
+def test_timing_covers_every_stage(fake_capture, fake_display, mock_worker_cmd):
+    """A frame step is measured in four places, and they add up.
+
+    The point of the breakdown is that "4.2 fps" is not actionable on its own:
+    the fix is completely different depending on whether the time is lost in the
+    capture, in our bytes down the pipe, or waiting on the worker. A stage that
+    silently stops being timed makes the report say the frame is cheap.
+    """
+    pipe = Pipeline(capture=fake_capture, display=fake_display,
+                    headless=True, worker_cmd=mock_worker_cmd, worker_cwd=REPO)
+    passed = pipe.run(frames=3, save_before=None, save_after=None)
+    t = passed["timing"]
+
+    for stage in ("capture", "send", "recv", "display"):
+        assert stage in t, f"{stage} is not being timed"
+        assert t[stage] > 0, f"{stage} recorded no time at all"
+    assert t["count"] == 3
+    assert t["total"] == pytest.approx(
+        t["capture"] + t["send"] + t["recv"] + t["display"])
+    assert 0 < t["fps"] < 10_000
+
+
+def test_the_stage_times_fit_inside_the_wall_clock(fake_capture, fake_display,
+                                                   mock_worker_cmd):
+    """Summing to more than the run took would mean a stage is counted twice."""
+    pipe = Pipeline(capture=fake_capture, display=fake_display,
+                    headless=True, worker_cmd=mock_worker_cmd, worker_cwd=REPO)
+    passed = pipe.run(frames=3)
+    assert passed["timing"]["total"] <= passed["seconds"], (
+        "the stage times add up to more than the run took")
+
+
+def test_run_uses_the_one_frame_step(fake_capture, fake_display, mock_worker_cmd):
+    """`run` must not carry its own copy of the sequence.
+
+    It did, and a matched-pair fix landed in one copy and not the other. Now
+    there is a single step, so this checks that a run really goes through it:
+    `last_input` is only set by process_one.
+    """
+    pipe = Pipeline(capture=fake_capture, display=fake_display,
+                    headless=True, worker_cmd=mock_worker_cmd, worker_cwd=REPO)
+    passed = pipe.run(frames=2)
+    assert pipe.last_input is not None, "run did not go through process_one"
+    assert np.array_equal(passed["before"], pipe.last_input)
+
+
 def test_pipeline_quits_on_display_event(fake_capture, mock_worker_cmd):
     """A quit event from the display stops the loop."""
     from tests.conftest import FakeDisplay

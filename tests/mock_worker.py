@@ -57,7 +57,15 @@ def _read_exact(stream, size: int) -> bytes:
 
 
 def _transform(color: bytes) -> bytes:
-    """A fake 'neural pass': channel reversal + a brightness offset."""
+    """A fake 'neural pass': channel reversal + a brightness offset.
+
+    Deliberately naive — two per-byte Python loops over a 3.7 MB frame, so this
+    costs ~450ms per frame at 1280x720. It is a protocol fixture, not a
+    benchmark, and it will dominate any timing measured through it: the MVP's
+    per-stage breakdown reported recv 469ms of a 491ms frame against this mock,
+    which is the mock's loop and nothing to do with the pipeline. Measure
+    throughput against the real worker on the GPU box.
+    """
     if not CHANNEL_REVERSED and BRIGHTNESS_OFFSET == 0:
         return color
     out = bytearray(color)
