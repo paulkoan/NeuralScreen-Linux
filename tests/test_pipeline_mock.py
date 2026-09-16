@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 from minimal.loop import DEFAULT_PARAMS, Pipeline
-from minimal.worker import Worker, work_size
+from minimal.worker import FLOW_H, FLOW_W, Worker, work_size
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
@@ -109,6 +109,57 @@ def test_the_scaled_path_still_returns_full_size_frames(fake_capture, fake_displ
     assert passed["frames_done"] == 2
     assert passed["frames_skipped"] == 0
     assert passed["after"].shape[:2] == (pipe.height, pipe.width)
+
+
+def test_motion_small_sends_the_field_at_flow_size():
+    """MOTS: the flag is set and the payload is the flow size, not the work size.
+
+    Checked at the wire level rather than through a run because the mock refuses
+    a small motion field (it has no MOTS scaler and says so instead of quietly
+    desyncing). The real worker is what actually upscales it, on the GPU.
+    """
+    import io
+    import struct
+
+    from protocol import FRAME_FLAG_MOTION_SMALL, FRAME_FMT, send_frame
+    from minimal.worker import FLOW_H, FLOW_W
+
+    class Stub:
+        def __init__(self):
+            self.stdin = io.BytesIO()
+
+    head = struct.calcsize(FRAME_FMT)
+    rgba = np.zeros((720, 1280, 4), dtype=np.uint8)
+    motion = np.zeros((FLOW_H, FLOW_W, 2), dtype=np.float16)
+
+    stub = Stub()
+    send_frame(stub, 3, rgba, motion, False, 0, None, motion_small=True)
+    raw = stub.stdin.getvalue()
+    _, index, _reset, flags, _pts = struct.unpack(FRAME_FMT, raw[:head])
+    assert index == 3
+    assert flags & FRAME_FLAG_MOTION_SMALL, "the flag the worker reads is missing"
+    # Colour first, then motion — the payload is colour + field, so the field
+    # starts after the frame, not right after the header.
+    colour_bytes = len(rgba.tobytes())
+    assert raw[head + colour_bytes:] == motion.tobytes()
+    assert len(raw) - head == colour_bytes + FLOW_W * FLOW_H * 4
+
+    # And the default path must be untouched: full-size field, no flag.
+    full = np.zeros((720, 1280, 2), dtype=np.float16)
+    stub = Stub()
+    send_frame(stub, 3, rgba, full, False, 0, None, motion_small=False)
+    raw = stub.stdin.getvalue()
+    _, _index, _reset, flags, _pts = struct.unpack(FRAME_FMT, raw[:head])
+    assert not flags & FRAME_FLAG_MOTION_SMALL
+    assert len(raw) - head == colour_bytes + 1280 * 720 * 4
+
+
+def test_motion_small_shrinks_what_goes_down_the_pipe():
+    """The point of it: the inbound bytes per frame drop by nearly half."""
+    full = 1280 * 720 * 4 + 1280 * 720 * 4
+    small = 1280 * 720 * 4 + FLOW_W * FLOW_H * 4
+    assert small < full * 0.55, "a small motion field should halve the frame"
+    assert (full - small) / 1e6 > 3.0  # ~3.5 MB saved per frame at 720p
 
 
 # --- the worker wrapper ---------------------------------------------------

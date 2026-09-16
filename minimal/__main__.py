@@ -75,6 +75,12 @@ def build_parser() -> argparse.ArgumentParser:
                         "own resolution")
     p.add_argument("--windowed", action="store_true",
                    help="draw in a window instead of fullscreen")
+    p.add_argument("--motion-small", action="store_true",
+                   help="send the motion field at the optical-flow size "
+                        "(320x180) and let the worker upscale it. The MVP's "
+                        "field is all zeros, so this changes nothing about what "
+                        "the network sees and removes ~half the bytes of every "
+                        "frame sent to the worker")
     p.add_argument("--headless", action="store_true",
                    help="run without presenting (for tests and CI)")
     p.add_argument("--save-before", metavar="PATH",
@@ -117,7 +123,8 @@ def main(argv: list[str] | None = None) -> int:
                               input_image=args.input_image)
         pipe = Pipeline(fullscreen=not args.windowed, headless=args.headless,
                         capture=source, params=params,
-                        work_scale=args.work_scale)
+                        work_scale=args.work_scale,
+                        motion_small=args.motion_small)
     except (CaptureError, DisplayError) as exc:
         print(f"startup failed: {exc}", file=sys.stderr)
         return 2

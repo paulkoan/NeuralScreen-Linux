@@ -32,6 +32,11 @@ WORK_MAX_H = 1440
 # How long to wait for the worker's first reply before calling it dead.
 FIRST_FRAME_TIMEOUT = 60.0
 
+# The optical-flow resolution a MOTS motion field is sent at; the worker
+# upscales it to the work size on the GPU. The protocol never names it, it only
+# calls it "~320x180 = the flow field size".
+FLOW_W, FLOW_H = 320, 180
+
 
 def work_size(width: int, height: int, scale: float = 1.0) -> tuple[int, int]:
     """The NGX work resolution for a frame of width x height.
@@ -120,7 +125,7 @@ class Worker:
                  cmd: list[str] | None = None,
                  cwd: Path | None = None,
                  full_w: int = 0, full_h: int = 0,
-                 nr_small: bool = False):
+                 nr_small: bool = False, motion_small: bool = False):
         self.width, self.height = int(width), int(height)
         self.work_w, self.work_h = int(work_w), int(work_h)
         self.params = params
@@ -130,6 +135,7 @@ class Worker:
         # MVP has always used: colour and work are the same size.
         self.full_w, self.full_h = int(full_w), int(full_h)
         self.nr_small = bool(nr_small)
+        self.motion_small = bool(motion_small)
         self.warmup = int(warmup)
         self.cmd = cmd or default_launcher()
         self.cwd = cwd or NATIVE_DIR
@@ -206,7 +212,8 @@ class Worker:
         """
         assert self.proc is not None and self.proc.stdin is not None
         try:
-            send_frame(self.proc, index, rgba, motion, reset, pts, None)
+            send_frame(self.proc, index, rgba, motion, reset, pts, None,
+                       motion_small=self.motion_small)
         except (BrokenPipeError, OSError) as exc:
             raise RuntimeError(
                 f"the worker died while sending frame {index} ({exc}). "

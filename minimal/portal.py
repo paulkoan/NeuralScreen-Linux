@@ -257,12 +257,19 @@ def _request(conn, queue, addr, rule, method, signature, args, token, timeout):
 
 
 def open_screencast(*, types: int = SOURCE_MONITOR, cursor_mode: int = CURSOR_EMBEDDED,
-                    restore_token: str | None = None, timeout: float = 120.0,
+                    restore_token: str | None = None, timeout: float = 300.0,
                     log=print) -> ScreenCast:
     """Run the ScreenCast handshake and return a session with a PipeWire fd.
 
     `timeout` bounds each wait, because the user has to answer a dialog: whoever
-    calls this should say so before it blocks.
+    calls this should say so before it blocks. It is generous on purpose — the
+    figure is a person finding the window, picking a screen and pressing Share,
+    not a machine's latency. Two minutes was measured as too short in practice.
+
+    The failure that raises from here is a TimeoutError naming the step that
+    stalled. `Start` is the usual one: the dialog went unanswered, or a previous
+    ScreenCast session is still open — most compositors allow only one, so a
+    stale one blocks the next.
     """
     if not _HAS_JEEPNEY:
         from minimal.deps import hint

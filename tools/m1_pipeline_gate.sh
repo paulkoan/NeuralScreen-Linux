@@ -274,6 +274,15 @@ PASS_STATUS=$VARIANT_STATUS
 run_variant scaled synthetic "" "--work-scale 0.5"
 SCALED_STATUS=$VARIANT_STATUS
 
+# Same source, same settings, same work resolution as `pass` — only the way the
+# motion field travels differs. `pass` sends a full-resolution zero field (3.7 MB
+# of the 7.4 MB that goes to the worker each frame); this sends the same zeros at
+# the flow size and lets the worker upscale them. Measured on the box, `send`
+# dominates the frame (67ms of 81ms) while `recv` — the worker and the network —
+# is 8.7ms, so if the cost is bytes and not compute, this is where it shows.
+run_variant mots synthetic "" "--motion-small"
+MOTS_STATUS=$VARIANT_STATUS
+
 # The control. Same source and same worker as `pass`, effect dialled to zero:
 # whatever still changes is the transport, not the network. Without this, "the
 # pass changed the frame" cannot distinguish the two, and the effect numbers
@@ -303,7 +312,7 @@ fi
 
 # --- copy artifacts out -----------------------------------------------------
 if [ -n "$OUT" ]; then
-    for v in pass scaled baseline capture; do
+    for v in pass scaled mots baseline capture; do
         mkdir -p "$OUT/$v"
         cp -f "$T/$v/before.png" "$OUT/$v/" 2>/dev/null || true
         cp -f "$T/$v/after.png" "$OUT/$v/" 2>/dev/null || true
@@ -321,7 +330,7 @@ if [ -n "$OUT" ]; then
         echo "driver:            $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>&1 | head -1)"
     } > "$OUT/m1_environment.txt" 2>&1
     echo ""
-    echo "  artifacts -> $OUT/{pass,scaled,baseline,capture}/"
+    echo "  artifacts -> $OUT/{pass,scaled,mots,baseline,capture}/"
 fi
 
 # --- summary ----------------------------------------------------------------
@@ -352,10 +361,18 @@ else
 fi
 echo ""
 echo "  per-frame cost by variant — the point of the run:"
-for v in pass scaled baseline capture; do
+for v in pass scaled mots baseline capture; do
     line=$(grep -m1 '^timing:' "$T/$v/mvp.txt" 2>/dev/null || true)
     printf '    %-9s %s\n' "$v" "${line:-<no timing recorded>}"
 done
+echo ""
+echo "  Read the split, not just the fps. Measured on the box: send dominated"
+echo "  (67ms of 81ms) while recv — the worker plus the network — was 8.7ms, and"
+echo "  the product's own figure for the network at 1280x720 is ~2.9ms. So the"
+echo "  cost is bytes being moved, not the neural pass:"
+echo "    scaled  tests whether the network's resolution matters (it should not)"
+echo "    mots    tests whether the frame's bytes matter (it should)"
+echo "    baseline the transport floor with the effect off"
 echo ""
 echo "  pass vs scaled is the experiment: same source, same transport, same"
 echo "  effect, only the resolution the network works at differs. If scaled is"

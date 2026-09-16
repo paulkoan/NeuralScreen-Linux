@@ -31,6 +31,70 @@ killed the port outright; it is cleared.
 
 ---
 
+# Round 12 — the network is not the bottleneck; the bytes are
+
+`20260916T175431Z`, the first run with the per-stage breakdown, and it contradicts
+what the fps alone suggested:
+
+```
+pass      capture 5.2ms  send 66.9ms  recv  8.7ms  display 0.5ms   (81.3ms/frame, 12.3 fps)
+baseline  capture 5.2ms  send 42.8ms  recv  8.6ms  display 0.5ms   (57.1ms/frame, 17.5 fps)
+scaled    not implemented at the time (--work-scale lands in the next commit)
+```
+
+**`recv` is 8.7ms.** That leg is the worker: it receives the frame, runs the
+network, reads the result back and sends it. The upstream host's own measured
+figure for the network is `1.50 ms fixed + 1.51 ms per megapixel` on a 5070 Ti,
+which at 1280x720 (0.92 MP) is **~2.9ms**. So the worker and the pass together cost
+about 9ms, and the neural pass is a small part of that.
+
+Nothing else in the row accounts for the other 72ms either: capture is 5.2ms and
+the display upload is 0.5ms.
+
+What is left is **7.4 MB of frame going one way and 3.7 MB coming back**, every
+frame, through two pipes — 11.1 MB per frame, which at 81ms/frame is 137 MB/s.
+
+One honest caveat on the split. `send` is our own write, but a pipe write blocks
+while the worker is not draining, so `send` also absorbs any of the worker's work
+that does not overlap with it. Its 67ms is therefore not purely our bytes. What
+the split does establish is the negative result, which is the useful part: the
+capture, the display and the network together are 14.4ms of an 81ms frame. The
+remaining ~67ms is the frame's bytes and the worker's per-frame overhead, and
+neither shrinks when the network's resolution shrinks.
+
+That is what round 10's plan assumed it would. `--work-scale` existed on the
+grounds that a smaller work resolution means a faster pass; the product's own
+source says the opposite of what "upscaling" mode implies, so the gate now
+carries a `scaled` variant to test it rather than argue it.
+
+It also gives the one lever that does attack the bytes, and it was hiding in
+plain sight: the motion field. `pass` sends it at the work resolution —
+1280x720x2x2 bytes = **3.7 MB, half of everything sent** — and ours is entirely
+zeros, because the MVP has no real motion vectors and a video stream cannot
+supply them. `FRAME_FLAG_MOTION_SMALL` (MOTS) sends the field at the optical-flow
+size (320x180) and the worker upscales it on the GPU, which takes the same zeros
+down to 0.23 MB and the frame's inbound bytes from 7.4 MB to 3.9 MB — 47% less,
+with nothing changed about what the network is handed.
+
+`--motion-small` and a `mots` gate variant implement and test that.
+
+## Also this round
+
+The `capture` variant failed, and not for an interesting reason:
+
+```
+startup failed: the portal handshake failed (TimeoutError):
+  CreateSession / SelectSources / Start  (the compositor will ask you to choose a screen)
+```
+
+The handshake waits 120s at `Start` for the user to pick a screen and press
+Share. It timed out, so either the dialog went unanswered or a stale ScreenCast
+session was still open (KDE allows one at a time). Not a code fault this round —
+but the timeout is a human's speed, not a machine's, so it wants raising before
+it becomes one.
+
+---
+
 # Round 11 — the control answers it: the floor is exactly zero
 
 `20260916T155332Z`. Round 10 could not say whether the 4.55/255 was the network

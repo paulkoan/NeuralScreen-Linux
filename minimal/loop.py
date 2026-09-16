@@ -19,7 +19,7 @@ import numpy as np
 
 from minimal.capture import Capture
 from minimal.display import Display
-from minimal.worker import Worker, work_size
+from minimal.worker import FLOW_H, FLOW_W, Worker, work_size
 
 # The profile the MVP runs with, from settings_io.PROFILES["Natural"].
 # Duplicated rather than imported so the MVP does not pull in the whole
@@ -38,10 +38,14 @@ class Pipeline:
                  fullscreen: bool = False, headless: bool = False,
                  warmup: int = 2, worker_cmd: list[str] | None = None,
                  worker_cwd: Path | None = None, capture=None, display=None,
-                 work_scale: float = 1.0):
+                 work_scale: float = 1.0, motion_small: bool = False):
         self.params = dict(params or DEFAULT_PARAMS)
         self.warmup = warmup
         self.headless = headless
+        # Send the motion field at the optical-flow size and let the worker
+        # upscale it. Cuts the inbound bytes per frame by nearly half, at no
+        # cost to what the network receives — our field is all zeros either way.
+        self.motion_small = bool(motion_small)
 
         # Injected sources let the tests drive the loop without a screen or a GPU.
         self.capture = capture if capture is not None else Capture(monitor_idx=monitor)
@@ -65,7 +69,8 @@ class Pipeline:
             warmup=self.warmup, cmd=worker_cmd, cwd=worker_cwd,
             full_w=self.width if self.nr_small else 0,
             full_h=self.height if self.nr_small else 0,
-            nr_small=self.nr_small)
+            nr_small=self.nr_small,
+            motion_small=self.motion_small)
 
         if display is not None:
             self.display = display
@@ -73,9 +78,19 @@ class Pipeline:
             self.display = Display(self.width, self.height,
                                    fullscreen=fullscreen, headless=headless)
 
-        # One zero motion field at work resolution, reused for every frame.
+        # One zero motion field, reused for every frame.
         # (H, W, 2) float16 — two channels, the same layout the pipe expects.
-        self.zero_motion = np.zeros((self.work_h, self.work_w, 2), dtype=np.float16)
+        #
+        # The MVP has no real motion vectors (the upstream host derives them
+        # from the game; a stream cannot supply them), so it sends zeros. At the
+        # work resolution that is half the inbound bytes of every frame — 3.7 MB
+        # of the 7.4 MB at 720p — spent on zeroes. MOTS sends the field at the
+        # optical-flow size instead and the worker upscales it on the GPU, which
+        # takes the same zeroes down to 0.23 MB.
+        if self.motion_small:
+            self.zero_motion = np.zeros((FLOW_H, FLOW_W, 2), dtype=np.float16)
+        else:
+            self.zero_motion = np.zeros((self.work_h, self.work_w, 2), dtype=np.float16)
         self.frames_done = 0
         self.frames_skipped = 0
         # Per-stage times in seconds, one entry per completed frame.
