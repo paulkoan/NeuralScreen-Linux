@@ -1,0 +1,11 @@
+date:              Wed 16 Sep 08:35:04 UTC 2026
+WINEPREFIX:        /home/paul/.neuralscreen/wine
+WINEDLLOVERRIDES:  d3d12=n,b;d3d12core=n,b;d3d11=n,b;dxgi=n,b;nvapi64=n,b;nvofapi64=n,b;nvngx_dlssnr=n
+DXVK_ENABLE_NVAPI: 1
+DXVK_NVAPI_LOG_LEVEL: info
+NS_NGX_VIA_CORE:   1
+DISPLAY:           :0
+WAYLAND_DISPLAY:   wayland-0
+XDG_SESSION_TYPE:  wayland
+wine:              wine-11.17 (Staging)
+driver:            615.71.09

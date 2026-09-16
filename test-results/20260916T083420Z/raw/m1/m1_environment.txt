@@ -1,0 +1,7 @@
+date:              Wed 16 Sep 08:35:16 UTC 2026
+DISPLAY:           :0
+WAYLAND_DISPLAY:   wayland-0
+XDG_SESSION_TYPE:  wayland
+frames pushed:     30
+wine:              wine-11.17 (Staging)
+driver:            615.71.09
