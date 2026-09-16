@@ -22,5 +22,12 @@ Thumbs.db
 # Logs
 NeuralScreen.log
 
+# The worker's own log (written next to nvngx.dll when it runs)
+native/dlss5-feed-host.log
+dlss5-feed-host.log
+
+# pytest
+.pytest_cache/
+
 # NVIDIA NR runtime — download from release (too large for git)
 native/nvngx_dlssnr.dll

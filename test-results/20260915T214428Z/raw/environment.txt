@@ -1,0 +1,30 @@
+date:      Tue Sep 15 21:44:29 UTC 2026
+hostname:  965191a6aeca
+uname:     Linux 965191a6aeca 6.12.74+deb13+1-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.74-2 (2026-03-08) x86_64 GNU/Linux
+python:    Python 3.13.5
+session:   XDG_SESSION_TYPE=unset DISPLAY=unset WAYLAND_DISPLAY=unset
+desktop:   unset
+
+--- GPU ---
+nvidia-smi not found
+
+--- graphics stack ---
+wine         NOT INSTALLED
+winecfg      NOT INSTALLED
+vulkaninfo   NOT INSTALLED
+glxinfo      NOT INSTALLED
+
+--- native/ ---
+total 162852
+drwxr-xr-x  2 hermes hermes      4096 Sep 12 13:13 .
+drwxr-xr-x 11 hermes hermes      4096 Sep 15 21:44 ..
+-rw-r--r--  1 hermes hermes    284160 Sep 12 13:13 Spout.dll
+-rw-r--r--  1 hermes hermes    215552 Sep 12 13:13 SpoutDX.dll
+-rw-r--r--  1 hermes hermes    235963 Sep 11 19:56 dlss5-feed-host64.cpp
+-rw-r--r--  1 hermes hermes    157184 Sep 11 19:56 nvngx.dll
+-rw-r--r--  1 hermes hermes 165840496 Sep 11 19:56 nvngx_dlssnr.dll
+-rwxr-xr-x  1 hermes hermes      1169 Sep 12 13:07 run_worker.sh
+
+--- vulkan ICDs ---
+ls: cannot access '/usr/share/vulkan/icd.d/': No such file or directory
+(none)

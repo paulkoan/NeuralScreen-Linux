@@ -1,0 +1,209 @@
+#!/bin/bash
+# m0_env_gate.sh — the M0 gate: can the DLSS5 NR worker run under Wine at all?
+#
+#   tools/m0_env_gate.sh                 # run the gate, print the verdict
+#   tools/m0_env_gate.sh --out DIR       # also write logs into DIR
+#
+# Runs `wine native/nvngx.dll --test`. That path needs no game, no window and no
+# Python: it builds a D3D12 device, creates NGX feature 18 and runs 300
+# evaluates on a synthetic 640x360 pattern.
+#
+# PASS = exit 0, "[pure] direct feature 18 ready" in the log, and
+#        "--test finished: N/300" with N >= 250.
+#
+# If this fails, stop. The log names the stage that failed.
+
+set -uo pipefail
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO"
+
+NATIVE="$REPO/native"
+WORKER="$NATIVE/nvngx.dll"
+NR_DLL="$NATIVE/nvngx_dlssnr.dll"
+LOG="$NATIVE/dlss5-feed-host.log"
+
+OUT=""
+if [ "${1:-}" = "--out" ] && [ -n "${2:-}" ]; then
+    OUT="$2"
+    mkdir -p "$OUT"
+fi
+
+pass() { printf '  \033[32m✓\033[0m %s\n' "$1"; }
+fail() { printf '  \033[31m✗\033[0m %s\n' "$1"; }
+warn() { printf '  \033[33m!\033[0m %s\n' "$1"; }
+
+echo "=============================================================="
+echo " M0 — environment gate"
+echo "=============================================================="
+echo ""
+
+echo "--- prerequisites ---"
+MISSING=0
+
+if command -v wine >/dev/null 2>&1; then
+    pass "wine: $(wine --version 2>&1)"
+else
+    fail "wine is not installed"
+    echo "      Arch:   sudo pacman -S wine"
+    echo "      Debian: sudo apt install wine wine64"
+    MISSING=1
+fi
+
+if command -v nvidia-smi >/dev/null 2>&1; then
+    pass "GPU: $(nvidia-smi --query-gpu=name,driver_version,compute_cap --format=csv,noheader 2>&1 | head -1)"
+    CC="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>&1 | head -1 | tr -d ' ')"
+    case "$CC" in
+        7.5|8.6|8.9|12.0) pass "compute capability $CC is in the runtime's kernel set (sm_75/86/89/120)" ;;
+        "") warn "could not read compute capability" ;;
+        *)  warn "compute capability $CC is NOT in sm_75/86/89/120 — the NR pass may refuse" ;;
+    esac
+else
+    fail "nvidia-smi not found — no NVIDIA driver visible"
+    MISSING=1
+fi
+
+if ls /usr/share/vulkan/icd.d/ 2>/dev/null | grep -qi nvidia; then
+    pass "Vulkan ICD: $(ls /usr/share/vulkan/icd.d/ | grep -i nvidia | head -1)"
+else
+    warn "no NVIDIA Vulkan ICD found — D3D12 over VKD3D will likely fail"
+fi
+
+for f in "$WORKER" "$NR_DLL" "$NATIVE/SpoutDX.dll" "$NATIVE/Spout.dll"; do
+    if [ -f "$f" ]; then
+        pass "$(basename "$f") ($(du -h "$f" | cut -f1))"
+    else
+        fail "missing: $f"
+        if [ "$f" = "$NR_DLL" ]; then
+            echo "      nvngx_dlssnr.dll is gitignored (159 MB). It comes from the"
+            echo "      v1.6.0 release archive and must be copied into native/."
+        fi
+        MISSING=1
+    fi
+done
+
+if [ "$MISSING" = "1" ]; then
+    echo ""
+    echo "=============================================================="
+    echo " RESULT: BLOCKED — fix the prerequisites above first"
+    echo "=============================================================="
+    [ -n "$OUT" ] && { env > "$OUT/m0_environment.txt" 2>&1; }
+    exit 2
+fi
+
+echo ""
+echo "--- running: wine native/nvngx.dll --test ---"
+rm -f "$LOG"
+
+export WINEPREFIX="${WINEPREFIX:-$HOME/.neuralscreen/wine}"
+export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:-}nvngx_dlssnr=n"
+echo "  WINEPREFIX=$WINEPREFIX"
+echo ""
+
+START=$(date +%s)
+( cd "$NATIVE" && timeout 600 wine nvngx.dll --test )
+RC=$?
+ELAPSED=$(( $(date +%s) - START ))
+echo ""
+echo "  exit code: $RC   elapsed: ${ELAPSED}s"
+
+COMBINED=""
+[ -f "$LOG" ] && COMBINED="$(cat "$LOG")"
+
+echo ""
+echo "--- verdict ---"
+STATUS=0
+
+if [ "$RC" = "124" ]; then
+    fail "timed out after 600s — the worker hung (a known NGX-over-Wine failure mode)"
+    STATUS=1
+elif [ "$RC" != "0" ]; then
+    fail "the worker exited $RC"
+    STATUS=1
+else
+    pass "the worker exited 0"
+fi
+
+if [ -f "$LOG" ]; then
+    pass "produced dlss5-feed-host.log ($(wc -l < "$LOG") lines)"
+else
+    fail "produced NO log — Wine probably never started the process"
+    STATUS=1
+fi
+
+if echo "$COMBINED" | grep -q "no NVIDIA adapter found"; then
+    fail "no NVIDIA adapter visible to D3D12 — VKD3D/DXGI cannot see the card"
+    STATUS=1
+elif echo "$COMBINED" | grep -q "D3D12CreateDevice failed"; then
+    fail "D3D12CreateDevice failed: $(echo "$COMBINED" | grep 'D3D12CreateDevice failed' | head -1)"
+    STATUS=1
+elif echo "$COMBINED" | grep -q "dxgi/d3d12 exports missing"; then
+    fail "dxgi.dll / d3d12.dll did not load under Wine"
+    STATUS=1
+fi
+
+if echo "$COMBINED" | grep -q "NVSDK_NGX_D3D12_Init"; then
+    NLINE="$(echo "$COMBINED" | grep 'NVSDK_NGX_D3D12_Init' | head -1)"
+    if echo "$NLINE" | grep -q "Success"; then
+        pass "NGX initialised: $NLINE"
+    else
+        fail "NGX init failed: $NLINE"
+        STATUS=1
+    fi
+else
+    fail "never reached NGX init — died earlier"
+    STATUS=1
+fi
+
+if echo "$COMBINED" | grep -q "feature 18 ready"; then
+    pass "NGX feature 18 created"
+else
+    if echo "$COMBINED" | grep -q "feature 18"; then
+        fail "feature 18 create failed: $(echo "$COMBINED" | grep 'feature 18' | tail -1)"
+    else
+        fail "feature 18 was never attempted"
+    fi
+    STATUS=1
+fi
+
+SUMMARY="$(echo "$COMBINED" | grep -o -- '--test finished: [0-9]*/[0-9]*' | tail -1)"
+if [ -n "$SUMMARY" ]; then
+    GOOD="$(echo "$SUMMARY" | sed 's|.*finished: \([0-9]*\)/.*|\1|')"
+    if [ "$GOOD" -ge 250 ]; then
+        pass "$SUMMARY evaluates succeeded"
+    else
+        fail "$SUMMARY — fewer than 250"
+        STATUS=1
+    fi
+else
+    fail "no evaluation summary — the test loop did not finish"
+    STATUS=1
+fi
+
+# --- what the log says about the failure, if it failed ----------------------
+if [ "$STATUS" != "0" ] && [ -f "$LOG" ]; then
+    echo ""
+    echo "--- the log's own explanation ---"
+    grep -iE "fail|error|unavailable|0x[0-9A-Fa-f]{8}|not found|refus" "$LOG" \
+        | tail -15 | sed 's/^/  /' || echo "  (nothing that looks like an error)"
+fi
+
+# --- copy artifacts out -----------------------------------------------------
+if [ -n "$OUT" ]; then
+    cp "$LOG" "$OUT/" 2>/dev/null || true
+    env > "$OUT/m0_environment.txt" 2>&1
+    echo ""
+    echo "  artifacts -> $OUT/"
+fi
+
+echo ""
+echo "=============================================================="
+if [ "$STATUS" = "0" ]; then
+    echo " RESULT: PASS — the DLSS5 NR pass runs on this machine under Wine."
+    echo " Next: python -m minimal --frames 1 --save-before before.png --save-after after.png"
+else
+    echo " RESULT: FAIL — stop here. The port is not viable until this passes."
+    echo " The log above names the stage. Do not build downstream on this."
+fi
+echo "=============================================================="
+exit "$STATUS"
