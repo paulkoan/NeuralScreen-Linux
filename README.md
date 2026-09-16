@@ -11,30 +11,49 @@
 >
 > ```bash
 > ls native/nvngx_dlssnr.dll    # 159 MB, gitignored — must be supplied
-> uv sync --extra test          # 0. create .venv from uv.lock (do this first)
+> uv sync                       # 0. create .venv from uv.lock (do this first)
 > tools/wine_ngx_setup.sh       # 1. make the prefix able to load NGX Core
 > tools/m0_env_gate.sh          # 2. can NGX run under Wine at all?
 > tools/wayland_probe.py        # 3. can we capture the screen? (no Wine needed)
 > tools/run_tests.sh --report --m0 --m1 --push  # all gates + suite, then push
-> python -m minimal             # the MVP: capture -> DLSS5 pass -> display
+> uv run python -m minimal      # the MVP: capture -> DLSS5 pass -> display
 > ```
 >
 > ### The environment
 >
 > The venv is managed by **uv**, from `pyproject.toml` and the committed
-> `uv.lock`. One command makes a checkout runnable — it also installs pytest,
-> which is in the `test` extra rather than the runtime set:
+> `uv.lock`. One command makes a checkout runnable:
 >
 > ```bash
-> uv sync --extra test
+> uv sync
 > ```
 >
-> Don't `pip install` individual packages. The dependencies are declared as a
-> set; installing one by hand leaves the venv half-built, and the failure shows
-> up later as something unrelated being "not installed". If you see a message
-> like that, it names the command above — and
+> That creates `.venv` with every runtime dependency plus the `dev` group
+> (pytest), so no `--extra` flag is ever needed.
+>
+> **Run Python entry points through `uv run`:**
+>
+> ```bash
+> uv run python -m minimal --source wayland --frames 30
+> ```
+>
+> `uv run` resolves the project's `.venv` itself and re-syncs first if the lock
+> has moved, so it is correct whether or not you activated anything. A bare
+> `python -m minimal` only works if the venv happens to be active — without it
+> you get `ModuleNotFoundError: No module named 'numpy'`, which reads like a
+> broken checkout rather than an inactive environment. Activating
+> (`source .venv/bin/activate`) also works if you prefer it; it just is not
+> required, and forgetting it is the more common mistake.
+>
+> The shell tools under `tools/` are the exception: they locate
+> `$REPO/.venv/bin/python` themselves, so call them directly as shown above.
+> The `.py` tools do the same for their own interpreter.
+>
+> Don't `pip install` individual packages. The dependencies are one declared
+> set; installing one by hand leaves the venv half-built and the failure surfaces
+> later as something unrelated being "not installed".
 > `tests/test_dependencies.py` checks that every declared dependency really
-> imports, so the test suite catches an out-of-sync venv before the program does.
+> imports, so the suite catches an out-of-sync venv before the program does.
 >
 > `tools/m0_env_gate.sh` and `tools/m1_pipeline_gate.sh` are the gates. Between
 > them they answer two separate questions — can NGX run under Wine at all, and

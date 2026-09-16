@@ -35,22 +35,22 @@ fi
 if ! "$PYTHON" -c "import pytest" >/dev/null 2>&1; then
     echo "pytest is not installed for $PYTHON — the venv is out of sync."
     if command -v uv >/dev/null 2>&1 && [ -f uv.lock ]; then
-        echo "  syncing:  uv sync --extra test"
+        echo "  syncing:  uv sync"
         UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/uvcache}" \
-            uv sync --extra test >/dev/null 2>&1 || true
+            uv sync >/dev/null 2>&1 || true
     fi
     # uv sync targets ./.venv; if $PYTHON points somewhere else, install into it
     # directly rather than silently leaving the wrong interpreter without pytest.
     if ! "$PYTHON" -c "import pytest" >/dev/null 2>&1 && command -v uv >/dev/null 2>&1; then
         UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/uvcache}" \
-            uv pip install --python "$PYTHON" -e ".[test]" >/dev/null 2>&1 || true
+            uv pip install --python "$PYTHON" pytest >/dev/null 2>&1 || true
     fi
     if ! "$PYTHON" -c "import pytest" >/dev/null 2>&1; then
         echo ""
         echo "Could not install pytest. The project's venv is managed by uv;"
         echo "from the repo root run:"
         echo ""
-        echo "    uv sync --extra test"
+        echo "    uv sync"
         echo ""
         echo "That creates .venv from uv.lock and installs every declared"
         echo "dependency, so it also fixes anything else that is missing."

@@ -16,8 +16,12 @@ dependencies = [
     "jeepney>=0.8",
 ]
 
-[project.optional-dependencies]
-test = ["pytest>=8"]
+[dependency-groups]
+# PEP 735 dev group. Wanted rather than an optional-dependency extra because
+# `uv sync` and `uv run` install dependency groups by default: pytest is then
+# simply there, and every command works without a `--extra test` flag that is
+# easy to forget and produces a confusing failure when it is.
+dev = ["pytest>=8"]
 
 [tool.uv]
 native-tls = false

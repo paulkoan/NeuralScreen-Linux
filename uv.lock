@@ -83,8 +83,8 @@ dependencies = [
     { name = "pysdl2" },
 ]
 
-[package.optional-dependencies]
-test = [
+[package.dev-dependencies]
+dev = [
     { name = "pytest" },
 ]
 
@@ -97,9 +97,10 @@ requires-dist = [
     { name = "opencv-python", specifier = ">=4.8" },
     { name = "pygame", specifier = ">=2.5" },
     { name = "pysdl2", specifier = ">=0.9" },
-    { name = "pytest", marker = "extra == 'test'", specifier = ">=8" },
 ]
-provides-extras = ["test"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8" }]
 
 [[package]]
 name = "numpy"

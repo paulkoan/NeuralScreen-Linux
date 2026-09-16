@@ -13,7 +13,7 @@ which is how the versions of this message would otherwise end up disagreeing.
 from __future__ import annotations
 
 #: The one command that makes a checkout runnable.
-UV_SYNC = "uv sync --extra test"
+UV_SYNC = "uv sync"
 
 
 def hint(dist: str, module: str) -> str:
@@ -28,5 +28,7 @@ def hint(dist: str, module: str) -> str:
         f"  This project's venv is managed by uv. From the repo root:\n"
         f"    {UV_SYNC}\n"
         f"  That creates .venv from uv.lock and installs every declared "
-        f"dependency, so it fixes this and anything else that is also missing."
+        f"dependency, so it fixes this and anything else that is also missing.\n"
+        f"  Then run commands through the venv explicitly:\n"
+        f"    uv run python -m minimal"
     )

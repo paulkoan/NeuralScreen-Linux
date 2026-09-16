@@ -63,9 +63,15 @@ def _declared() -> list[str]:
     return _names(_pyproject()["project"]["dependencies"])
 
 
-def _declared_test() -> list[str]:
-    extras = _pyproject()["project"].get("optional-dependencies", {})
-    return _names(extras.get("test", []))
+def _declared_dev() -> list[str]:
+    """The dev dependency group (PEP 735) — installed by `uv sync` by default.
+
+    A group rather than an optional-dependency extra on purpose: with an extra,
+    pytest is absent unless every command remembers `--extra test`, and the
+    failure that produces looks like a broken project rather than a missing flag.
+    """
+    groups = _pyproject().get("dependency-groups", {})
+    return _names(groups.get("dev", []))
 
 
 def test_the_pyproject_lists_some_dependencies():
@@ -75,7 +81,7 @@ def test_the_pyproject_lists_some_dependencies():
         "pysdl2 is the dependency whose absence prompted this test")
 
 
-@pytest.mark.parametrize("dist", _declared() + _declared_test())
+@pytest.mark.parametrize("dist", _declared() + _declared_dev())
 def test_declared_dependency_is_installed(dist):
     """Each declared dependency must import in the interpreter running the tests."""
     module = {**DIST_TO_MODULE, **TEST_EXTRA_TO_MODULE}.get(dist)
@@ -95,7 +101,7 @@ def test_declared_dependency_is_installed(dist):
 def test_the_expectation_map_covers_every_declared_dependency():
     """Adding a dependency must force a decision here, not skip the check."""
     known = set(DIST_TO_MODULE) | set(TEST_EXTRA_TO_MODULE)
-    declared = set(_declared()) | set(_declared_test())
+    declared = set(_declared()) | set(_declared_dev())
     unknown = sorted(declared - known)
     assert not unknown, (
         f"declared but not covered: {unknown}\n"
