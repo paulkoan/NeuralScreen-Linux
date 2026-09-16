@@ -91,7 +91,8 @@ def main(argv: list[str] | None = None) -> int:
         import jeepney
         ok(f"jeepney {jeepney.__version__} (D-Bus with fd passing)")
     except ImportError:
-        bad("jeepney is missing — pip install jeepney")
+        from minimal.deps import hint
+        bad(hint("jeepney", "jeepney").replace("\n", "\n  "))
 
     # --- 3. gstreamer -------------------------------------------------------
     print("\n--- 3. gstreamer ---")

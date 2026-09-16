@@ -11,12 +11,30 @@
 >
 > ```bash
 > ls native/nvngx_dlssnr.dll    # 159 MB, gitignored — must be supplied
+> uv sync --extra test          # 0. create .venv from uv.lock (do this first)
 > tools/wine_ngx_setup.sh       # 1. make the prefix able to load NGX Core
 > tools/m0_env_gate.sh          # 2. can NGX run under Wine at all?
 > tools/wayland_probe.py        # 3. can we capture the screen? (no Wine needed)
 > tools/run_tests.sh --report --m0 --m1 --push  # all gates + suite, then push
 > python -m minimal             # the MVP: capture -> DLSS5 pass -> display
 > ```
+>
+> ### The environment
+>
+> The venv is managed by **uv**, from `pyproject.toml` and the committed
+> `uv.lock`. One command makes a checkout runnable — it also installs pytest,
+> which is in the `test` extra rather than the runtime set:
+>
+> ```bash
+> uv sync --extra test
+> ```
+>
+> Don't `pip install` individual packages. The dependencies are declared as a
+> set; installing one by hand leaves the venv half-built, and the failure shows
+> up later as something unrelated being "not installed". If you see a message
+> like that, it names the command above — and
+> `tests/test_dependencies.py` checks that every declared dependency really
+> imports, so the test suite catches an out-of-sync venv before the program does.
 >
 > `tools/m0_env_gate.sh` and `tools/m1_pipeline_gate.sh` are the gates. Between
 > them they answer two separate questions — can NGX run under Wine at all, and

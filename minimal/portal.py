@@ -103,7 +103,8 @@ class ScreenCast:
 def available() -> tuple[bool, str]:
     """(usable, why not) — cheap enough to call before doing anything."""
     if not _HAS_JEEPNEY:
-        return False, "jeepney is not installed (pip install jeepney)"
+        from minimal.deps import hint
+        return False, hint("jeepney", "jeepney")
     if not os.environ.get("DBUS_SESSION_BUS_ADDRESS") and not os.environ.get(
             "XDG_RUNTIME_DIR"):
         return False, "no session bus (DBUS_SESSION_BUS_ADDRESS and XDG_RUNTIME_DIR are unset)"
@@ -264,7 +265,8 @@ def open_screencast(*, types: int = SOURCE_MONITOR, cursor_mode: int = CURSOR_EM
     calls this should say so before it blocks.
     """
     if not _HAS_JEEPNEY:
-        raise PortalError("jeepney is not installed (pip install jeepney)")
+        from minimal.deps import hint
+        raise PortalError(hint("jeepney", "jeepney"))
 
     conn = open_dbus_connection(bus="SESSION", enable_fds=True)
     addr = DBusAddress(PORTAL_PATH, bus_name=PORTAL_BUS, interface=SCREENCAST_IFACE)

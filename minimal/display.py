@@ -32,7 +32,8 @@ class Display:
     def __init__(self, width: int, height: int, *, fullscreen: bool = False,
                  headless: bool = False, title: str = "NeuralScreen (MVP)"):
         if not _HAS_SDL2:
-            raise DisplayError("pysdl2 is not installed (pip install pysdl2)")
+            from minimal.deps import hint
+            raise DisplayError(hint("pysdl2", "sdl2"))
 
         self.width, self.height = int(width), int(height)
         self.headless = headless

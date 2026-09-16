@@ -27,24 +27,33 @@ if [ ! -x "$PYTHON" ]; then
     PYTHON="$(command -v python3)"
 fi
 
-# pytest is not in the runtime dependency set, so a fresh venv does not have it.
-# The first M0 run on the GPU box reported only "No module named pytest" and an
-# empty report — check first and say something useful.
+# The venv is managed by uv from pyproject.toml + uv.lock, so a missing pytest
+# means the venv is out of sync — not that pytest needs installing on its own.
+# And this must never suggest plain `pip install`: that puts one package into
+# whatever interpreter is active and leaves the rest of the venv stale, which is
+# how a checkout ends up missing pysdl2 while its owner believes it is complete.
 if ! "$PYTHON" -c "import pytest" >/dev/null 2>&1; then
-    echo "pytest is not installed for $PYTHON — installing it now."
-    if command -v uv >/dev/null 2>&1; then
+    echo "pytest is not installed for $PYTHON — the venv is out of sync."
+    if command -v uv >/dev/null 2>&1 && [ -f uv.lock ]; then
+        echo "  syncing:  uv sync --extra test"
         UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/uvcache}" \
-            uv pip install --python "$PYTHON" pytest >/dev/null 2>&1
+            uv sync --extra test >/dev/null 2>&1 || true
     fi
-    if ! "$PYTHON" -c "import pytest" >/dev/null 2>&1; then
-        "$PYTHON" -m pip install pytest >/dev/null 2>&1 || true
+    # uv sync targets ./.venv; if $PYTHON points somewhere else, install into it
+    # directly rather than silently leaving the wrong interpreter without pytest.
+    if ! "$PYTHON" -c "import pytest" >/dev/null 2>&1 && command -v uv >/dev/null 2>&1; then
+        UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/uvcache}" \
+            uv pip install --python "$PYTHON" -e ".[test]" >/dev/null 2>&1 || true
     fi
     if ! "$PYTHON" -c "import pytest" >/dev/null 2>&1; then
         echo ""
-        echo "Could not install pytest. Install it yourself, then re-run:"
-        echo "    uv pip install --python $PYTHON pytest"
-        echo "    # or: $PYTHON -m pip install pytest"
-        echo "    # or: uv sync --extra test"
+        echo "Could not install pytest. The project's venv is managed by uv;"
+        echo "from the repo root run:"
+        echo ""
+        echo "    uv sync --extra test"
+        echo ""
+        echo "That creates .venv from uv.lock and installs every declared"
+        echo "dependency, so it also fixes anything else that is missing."
         echo ""
         echo "Without it the test suite cannot run at all."
         exit 3

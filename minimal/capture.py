@@ -36,7 +36,8 @@ class Capture:
 
     def __init__(self, monitor_idx: int = 0):
         if not _HAS_MSS:
-            raise CaptureError("mss is not installed (pip install mss)")
+            from minimal.deps import hint
+            raise CaptureError(hint("mss", "mss"))
         try:
             self._sct = _MSS_FACTORY()
         except Exception as exc:  # no display, bad DISPLAY, no X server
