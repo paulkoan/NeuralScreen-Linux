@@ -1,0 +1,105 @@
+==============================================================
+ M1 — live pipeline gate (MVP end to end)
+==============================================================
+
+  [32m✓[0m wine: wine-11.17 (Staging)
+  [32m✓[0m worker: nvngx.dll (156K)
+  [32m✓[0m NR runtime: nvngx_dlssnr.dll (159M)
+
+==============================================================
+ variant: pass   (--source synthetic)
+==============================================================
+  | source synthetic  capture 1280x720  ->  work 1280x720 (NGX ceiling 2560x1440)
+  | params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+  | worker: bash /home/paul/dev/NeuralScreen-Linux/native/run_worker.sh
+  | pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+  | Hello from the pygame community. https://www.pygame.org/contribute.html
+  | frames: 30 done, 0 skipped, 2.675s (11.21 fps), worker exit 0
+  | timing: capture 5.2ms  send 66.9ms  recv 8.7ms  display 0.5ms   (total 81.3ms/frame, 12.3 fps)
+  |   before -> /tmp/tmp.y2223sxf3o/pass/before.png
+  |   after  -> /tmp/tmp.y2223sxf3o/pass/after.png
+  exit code: 0   elapsed: 3s
+  [32m✓[0m the MVP exited 0
+  [32m✓[0m before.png written (92K)
+  [32m✓[0m after.png written (560K)
+
+  --- did the pass change the frame? ---
+  size              1280x720
+  mean abs diff     17.6189  (0 = byte-identical)
+  p99 abs diff      44.00
+  PSNR              21.981463450918536
+  before is blank   False
+  after is blank    False
+  after == before   False
+  VERDICT the pass changed the frame (mean abs diff 17.6189/255)
+  [32m✓[0m the pass changed the frame
+
+==============================================================
+ variant: baseline   (--source synthetic)
+          --param intensity=0 --param local_tone=0 --param local_structure=0
+==============================================================
+  | source synthetic  capture 1280x720  ->  work 1280x720 (NGX ceiling 2560x1440)
+  | params: auto_mask=0 intensity=0.0 local_structure=0.0 local_tone=0.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+  | worker: bash /home/paul/dev/NeuralScreen-Linux/native/run_worker.sh
+  | pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+  | Hello from the pygame community. https://www.pygame.org/contribute.html
+  | frames: 30 done, 0 skipped, 1.948s (15.4 fps), worker exit 0
+  | timing: capture 5.2ms  send 42.8ms  recv 8.6ms  display 0.5ms   (total 57.1ms/frame, 17.5 fps)
+  |   before -> /tmp/tmp.y2223sxf3o/baseline/before.png
+  |   after  -> /tmp/tmp.y2223sxf3o/baseline/after.png
+  exit code: 0   elapsed: 3s
+  [32m✓[0m the MVP exited 0
+  [32m✓[0m before.png written (92K)
+  [32m✓[0m after.png written (92K)
+
+  --- did the pass change the frame? ---
+  size              1280x720
+  mean abs diff     0.0000  (0 = byte-identical)
+  p99 abs diff      0.00
+  PSNR              inf
+  before is blank   False
+  after is blank    False
+  after == before   True
+  VERDICT the pass returned the input unchanged
+  control variant: the diff below is the floor, not the effect
+  [32m✓[0m with the effect off the frame barely moves (mean abs diff 0.0000/255)
+
+==============================================================
+ variant: capture   (--source auto)
+==============================================================
+  | startup failed: the portal handshake failed (TimeoutError): 
+  |   CreateSession
+  |   session /org/freedesktop/portal/desktop/session/1_3639438/nsl_port
+  |   SelectSources
+  |   Start  (the compositor will ask you to choose a screen)
+  exit code: 2   elapsed: 120s
+  [31m✗[0m the MVP exited 2
+  [31m✗[0m before.png was not written
+  [31m✗[0m after.png was not written
+
+--- environment ---
+  DISPLAY:           :0
+  WAYLAND_DISPLAY:   wayland-0
+  XDG_SESSION_TYPE:  wayland
+  [33m![0m Wayland session: the screen variant is expected to capture nothing
+  [33m![0m (the worker does not write dlss5-feed-host.log in --live mode; that is
+  [33m![0m  deliberate — 'if (!g_video_mode)' in dlss5-feed-host64.cpp, so its
+  [33m![0m  absence is not a failure here)
+
+  artifacts -> test-results/20260916T175431Z/raw/m1/{pass,capture}/
+
+==============================================================
+ M1 summary
+==============================================================
+  pass     PASS — the NR pass changes a known frame.
+  baseline measured — see the variant output for the transport floor;
+           subtract it from 'pass' and 'capture' before reading those
+           as the network's work.
+  capture  FAIL — no usable screen frame (see the variant output).
+
+  The artifact that decides the milestone is pass/after.png next to
+  pass/before.png — look at them. A pair of numbers can agree on a
+  flat frame, which is how the last round looked healthy.
+
+ RESULT: PASS — capture -> DLSS5 NR pass -> display works.
+==============================================================

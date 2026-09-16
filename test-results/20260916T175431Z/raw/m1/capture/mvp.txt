@@ -1,0 +1,5 @@
+startup failed: the portal handshake failed (TimeoutError): 
+  CreateSession
+  session /org/freedesktop/portal/desktop/session/1_3639438/nsl_port
+  SelectSources
+  Start  (the compositor will ask you to choose a screen)
