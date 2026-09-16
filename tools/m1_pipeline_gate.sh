@@ -274,14 +274,14 @@ PASS_STATUS=$VARIANT_STATUS
 run_variant scaled synthetic "" "--work-scale 0.5"
 SCALED_STATUS=$VARIANT_STATUS
 
-# Same source, same settings, same work resolution as `pass` — only the way the
-# motion field travels differs. `pass` sends a full-resolution zero field (3.7 MB
-# of the 7.4 MB that goes to the worker each frame); this sends the same zeros at
-# the flow size and lets the worker upscale them. Measured on the box, `send`
-# dominates the frame (67ms of 81ms) while `recv` — the worker and the network —
-# is 8.7ms, so if the cost is bytes and not compute, this is where it shows.
-run_variant mots synthetic "" "--motion-small"
-MOTS_STATUS=$VARIANT_STATUS
+# MOTS is NOT here, and the reason is worth the lines: sending the motion field
+# at the flow size (320x180) hung the real worker — "silent for 60s on frame 0",
+# so the worker never answered. The protocol documents MOTS as part of the
+# upstream's guides path, which gets its flow size and its luminance from the
+# worker's own capture (DDA/gray). A bare small field from the pipe path is not
+# something the worker accepts, so the lever is closed as implemented rather
+# than pending. `--motion-small` remains for the record and the wire-format
+# tests; do not expect it to run.
 
 # The control. Same source and same worker as `pass`, effect dialled to zero:
 # whatever still changes is the transport, not the network. Without this, "the
@@ -312,7 +312,7 @@ fi
 
 # --- copy artifacts out -----------------------------------------------------
 if [ -n "$OUT" ]; then
-    for v in pass scaled mots baseline capture; do
+    for v in pass scaled baseline capture; do
         mkdir -p "$OUT/$v"
         cp -f "$T/$v/before.png" "$OUT/$v/" 2>/dev/null || true
         cp -f "$T/$v/after.png" "$OUT/$v/" 2>/dev/null || true
@@ -330,7 +330,7 @@ if [ -n "$OUT" ]; then
         echo "driver:            $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>&1 | head -1)"
     } > "$OUT/m1_environment.txt" 2>&1
     echo ""
-    echo "  artifacts -> $OUT/{pass,scaled,mots,baseline,capture}/"
+    echo "  artifacts -> $OUT/{pass,scaled,baseline,capture}/"
 fi
 
 # --- summary ----------------------------------------------------------------
@@ -361,24 +361,30 @@ else
 fi
 echo ""
 echo "  per-frame cost by variant — the point of the run:"
-for v in pass scaled mots baseline capture; do
+for v in pass scaled baseline capture; do
     line=$(grep -m1 '^timing:' "$T/$v/mvp.txt" 2>/dev/null || true)
     printf '    %-9s %s\n' "$v" "${line:-<no timing recorded>}"
 done
 echo ""
-echo "  Read the split, not just the fps. Measured on the box: send dominated"
-echo "  (67ms of 81ms) while recv — the worker plus the network — was 8.7ms, and"
-echo "  the product's own figure for the network at 1280x720 is ~2.9ms. So the"
-echo "  cost is bytes being moved, not the neural pass:"
-echo "    scaled  tests whether the network's resolution matters (it should not)"
-echo "    mots    tests whether the frame's bytes matter (it should)"
-echo "    baseline the transport floor with the effect off"
+echo "  Read the split, not just the fps. What the box has measured so far:"
+echo "    pass      82.0ms   the reference: effect on, full work resolution"
+echo "    scaled    57.6ms   -30%, but it changes TWO things at once: the"
+echo "                       network's resolution and the size of the motion"
+echo "                       field, which travels at the work resolution. So it"
+echo "                       does not say which of the two paid."
+echo "    baseline  57.9ms   the effect dialled to zero, same bytes as pass."
+echo "                       Almost exactly scaled's total: turning the effect"
+echo "                       off and quartering the network are worth the same"
+echo "                       ~24ms, which is what a cost sitting in the worker's"
+echo "                       per-frame work and in the bytes both look like."
+echo "    capture  520.0ms   the portal's OWN leg was 375ms of it at 2560x1440."
+echo "                       Nothing downstream can beat the rate the compositor"
+echo "                       hands frames over, so measure that on its own with:"
+echo "                         tools/wayland_probe.py --frames 20"
 echo ""
-echo "  pass vs scaled is the experiment: same source, same transport, same"
-echo "  effect, only the resolution the network works at differs. If scaled is"
-echo "  not meaningfully quicker, the cost is not in the network — and the"
-echo "  product's own figure for the network is 1.5 ms + 1.51 ms per megapixel"
-echo "  (a 5070 Ti), which at 2560x1440 is about 7 ms."
+echo "  The isolating experiment (MOTS: same zeros, sent at the flow size) is not"
+echo "  in this list because the worker does not accept it from the pipe path —"
+echo "  it goes silent on frame 0. See the note above it."
 echo ""
 echo "  The artifact that decides the milestone is pass/after.png next to"
 echo "  pass/before.png — look at them. A pair of numbers can agree on a"

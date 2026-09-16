@@ -77,10 +77,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="draw in a window instead of fullscreen")
     p.add_argument("--motion-small", action="store_true",
                    help="send the motion field at the optical-flow size "
-                        "(320x180) and let the worker upscale it. The MVP's "
-                        "field is all zeros, so this changes nothing about what "
-                        "the network sees and removes ~half the bytes of every "
-                        "frame sent to the worker")
+                        "(320x180) and let the worker upscale it. NOT USABLE in "
+                        "the pipe path: measured on the box, the worker goes "
+                        "silent for 60s and never answers frame 0. Kept for the "
+                        "wire format and the tests; see docs/M0-FINDINGS.md")
     p.add_argument("--headless", action="store_true",
                    help="run without presenting (for tests and CI)")
     p.add_argument("--save-before", metavar="PATH",

@@ -23,6 +23,7 @@ import argparse
 import os
 import shutil
 import sys
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -42,7 +43,9 @@ PASS, FAIL, WARN, INFO = "  \033[32m✓\033[0m", "  \033[31m✗\033[0m", "  \033
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="wayland_probe", description=__doc__.split("\n")[0])
-    ap.add_argument("--frames", type=int, default=3, help="frames to read (default 3)")
+    ap.add_argument("--frames", type=int, default=12,
+                    help="frames to read (default 12 — enough for a rate; the "
+                         "first grab includes the pipeline starting")
     ap.add_argument("--save-frame", metavar="PATH", help="write the first frame as a PNG")
     ap.add_argument("--check-only", action="store_true",
                     help="prerequisites only; do not open the portal or prompt")
@@ -186,14 +189,36 @@ def main(argv: list[str] | None = None) -> int:
     try:
         cap = _Attached(sc, log=info)
         frames = []
+        grabs: list[float] = []
         for i in range(max(1, args.frames)):
+            t0 = time.monotonic()
             frame = cap.grab()
+            grabs.append(time.monotonic() - t0)
             frames.append(frame)
             rgb = frame[..., :3].astype(np.float32)
             print(f"     frame {i}: {frame.shape[1]}x{frame.shape[0]} "
                   f"mean {rgb.mean():6.1f}  std {rgb.std():6.2f}  "
-                  f"per-channel std {[round(float(rgb[..., c].std()), 1) for c in range(3)]}")
+                  f"per-channel std {[round(float(rgb[..., c].std()), 1) for c in range(3)]}  "
+                  f"grab {1000 * grabs[-1]:6.1f}ms")
         ok(f"read {len(frames)} frame(s)")
+
+        # How fast the compositor actually hands frames over, with no worker,
+        # no Wine and no network in the way. This is the ceiling for the whole
+        # pipeline: if the portal delivers 2 fps, nothing downstream can be
+        # faster, and the thing to fix is the capture rather than the pass.
+        # The first grab is excluded because it includes the pipeline starting.
+        steady = grabs[1:]
+        if steady:
+            mean_grab = sum(steady) / len(steady)
+            size_mb = frames[-1].nbytes / 1e6
+            info(f"grab: first {1000 * grabs[0]:.1f}ms (pipeline start), then "
+                 f"{1000 * mean_grab:.1f}ms/frame = {1 / mean_grab:.1f} fps "
+                 f"for {size_mb:.1f} MB/frame")
+            if mean_grab > 0.05:
+                bad(f"the portal delivers {1 / mean_grab:.1f} fps at "
+                    f"{frames[-1].shape[1]}x{frames[-1].shape[0]} — everything "
+                    f"after this is capped by it")
+                problems += 1
     except CaptureError as exc:
         bad(f"reading frames failed: {exc}")
         print()

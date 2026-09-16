@@ -31,6 +31,73 @@ killed the port outright; it is cleared.
 
 ---
 
+# Round 13 — work scale pays, MOTS does not, and the capture is the ceiling
+
+`20260916T190758Z`. The first run with both new variants:
+
+```
+pass      capture   5.2ms  send 67.6ms  recv  8.7ms  display 0.5ms  ( 82.0ms/frame, 12.2 fps)
+scaled    capture   5.0ms  send 45.1ms  recv  7.0ms  display 0.5ms  ( 57.6ms/frame, 17.4 fps)
+baseline  capture   5.1ms  send 43.8ms  recv  8.4ms  display 0.5ms  ( 57.9ms/frame, 17.3 fps)
+capture   capture 375.0ms  send 86.3ms  recv 56.1ms  display 2.7ms  (520.0ms/frame,  1.9 fps)
+mots      did not run — the worker went silent for 60s on frame 0
+```
+
+## work scale does pay — and my prediction was wrong
+
+I expected `scaled` to be flat, on the grounds that the network is cheap and the
+bytes dominate. It is 30% faster: 82.0ms → 57.6ms, 12.2 → 17.4 fps.
+
+But it does not isolate what I wanted, because `--work-scale 0.5` changes **two**
+things at once. The network works at 640x360 instead of 1280x720, and the motion
+field travels at the work resolution, so it shrinks from 3.7 MB to 0.92 MB.
+The frame's inbound bytes drop from 7.4 MB to 4.6 MB, and its `send` drops from
+67.6ms to 45.1ms — in proportion, 62% of the bytes for 67% of the time. So the
+result is consistent with the bytes being the cost, and does not separate them
+from the network.
+
+The cleanest evidence for the split is `baseline`: the effect dialled to zero
+with the *same bytes* as `pass`, and it lands at 57.9ms — within 0.3ms of
+`scaled`. Turning the effect off and quartering the network's work are worth the
+same ~24ms. That is what a cost spread across the worker's per-frame work *and*
+the bytes looks like, and it is why neither lever alone is dramatic.
+
+## MOTS is closed, not pending
+
+```
+TimeoutError: the worker has been silent for 60s on frame 0
+```
+
+The worker never answered frame 0 with a 320x180 motion field. The protocol
+documents MOTS as part of the upstream's guides path, which takes its flow size
+and its luminance from the worker's own capture (DDA and the gray reverse
+channel). A bare small field arriving through the pipe path is not something the
+worker accepts — it waits for bytes that never come. The flag stays for the wire
+format and its tests, and the gate no longer runs it: a variant that hangs for
+60s and then reports FAIL is worse than no variant.
+
+So the bytes lever is unavailable in this mode. Which leaves the one the
+measurement actually points at.
+
+## The capture is now the ceiling at 2560x1440
+
+`capture` runs at 1.9 fps and **375ms of its 520ms frame is the portal grab
+itself** — before the worker sees anything. The four synthetic variants grab in
+~5ms, so this is not a per-pixel cost: it is the portal and GStreamer path.
+
+That matters more than anything else here, because it is exactly the leg the
+GeForce Now target depends on. The pass cannot run faster than frames arrive,
+and at 1.9 fps the enhancement is moot.
+
+`tools/wayland_probe.py` now reads 12 frames by default and reports the rate the
+compositor actually delivers, with no Wine and no worker in the way. That is the
+next measurement: if the probe says ~2 fps at 2560x1440, the compositor's
+screencast is the ceiling and everything downstream is wasted effort until it is
+understood; if it says 60 fps, then our pipeline in front of the grab is the
+problem and the reader is where to look.
+
+---
+
 # Round 12 — the network is not the bottleneck; the bytes are
 
 `20260916T175431Z`, the first run with the per-stage breakdown, and it contradicts
