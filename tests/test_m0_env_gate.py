@@ -59,17 +59,28 @@ def test_wine_is_available():
         pytest.fail("wine is not installed — M0 cannot run")
 
 
+from minimal.worker import DLL_OVERRIDES, worker_env
+
+
 @pytest.fixture(scope="module")
 def m0_result():
-    """Run the worker's built-in test mode once and capture its output."""
+    """Run the worker's built-in test mode once and capture its output.
+
+    Skips when wine is missing rather than erroring: test_wine_is_available
+    below already reports that case with a readable message, and four
+    FileNotFoundError tracebacks on top of it are just noise.
+    """
+    from shutil import which
+    if which("wine") is None:
+        pytest.skip("wine is not installed — M0 cannot run (see test_wine_is_available)")
+
     log = NATIVE / "dlss5-feed-host.log"
     if log.exists():
         log.unlink()
 
-    env = os.environ.copy()
-    env.setdefault("WINEPREFIX", os.path.expanduser("~/.neuralscreen/wine"))
-    # The worker loads nvngx_dlssnr.dll from its own directory.
-    env["WINEDLLOVERRIDES"] = "nvngx_dlssnr=n"
+    # worker_env() is the same launch environment the pipeline and the gate use
+    # — see tests/test_worker_env_consistency.py, which fails if they drift.
+    env = worker_env()
 
     proc = subprocess.run(
         ["wine", str(WORKER), "--test"],
@@ -81,7 +92,42 @@ def m0_result():
         "stdout": proc.stdout,
         "stderr": proc.stderr,
         "log": log_text,
+        "env": {
+            "WINEDLLOVERRIDES": env.get("WINEDLLOVERRIDES"),
+            "DXVK_ENABLE_NVAPI": env.get("DXVK_ENABLE_NVAPI"),
+        },
     }
+
+
+def test_m0_uses_the_canonical_environment(m0_result):
+    """The run that produced the log used the expected overrides.
+
+    Without this the diagnostics below could be explaining an earlier failure
+    that the environment had already fixed.
+    """
+    assert m0_result["env"]["WINEDLLOVERRIDES"] == DLL_OVERRIDES
+    assert m0_result["env"]["DXVK_ENABLE_NVAPI"] == "1"
+
+
+def test_m0_no_ngx_core_not_found_error(m0_result):
+    """0xBAD00001 means NGX Core was never found — a wiring problem, not a GPU one."""
+    combined = m0_result["stdout"] + m0_result["stderr"] + m0_result["log"]
+    assert "0xBAD00001" not in combined, (
+        "NGX Core is still not being found. The registry entry is missing or "
+        "wrong — run tools/wine_ngx_setup.sh.\n"
+        + "\n".join(l for l in combined.splitlines()
+                    if "NGX" in l or "ngx" in l)[-1500:])
+
+
+def test_m0_no_platform_error(m0_result):
+    """0xBAD00002 means NGX Core loaded but NVAPI could not report the GPU."""
+    combined = m0_result["stdout"] + m0_result["stderr"] + m0_result["log"]
+    assert "0xBAD00002" not in combined, (
+        "NGX Core's platform check failed. dxvk-nvapi is not answering: check "
+        "DXVK_ENABLE_NVAPI=1, that DXVK's dxgi.dll and d3d11.dll are installed "
+        "and overridden, and that dxvk-nvapi's nvapi64.dll is present.\n"
+        + "\n".join(l for l in combined.splitlines()
+                    if "nvapi" in l.lower() or "NvAPI" in l)[-1500:])
 
 
 def test_m0_worker_runs(m0_result):

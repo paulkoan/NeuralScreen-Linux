@@ -63,6 +63,36 @@ def default_launcher() -> list[str]:
     return ["bash", str(NATIVE_DIR / "run_worker.sh")]
 
 
+# The launch environment the worker needs. One source of truth: the shell
+# scripts carry the same string (they have to — bash cannot import it), and
+# tests/test_worker_env_consistency.py fails if any of them drift.
+#
+# Wine must be told to use the NATIVE translation layers. Through its builtins
+# two different failures follow, in this order of discovery:
+#   0xBAD00001 FAIL_FeatureNotSupported — NGX Core not found at all
+#   0xBAD00002 FAIL_PlatformError       — NGX Core loads, but NVAPI cannot
+#                                          report the GPU to it
+# dxvk-nvapi needs DXVK's dxgi AND d3d11 extension points, and vkd3d-proton's
+# d3d12. The driver's nvngx_dlls must load too, hence nvngx_dlssnr native-only.
+DLL_OVERRIDES = (
+    "d3d12=n,b;d3d12core=n,b;d3d11=n,b;dxgi=n,b;"
+    "nvapi64=n,b;nvofapi64=n,b;nvngx_dlssnr=n"
+)
+
+# Without this dxvk-nvapi leaves the NGX/DLSS part of NVAPI disabled ("to
+# disable DXVK's nvapiHack in DXVK"), and NGX Core's platform check then fails.
+ENABLE_NVAPI = "1"
+
+
+def worker_env(base: dict | None = None) -> dict:
+    """The environment to launch the worker with."""
+    env = dict(os.environ if base is None else base)
+    env["WINEDLLOVERRIDES"] = env.get("NS_WINEDLLOVERRIDES", DLL_OVERRIDES)
+    env.setdefault("DXVK_ENABLE_NVAPI", ENABLE_NVAPI)
+    env.setdefault("WINEPREFIX", os.path.expanduser("~/.neuralscreen/wine"))
+    return env
+
+
 class Worker:
     """A running NR worker process plus its reader thread and log buffer."""
 
@@ -97,7 +127,7 @@ class Worker:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=os.environ.copy(),
+            env=worker_env(),
         )
         threading.Thread(target=self._drain_stderr, daemon=True,
                          name="worker-stderr").start()

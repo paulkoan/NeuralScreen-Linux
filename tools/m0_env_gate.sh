@@ -24,10 +24,37 @@ NR_DLL="$NATIVE/nvngx_dlssnr.dll"
 LOG="$NATIVE/dlss5-feed-host.log"
 
 OUT=""
-if [ "${1:-}" = "--out" ] && [ -n "${2:-}" ]; then
-    OUT="$2"
-    mkdir -p "$OUT"
-fi
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --out)
+            if [ -z "${2:-}" ]; then
+                echo "m0_env_gate.sh: --out needs a directory" >&2
+                exit 2
+            fi
+            OUT="$2"; mkdir -p "$OUT"; shift 2 ;;
+        -h|--help)
+            cat <<'USAGE'
+m0_env_gate.sh — the M0 environment gate: can the DLSS5 NR worker run under Wine?
+
+  tools/m0_env_gate.sh                 run the gate, print the verdict
+  tools/m0_env_gate.sh --out DIR       also copy the logs into DIR
+
+Exit codes:  0 = PASS   1 = FAIL   2 = BLOCKED (prerequisites missing)
+
+For a full report (pytest + this gate + an environment snapshot) use instead:
+
+  tools/run_tests.sh --report --m0
+
+which writes everything into test-results/<UTC-timestamp>/ — commit and push
+that directory and it can be read straight from the repo.
+USAGE
+            exit 0 ;;
+        *)
+            echo "m0_env_gate.sh: unknown option: $1" >&2
+            echo "try: tools/m0_env_gate.sh --help" >&2
+            exit 2 ;;
+    esac
+done
 
 pass() { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 fail() { printf '  \033[31m✗\033[0m %s\n' "$1"; }

@@ -52,7 +52,7 @@ for arg in "$@"; do
         --report) WANT_REPORT=1 ;;
         --m0)     WANT_M0=1 ;;
         -h|--help)
-            sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+            sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
             exit 0 ;;
         *) echo "unknown option: $arg" >&2; exit 2 ;;
     esac
