@@ -89,3 +89,90 @@ def list_monitors() -> list[tuple[int, str]]:
     with _MSS_FACTORY() as sct:
         return [(i, f"{m['width']}x{m['height']} at ({m['left']},{m['top']})")
                 for i, m in enumerate(sct.monitors[1:])]
+
+
+class SyntheticCapture:
+    """A known frame instead of a screen.
+
+    This exists because the pipeline has to be testable when capture cannot be.
+    On a Wayland session mss reads the XWayland root window, and nothing draws
+    there, so every grabbed frame is black — the pass then has nothing to act on
+    and "the pass is broken" and "capture is broken" look identical. Feeding a
+    frame whose contents are known separates the two questions.
+
+    The frame carries what an NR pass needs to have an opinion about: a
+    horizontal red ramp, a vertical green ramp, blue interference stripes for
+    local structure, and a bar that moves each grab so consecutive frames differ.
+    """
+
+    def __init__(self, width: int = 1280, height: int = 720):
+        self.width = int(width)
+        self.height = int(height)
+        self._n = 0
+
+    @property
+    def resolution(self) -> tuple[int, int]:
+        return self.width, self.height
+
+    def grab(self) -> np.ndarray:
+        w, h, n = self.width, self.height, self._n
+        self._n += 1
+        x = np.linspace(0.0, 1.0, w, dtype=np.float32)[None, :]
+        y = np.linspace(0.0, 1.0, h, dtype=np.float32)[:, None]
+        frame = np.empty((h, w, 4), dtype=np.uint8)
+        frame[..., 0] = (255.0 * x).astype(np.uint8)
+        frame[..., 1] = (255.0 * y).astype(np.uint8)
+        frame[..., 2] = (255.0 * (0.5 + 0.5 * np.sin(6.0 * (x + y)))).astype(np.uint8)
+        frame[..., 3] = 255
+        bar = int((n * 7) % max(1, w - w // 8))
+        frame[:, bar:bar + max(1, w // 8), :3] = 255
+        return frame
+
+    def close(self) -> None:
+        pass
+
+
+class ImageCapture:
+    """Replay one still image as the frame source.
+
+    The practical Wayland workaround today: `grim shot.png` (or any screenshot
+    tool), then point the MVP at the file. The interface is the same as a live
+    capture, so when the portal-based backend lands nothing else changes.
+    """
+
+    def __init__(self, path):
+        import cv2
+        img = cv2.imread(str(path), cv2.IMREAD_COLOR)
+        if img is None:
+            raise CaptureError(f"cannot read image: {path}")
+        alpha = np.full(img.shape[:2], 255, dtype=np.uint8)
+        self._frame = np.dstack([img[:, :, ::-1], alpha])   # BGR -> RGBA
+        self.height, self.width = self._frame.shape[:2]
+
+    @property
+    def resolution(self) -> tuple[int, int]:
+        return self.width, self.height
+
+    def grab(self) -> np.ndarray:
+        return self._frame.copy()
+
+    def close(self) -> None:
+        pass
+
+
+def open_capture(source: str, *, monitor: int = 0, input_image=None,
+                 width: int | None = None, height: int | None = None):
+    """Build the frame source named by --source.
+
+    \"screen\" is the real thing; \"synthetic\" and \"image\" exist so the pass can
+    be exercised without a working screen capture.
+    """
+    if source == "screen":
+        return Capture(monitor_idx=monitor)
+    if source == "synthetic":
+        return SyntheticCapture(width or 1280, height or 720)
+    if source == "image":
+        if not input_image:
+            raise CaptureError("--source image needs --input-image PATH")
+        return ImageCapture(input_image)
+    raise CaptureError(f"unknown source: {source}")

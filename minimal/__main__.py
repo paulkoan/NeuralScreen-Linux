@@ -10,7 +10,7 @@ import argparse
 import sys
 import traceback
 
-from minimal.capture import CaptureError, list_monitors
+from minimal.capture import CaptureError, list_monitors, open_capture
 from minimal.display import DisplayError
 from minimal.loop import Pipeline
 from minimal.worker import WORK_MAX_H, WORK_MAX_W
@@ -23,6 +23,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--frames", type=int, default=0,
                    help="stop after N frames (0 = until the window is closed)")
     p.add_argument("--monitor", type=int, default=0, help="screen index (default 0)")
+    p.add_argument("--source", choices=("screen", "synthetic", "image"),
+                   default="screen",
+                   help="where frames come from: the screen (default), a "
+                        "generated test card, or a still image")
+    p.add_argument("--input-image", metavar="PATH",
+                   help="the frame to replay with --source image")
     p.add_argument("--windowed", action="store_true",
                    help="draw in a window instead of fullscreen")
     p.add_argument("--headless", action="store_true",
@@ -49,13 +55,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
-        pipe = Pipeline(monitor=args.monitor, fullscreen=not args.windowed,
-                        headless=args.headless)
+        source = open_capture(args.source, monitor=args.monitor,
+                              input_image=args.input_image)
+        pipe = Pipeline(fullscreen=not args.windowed, headless=args.headless,
+                        capture=source)
     except (CaptureError, DisplayError) as exc:
         print(f"startup failed: {exc}", file=sys.stderr)
         return 2
 
-    print(f"capture {pipe.width}x{pipe.height}  ->  "
+    print(f"source {args.source}"
+          + (f" ({args.input_image})" if args.source == "image" else "")
+          + f"  capture {pipe.width}x{pipe.height}  ->  "
           f"work {pipe.work_w}x{pipe.work_h} "
           f"(NGX ceiling {WORK_MAX_W}x{WORK_MAX_H})")
     print(f"worker: {' '.join(pipe.worker.cmd)}")

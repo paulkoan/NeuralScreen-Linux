@@ -11,6 +11,7 @@ gate: each failure names the next missing piece.
 | `20260916T064324Z` | `0xBAD00002` unchanged | a dxgi.dll **was** present, so the install was skipped — but it was Wine's builtin, not DXVK's |
 | `20260916T065756Z` | `0xBAD00004` FAIL_FeatureNotFound | **init and feature 18 create now succeed**; the failure has moved to evaluate |
 | `20260916T074715Z` | direct unchanged; **via-core fails earlier, at create** (`0xBAD0000B`) | NGX Core cannot create feature 18 at all — and `--test` evaluates through the Core, so M0 was measuring a path the product does not use |
+| `20260916T080456Z` | M1: both frames black | capture is X11/`mss` on a **Wayland** session → XWayland root is empty. Said nothing about the pass; M1 now separates the two questions |
 
 **What the first run proved and the second confirmed** — the expensive half:
 
@@ -26,7 +27,94 @@ killed the port outright; it is cleared.
 
 ---
 
-# Round 6 — the two paths are not the same path
+# Round 7 — the frame was empty, and M1 was measuring capture, not the pass
+
+`20260916T080456Z` ran the M1 gate for the first time. It reported:
+
+```
+✓ the MVP exited 0
+✓ before.png written (16K)     ✓ after.png written (284K)
+size              2560x1440
+mean abs diff     0.0095
+after == before   False
+after is blank    True
+✗ the output is blank — the pass ran and produced nothing
+```
+
+The user's own read was better than the gate's: *"the before and after are
+different, but empty in different ways."* Looking at both frames confirms it —
+both are black.
+
+The environment block explains it:
+
+```
+DISPLAY:            :0
+WAYLAND_DISPLAY:    wayland-0
+XDG_SESSION_TYPE:   wayland
+```
+
+**`minimal/capture.py` is X11-only.** Its own docstring says so: *"Deliberately
+one backend. PipeWire/Wayland is a later milestone; mss on X11..."*. On a Wayland
+desktop the XWayland root window is black by definition — applications draw on
+the compositor, not there — so `mss` returns an empty frame every time.
+
+So this run said **nothing about the neural pass**. The pass had nothing to act
+on. "NGX is broken" and "we are feeding it black" produce identical evidence, and
+M1 ran only the screen variant, so it could not tell them apart. That is a design
+bug in the gate, not just an unlucky run.
+
+## The fix: separate the two questions
+
+**`--source synthetic` and `--source image`** (`minimal/capture.py`). Both
+implement the same interface as `Capture` (`resolution`, `grab()`, `close()`), so
+nothing downstream changed. `synthetic` is a test card with a red ramp, a green
+ramp, interference stripes and a bar that moves each grab — structural content in
+all three channels, so a pass has something to have an opinion about.
+`image` replays a real screenshot, which is the practical way to get real pixels
+into the pipeline on Wayland today:
+
+```
+grim /tmp/shot.png
+python -m minimal --source image --input-image /tmp/shot.png
+```
+
+**M1 now runs two variants and reports both:**
+
+| variant | source | question |
+|---|---|---|
+| `pass` | `--source synthetic` | does the NR pass change a known frame? |
+| `capture` | `--source screen` | does a real screen frame come through? |
+
+The verdict is driven by `tools/frame_diff.py`, which is separately runnable and
+returns 0/1/3 so the judgement lives in one place. It now reports `before is
+blank` as well as `after is blank` — the gate could previously only see the
+output, which is precisely why an empty input was invisible.
+
+Verified against the real failing pair before landing, and it reproduces the same
+numbers (`mean abs diff 0.0095`, `PSNR 68.34`) while flagging both frames blank.
+
+## Two smaller corrections
+
+- **The worker writes no log in `--live` mode.** Line 130 of
+  `dlss5-feed-host64.cpp` is `if (!g_video_mode && fopen_s(...))` — logging is
+  deliberately off in video mode. M1's *"no dlss5-feed-host.log"* warning was
+  noise, and is now a note.
+- **11 new tests** (`tests/test_capture_sources.py`) covering the new sources.
+  They deliberately do **not** use the `xvfb_display` fixture: the point of these
+  sources is that they need no display at all, so a test that gave them one would
+  hide the property being bought.
+
+## Confidence
+
+- Capture returns black because the session is Wayland and the backend is X11:
+  **verified** — both frames are black, the environment says Wayland, and the
+  capture docstring states the single-backend decision.
+- Whether the neural pass works: **still unknown, and this round did not change
+  that.** The `pass` variant is what answers it.
+
+---
+
+# Round 6 — the two paths are not the same path (kept)
 
 Both variants ran in one report (`20260916T074715Z`). The result refutes the
 easy form of the round-5 hypothesis and confirms the important part of it:

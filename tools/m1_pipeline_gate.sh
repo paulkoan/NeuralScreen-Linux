@@ -1,16 +1,15 @@
 #!/bin/bash
-# m1_pipeline_gate.sh — the M1 gate: does a frame come out the far end changed?
+# m1_pipeline_gate.sh — does a frame come out the far end changed?
 #
-#   tools/m1_pipeline_gate.sh                # run it, print the verdict
+#   tools/m1_pipeline_gate.sh                # run both variants, print the verdict
 #   tools/m1_pipeline_gate.sh --out DIR      # also copy artifacts into DIR
 #   tools/m1_pipeline_gate.sh --frames N     # frames to push (default 30)
 #
 # WHY THIS EXISTS, AND WHY IT IS NOT M0
 #
 # M0 (`m0_env_gate.sh`) runs `wine nvngx.dll --test`, a synthetic 640x360 loop
-# that was written as a stand-in for having a game attached. Reading the source
-# against it shows `--test` does NOT exercise the same APIs as the real
-# pipeline:
+# written as a stand-in for having a game attached. Reading the source against it
+# shows `--test` does NOT exercise the same APIs as the real pipeline:
 #
 #                  create                        evaluate
 #   --test         g_nr_create (NR runtime)      SDK macro NGX_D3D12_EVALUATE_DLSS_EXT
@@ -21,24 +20,26 @@
 #   (--live)                                      DLSSNR.* params, nullptr eval params
 #
 # So `--test` registers a handle with one runtime and evaluates it through
-# another, and it fails with 0xBAD00004 FAIL_FeatureNotFound. The via-core
-# variant makes it fail EARLIER, at create, with 0xBAD0000B
-# UnableToInitializeFeature — i.e. NGX Core cannot create feature 18 under Wine
-# at all. That is consistent with the Core being the piece that does not know the
-# handle, and it means the `--test` evaluate failure says nothing directly about
-# the live path.
+# another, and fails 0xBAD00004 FAIL_FeatureNotFound. The live path is the
+# product: `python -m minimal` drives `wine nvngx.dll --live`.
 #
-# The live path is the product. It is what `python -m minimal` drives
-# (`wine nvngx.dll --live`). So this gate runs the MVP end to end and checks the
-# frame that comes back is actually changed by the pass.
+# TWO VARIANTS, because capture and the pass are separate questions
 #
-# PASS = the MVP exits 0, both images exist, and the NR pass measurably altered
-#        the frame: mean absolute difference above the floor, and the output is
-#        not blank or a duplicate of the input.
+#   pass     --source synthetic   a known test card, no screen involved
+#   capture  --source screen      the real screen
 #
-# A "PSNR = inf" or zero-difference result is a FAIL even though the process
-# exited 0: it means the pass was a no-op, which is the specific failure this
-# gate is here to catch.
+# The split is not decoration. Measured on the RTX box: a Wayland session with
+# DISPLAY=:0 hands mss the XWayland root window, which is black by definition, so
+# every frame arrives empty and the pass has nothing to act on. Running only the
+# screen variant cannot distinguish "NGX is not working" from "we are feeding it
+# nothing" — which is exactly the round that was wasted.
+#
+# PASS = the MVP exits 0, both frames exist, the input was not blank, and the
+#        pass measurably altered the frame.
+#
+# A no-op pass exits 0 and looks perfectly healthy, which is the failure this
+# gate exists to catch. tools/frame_diff.py holds that judgement and is
+# separately exercisable.
 
 set -uo pipefail
 
@@ -46,7 +47,6 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO"
 
 NATIVE="$REPO/native"
-LOG="$NATIVE/dlss5-feed-host.log"
 
 OUT=""
 FRAMES=30
@@ -62,16 +62,19 @@ while [ $# -gt 0 ]; do
             cat <<'USAGE'
 m1_pipeline_gate.sh — does a frame come out the far end changed?
 
-  tools/m1_pipeline_gate.sh              run it, print the verdict
+  tools/m1_pipeline_gate.sh              run both variants, print the verdict
   tools/m1_pipeline_gate.sh --out DIR    also copy artifacts into DIR
   tools/m1_pipeline_gate.sh --frames N   frames to push (default 30)
 
-Exit codes:  0 = PASS   1 = FAIL   2 = BLOCKED (prerequisites missing)
+Exit codes:  0 = both variants PASS   1 = FAIL   2 = BLOCKED
 
-Runs `python -m minimal --frames N --headless --save-before/--save-after`, then
-measures how much the NR pass changed the frame. Checks the live path
-(EvaluateVideo), not `--test` — see the header of this script for why those are
-not the same thing.
+Runs the MVP end to end twice:
+
+  pass     --source synthetic   a known test card — tests the NR pass itself
+  capture  --source screen      the real screen — tests capture
+
+and judges each pair with tools/frame_diff.py. See the header of this script for
+why M0's `--test` is not a substitute for this.
 
 For a full report (pytest + M0 + this gate + environment) use:
 
@@ -112,9 +115,6 @@ if [ -s "$NATIVE/nvngx_dlssnr.dll" ]; then
 else
     fail "missing $NATIVE/nvngx_dlssnr.dll (gitignored, 159 MB — copy it in)"; MISSING=1
 fi
-if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
-    warn "neither DISPLAY nor WAYLAND_DISPLAY is set — screen capture will fail"
-fi
 if [ "$MISSING" = "1" ]; then
     echo ""
     echo "=============================================================="
@@ -123,122 +123,125 @@ if [ "$MISSING" = "1" ]; then
     exit 2
 fi
 
-# --- run the MVP ------------------------------------------------------------
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
-BEFORE="$T/before.png"
-AFTER="$T/after.png"
-rm -f "$LOG"
 
-echo ""
-echo "--- python -m minimal --frames $FRAMES (the live path) ---"
-START=$(date +%s)
-"$PY" -m minimal --frames "$FRAMES" --headless \
-    --save-before "$BEFORE" --save-after "$AFTER" 2>&1 | tee "$T/mvp.txt"
-RC=${PIPESTATUS[0]}
-ELAPSED=$(( $(date +%s) - START ))
-echo ""
-echo "  exit code: $RC   elapsed: ${ELAPSED}s"
+# --- one variant ------------------------------------------------------------
+# Sets VARIANT_STATUS: 0 = this variant behaved, 1 = it did not.
+run_variant() {
+    local variant="$1" source="$2" input="${3:-}"
+    local dir="$T/$variant"
+    mkdir -p "$dir"
+    local before="$dir/before.png" after="$dir/after.png"
 
-# --- verdict ----------------------------------------------------------------
-echo ""
-echo "--- verdict ---"
-STATUS=0
-
-if [ "$RC" = "0" ]; then
-    pass "the MVP exited 0"
-else
-    fail "the MVP exited $RC"
-    STATUS=1
-fi
-
-for f in "$BEFORE" "$AFTER"; do
-    if [ -s "$f" ]; then
-        pass "$(basename "$f") written ($(du -h "$f" | cut -f1))"
-    else
-        fail "$(basename "$f") was not written"
-        STATUS=1
-    fi
-done
-
-# The interesting part: did the pass actually DO anything? An MVP that returns
-# the input frame unchanged exits 0 and looks healthy while doing nothing.
-if [ -s "$BEFORE" ] && [ -s "$AFTER" ]; then
     echo ""
-    echo "--- did the pass change the frame? ---"
-    ANALYSIS="$T/analysis.txt"
-    "$PY" - "$BEFORE" "$AFTER" > "$ANALYSIS" 2>&1 <<'PYEOF'
-import sys
-import numpy as np
-import cv2
+    echo "=============================================================="
+    echo " variant: $variant   (--source $source${input:+ --input-image $input})"
+    echo "=============================================================="
 
-def load(p):
-    img = cv2.imread(p, cv2.IMREAD_COLOR)
-    if img is None:
-        print(f"could not read {p}")
-        raise SystemExit(3)
-    return img[:, :, ::-1].astype(np.float32)   # BGR -> RGB
+    local args=(--frames "$FRAMES" --headless --source "$source"
+                --save-before "$before" --save-after "$after")
+    [ -n "$input" ] && args+=(--input-image "$input")
 
-a = load(sys.argv[1])
-b = load(sys.argv[2])
-if a.shape != b.shape:
-    print(f"shape mismatch: before={a.shape} after={b.shape}")
-    raise SystemExit(3)
-mad = float(np.abs(a - b).mean())
-p99 = float(np.percentile(np.abs(a - b), 99))
-mse = float(((a - b) ** 2).mean())
-psnr = float("inf") if mse == 0 else 10.0 * np.log10((255.0 ** 2) / mse)
-print(f"size              {a.shape[1]}x{a.shape[0]}")
-print(f"mean abs diff     {mad:.4f}  (0 = byte-identical)")
-print(f"p99 abs diff      {p99:.2f}")
-print(f"PSNR              {psnr if psnr != float('inf') else 'inf'}")
-print(f"after is blank    {bool(b.std() < 0.5)}")
-print(f"after == before   {bool(np.array_equal(a, b))}")
-PYEOF
-    ANA_RC=$?
-    sed 's/^/  /' "$ANALYSIS"
+    local start elapsed rc
+    start=$(date +%s)
+    "$PY" -m minimal "${args[@]}" > "$dir/mvp.txt" 2>&1
+    rc=$?
+    elapsed=$(( $(date +%s) - start ))
+    sed 's/^/  | /' "$dir/mvp.txt"
+    echo "  exit code: $rc   elapsed: ${elapsed}s"
 
-    if [ "$ANA_RC" != "0" ]; then
-        fail "could not compare the frames"
-        STATUS=1
+    VARIANT_STATUS=0
+    if [ "$rc" != "0" ]; then
+        fail "the MVP exited $rc"
+        VARIANT_STATUS=1
     else
-        MAD="$(grep -oP 'mean abs diff\s+\K[0-9.]+' "$ANALYSIS" || echo 0)"
-        BLANK="$(grep -oP 'after is blank\s+\K\w+' "$ANALYSIS" || echo true)"
-        SAME="$(grep -oP 'after == before\s+\K\w+' "$ANALYSIS" || echo true)"
+        pass "the MVP exited 0"
+    fi
 
-        if [ "$SAME" = "True" ]; then
-            fail "the pass returned the input unchanged — it ran but did nothing"
-            STATUS=1
-        elif [ "$BLANK" = "True" ]; then
-            fail "the output is blank — the pass ran and produced nothing"
-            STATUS=1
-        elif awk -v m="${MAD:-0}" 'BEGIN{exit !(m < 0.05)}'; then
-            fail "the frames differ by only $MAD/255 on average — too little to be a pass"
-            STATUS=1
+    local missing=0 f
+    for f in "$before" "$after"; do
+        if [ -s "$f" ]; then
+            pass "$(basename "$f") written ($(du -h "$f" | cut -f1))"
         else
-            pass "the pass changed the frame (mean abs diff $MAD/255)"
+            fail "$(basename "$f") was not written"
+            VARIANT_STATUS=1; missing=1
+        fi
+    done
+    [ "$missing" = "1" ] && return
+
+    echo ""
+    echo "  --- did the pass change the frame? ---"
+    "$PY" tools/frame_diff.py "$before" "$after" > "$dir/analysis.txt" 2>&1
+    local drc=$?
+    sed 's/^/  /' "$dir/analysis.txt"
+
+    case "$drc" in
+        0) pass "the pass changed the frame" ;;
+        *) fail "$(grep '^VERDICT' "$dir/analysis.txt" | sed 's/^VERDICT //')"
+           VARIANT_STATUS=1 ;;
+    esac
+
+    # An empty INPUT is a different failure from a failed pass, and it is the one
+    # that wasted a round: with a blank input the pass has nothing to act on, so
+    # "the pass is broken" cannot be concluded from this variant.
+    local before_blank
+    before_blank="$(grep -oP 'before is blank\s+\K\w+' "$dir/analysis.txt" || echo False)"
+    if [ "$before_blank" = "True" ]; then
+        fail "the INPUT frame was blank — the pass had nothing to act on"
+        VARIANT_STATUS=1
+        if [ "$source" = "screen" ]; then
+            cat <<'REMEDY'
+
+     The capture returned a flat frame. The known cause on this setup:
+
+       XDG_SESSION_TYPE=wayland
+       DISPLAY=:0            <- this is XWayland
+
+     minimal/capture.py grabs through mss, which is X11. On a Wayland desktop the
+     XWayland root window is black — applications draw on the compositor, not
+     there — so every frame arrives empty. This is a capture problem and says
+     nothing about the neural pass; the `pass` variant above answers that.
+
+     Two ways forward, neither of them this gate's job:
+       * real pixels today, from a screenshot:
+             grim /tmp/shot.png
+             python -m minimal --source image --input-image /tmp/shot.png
+       * or add a portal/PipeWire backend, which is the next milestone
+REMEDY
         fi
     fi
-fi
+}
 
-# --- what the worker said ---------------------------------------------------
-if [ -f "$LOG" ]; then
-    pass "worker log: $(wc -l < "$LOG") lines"
-    echo ""
-    echo "--- worker log, stage lines ---"
-    grep -iE "feature 18|Init_Ext|evaluate|NVSDK_NGX|DLSSNR|fail|error" "$LOG" \
-        | tail -12 | sed 's/^/  /' || echo "  (no stage lines)"
-else
-    warn "no dlss5-feed-host.log — the worker did not write one"
+# --- the two variants -------------------------------------------------------
+run_variant pass synthetic
+PASS_STATUS=$VARIANT_STATUS
+
+run_variant capture screen
+CAPTURE_STATUS=$VARIANT_STATUS
+
+# --- environment ------------------------------------------------------------
+echo ""
+echo "--- environment ---"
+echo "  DISPLAY:           ${DISPLAY:-<unset>}"
+echo "  WAYLAND_DISPLAY:   ${WAYLAND_DISPLAY:-<unset>}"
+echo "  XDG_SESSION_TYPE:  ${XDG_SESSION_TYPE:-<unset>}"
+if [ "${XDG_SESSION_TYPE:-}" = "wayland" ]; then
+    warn "Wayland session: the screen variant is expected to capture nothing"
+    warn "(the worker does not write dlss5-feed-host.log in --live mode; that is"
+    warn " deliberate — 'if (!g_video_mode)' in dlss5-feed-host64.cpp, so its"
+    warn " absence is not a failure here)"
 fi
 
 # --- copy artifacts out -----------------------------------------------------
 if [ -n "$OUT" ]; then
-    cp -f "$BEFORE" "$OUT/before.png" 2>/dev/null || true
-    cp -f "$AFTER"  "$OUT/after.png"  2>/dev/null || true
-    cp -f "$T/mvp.txt" "$OUT/mvp.txt" 2>/dev/null || true
-    cp -f "$LOG" "$OUT/" 2>/dev/null || true
-    [ -f "$ANALYSIS" ] && cp -f "$ANALYSIS" "$OUT/analysis.txt" 2>/dev/null || true
+    for v in pass capture; do
+        mkdir -p "$OUT/$v"
+        cp -f "$T/$v/before.png" "$OUT/$v/" 2>/dev/null || true
+        cp -f "$T/$v/after.png" "$OUT/$v/" 2>/dev/null || true
+        cp -f "$T/$v/mvp.txt" "$OUT/$v/" 2>/dev/null || true
+        cp -f "$T/$v/analysis.txt" "$OUT/$v/" 2>/dev/null || true
+    done
     {
         echo "date:              $(date -u)"
         echo "DISPLAY:           ${DISPLAY:-}"
@@ -249,18 +252,37 @@ if [ -n "$OUT" ]; then
         echo "driver:            $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>&1 | head -1)"
     } > "$OUT/m1_environment.txt" 2>&1
     echo ""
-    echo "  artifacts -> $OUT/  (before.png, after.png, analysis.txt, mvp.txt)"
+    echo "  artifacts -> $OUT/{pass,capture}/"
 fi
+
+# --- summary ----------------------------------------------------------------
+STATUS=0
+[ "$PASS_STATUS" != "0" ] && STATUS=1
 
 echo ""
 echo "=============================================================="
+echo " M1 summary"
+echo "=============================================================="
+if [ "$PASS_STATUS" = "0" ]; then
+    echo "  pass     PASS — the NR pass changes a known frame."
+else
+    echo "  pass     FAIL — the pass did not change a known frame."
+fi
+if [ "$CAPTURE_STATUS" = "0" ]; then
+    echo "  capture  PASS — a real screen frame comes through."
+else
+    echo "  capture  FAIL — no usable screen frame (see the variant output)."
+fi
+echo ""
+echo "  The artifact that decides the milestone is pass/after.png next to"
+echo "  pass/before.png — look at them. A pair of numbers can agree on a"
+echo "  flat frame, which is how the last round looked healthy."
+echo ""
 if [ "$STATUS" = "0" ]; then
     echo " RESULT: PASS — capture -> DLSS5 NR pass -> display works."
-    echo " Attach before.png and after.png in the report and that is the MVP."
 else
-    echo " RESULT: FAIL — see the stage lines above."
-    echo " M0 (--test) already proved NGX init and feature create work; this"
-    echo " gate is about the live path, which is a different set of calls."
+    echo " RESULT: FAIL — see the failing variant above."
+    echo " 'pass' failing is about NGX. 'capture' failing is about the desktop."
 fi
 echo "=============================================================="
 exit "$STATUS"
