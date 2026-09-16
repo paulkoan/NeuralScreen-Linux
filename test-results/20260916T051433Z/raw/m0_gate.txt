@@ -1,0 +1,65 @@
+==============================================================
+ M0 — environment gate
+==============================================================
+
+--- prerequisites ---
+  [32m✓[0m wine: wine-11.17 (Staging)
+  [32m✓[0m GPU: NVIDIA GeForce RTX 4080 SUPER, 615.71.09, 8.9
+  [32m✓[0m compute capability 8.9 is in the runtime's kernel set (sm_75/86/89/120)
+  [32m✓[0m Vulkan ICD: nvidia_icd.json
+  [32m✓[0m nvngx.dll (156K)
+  [32m✓[0m nvngx_dlssnr.dll (159M)
+  [32m✓[0m SpoutDX.dll (212K)
+  [32m✓[0m Spout.dll (280K)
+
+--- running: wine native/nvngx.dll --test ---
+  WINEPREFIX=/home/paul/.neuralscreen/wine
+  WINEDLLOVERRIDES=d3d12,d3d12core,nvapi64,dxgi=n,b;nvngx_dlssnr=n
+  NGXCore registry:  FullPath REG_SZ Z:\usr\lib\nvidia\wine
+
+0158:fixme:winediag:loader_init wine-staging 11.17 is a testing version containing experimental patches.
+0158:fixme:winediag:loader_init Please mention your exact version when filing bug reports on winehq.org.
+06:14:45.646  dlss5-feed-host64 (built Sep 11 2026 17:26:14)
+0158:fixme:win:create_window_handle DPI context 0x22 not implemented
+MESA-EGL: warning: pci id for fd 43: 10de:2702, driver (null)
+pci id for fd 44: 10de:2702, driver (null)
+pci id for fd 45: 10de:2702, driver (null)
+MESA-EGL: warning: egl: failed to create dri2 screen
+MESA-EGL: warning: pci id for fd 43: 10de:2702, driver (null)
+pci id for fd 44: 10de:2702, driver (null)
+pci id for fd 45: 10de:2702, driver (null)
+MESA-EGL: warning: egl: failed to create dri2 screen
+MESA-EGL: warning: pci id for fd 43: 10de:2702, driver (null)
+0158:fixme:ntdll:NtQuerySystemInformation info_class SYSTEM_PERFORMANCE_INFORMATION
+06:14:45.816  [host] adapter 0: NVIDIA GeForce RTX 4080 SUPER vendor=0x10DE
+06:14:45.903  [host] DRED settings unavailable (settings1=0x80004002, settings=0x80004002)
+06:14:45.903  [pure] standalone D3D12 device ready; no swapchain or carrier modules
+0158:fixme:d3dkmt:NtGdiDdDDIQueryAdapterInfo type 48 not handled.
+0158:fixme:d3dkmt:NtGdiDdDDIQueryAdapterInfo type 48 not handled.
+0158:fixme:cryptasn:CryptDecodeObjectEx Unsupported decoder for lpszStructType 1.3.6.1.4.1.311.2.1.4
+0158:fixme:cryptasn:CryptDecodeObjectEx Unsupported decoder for lpszStructType 1.3.6.1.4.1.311.2.1.4
+06:14:45.926  [host] NVSDK_NGX_D3D12_Init -> 0xBAD00002 (?)
+06:14:45.926  [host] Init_with_ProjectID -> 0xBAD00002 (?)
+06:14:45.926  [host] NGX unavailable
+
+  exit code: 1   elapsed: 0s
+
+--- verdict ---
+  [31m✗[0m the worker exited 1
+  [32m✓[0m produced dlss5-feed-host.log (7 lines)
+  [31m✗[0m NGX init failed: 06:14:45.926  [host] NVSDK_NGX_D3D12_Init -> 0xBAD00002 (?)
+  [31m✗[0m feature 18 was never attempted
+  [31m✗[0m no evaluation summary — the test loop did not finish
+
+--- the log's own explanation ---
+  06:14:45.903  [host] DRED settings unavailable (settings1=0x80004002, settings=0x80004002)
+  06:14:45.926  [host] NVSDK_NGX_D3D12_Init -> 0xBAD00002 (?)
+  06:14:45.926  [host] Init_with_ProjectID -> 0xBAD00002 (?)
+  06:14:45.926  [host] NGX unavailable
+
+  artifacts -> test-results/20260916T051433Z/raw/
+
+==============================================================
+ RESULT: FAIL — stop here. The port is not viable until this passes.
+ The log above names the stage. Do not build downstream on this.
+==============================================================
