@@ -31,6 +31,70 @@ killed the port outright; it is cleared.
 
 ---
 
+# Round 14 — the split was measuring nothing, the copy is 11% of the grab
+
+`20260916T204919Z` reported:
+
+```
+capture   capture 125.1ms  send 71.6ms  recv 43.5ms  display 4.0ms  (244.3ms/frame, 4.1 fps)
+capture split: wait 125.1ms  read 0.0ms
+```
+
+**`read 0.0ms` is the tell, and it means the split was worthless.** A buffered
+`read(n)` blocks until it has all n bytes, so one call swallows the entire
+transfer and everything lands in `wait` regardless of who is slow. The number
+looked like a measurement and was not one.
+
+Fixed by reading with `read1`, which returns as soon as data is available, and
+verified by driving the real read path from two real producers:
+
+```
+pipe stocked (producer ahead of us)    wait 0.1ms   read  18.9ms
+producer dribbling, ~120ms per frame   wait 0.1ms   read 159.1ms
+```
+
+So the discriminator is **`read`**: ~19ms at 2560x1440 means we are draining a
+stocked pipe at memory speed, and far above that means the bytes arrived slowly.
+A test pins both cases, because without one the broken version passed for a
+measurement.
+
+## Which says the compositor is the limit
+
+The split was fixed after the run, so it has not yet been reported from the box.
+But the answer is already available from a benchmark that does not need the box:
+copying a 14.7MB frame out of a stocked pipe costs **13-19ms** here (1108 MB/s),
+which is ~11% of the 125ms grab.
+
+The rest of the argument is backpressure, and it is the part that settles it. If
+the portal were producing at 60fps while we consumed at 4, the leaky queue would
+keep the pipe stocked and the grab would cost about what a stocked pipe costs —
+15-20ms. It costs 125ms. For that to be our copy, our copy would have to be
+running at 118 MB/s, which is a tenth of what the same code does on the same box
+with a stocked pipe.
+
+So the portal path delivers roughly **3-8 fps at 2560x1440** — 325ms per frame in
+the run before, 125ms in this one, with no code change between them, so the rate
+varies too. The pass cannot run faster than frames arrive, and neither can
+anything else.
+
+That makes the capture the blocker for the GeForce Now target, outranking
+everything established about the pass so far. It also gives the user's original
+instinct — capture a smaller window — a reason to be right that neither of us
+had: the compositor's cost scales with the frame size, so capturing only the game
+window instead of a 2560x1440 desktop would raise the ceiling roughly in
+proportion to the pixels removed. Not because the pass upscales, which it does
+not, but because the capture is the bottleneck and it is priced per pixel.
+
+## And the push failure was the terminal, not GitHub
+
+`--push` runs `git push` from a script, which has no TTY. A credential helper
+that prompts works from the shell and cannot work there, which surfaces as
+"wrong credentials". `run_tests.sh` now honours `NS_GIT_ASKPASS` (defaulting to
+`~/.neuralscreen/github-askpass.sh`) and says so when the script is missing,
+instead of leaving the failure looking like GitHub's fault.
+
+---
+
 # Round 13 — work scale pays, MOTS does not, and the capture is the ceiling
 
 `20260916T190758Z`. The first run with both new variants:

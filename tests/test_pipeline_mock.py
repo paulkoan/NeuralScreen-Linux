@@ -212,6 +212,58 @@ def test_a_source_that_cannot_split_says_so(fake_capture, fake_display,
     assert "capture_read" not in t
 
 
+def test_the_capture_split_separates_a_stocked_pipe_from_a_slow_producer():
+    """The split is only worth printing if it actually discriminates.
+
+    Checked against two real producers driving the real read path (no portal —
+    the object is built directly, since only the pipe matters here):
+
+      a stocked pipe          -> we just copy it, so `read` is small
+      a dribbling producer    -> the bytes arrive slowly, so `read` carries it
+
+    The first version of this used a plain buffered read, which blocks for the
+    whole request and reported read 0.0ms for both. Without this test that
+    would have looked like a measurement.
+    """
+    import subprocess
+    import sys
+
+    from minimal.capture_wayland import PortalCapture
+
+    w, h = 320, 180
+    need = w * h * 4
+
+    def grab_from(writer: str):
+        proc = subprocess.Popen([sys.executable, "-c", writer],
+                                stdout=subprocess.PIPE)
+        cap = object.__new__(PortalCapture)     # no portal needed for this
+        cap.width, cap.height = w, h
+        cap._proc = proc
+        cap._stderr = None
+        cap.last_wait = cap.last_read = None
+        out = cap.grab()
+        proc.wait()
+        return out, cap
+
+    frame, cap = grab_from(
+        f"import sys\nsys.stdout.buffer.write(b'\\x7f' * {need})\n"
+        f"sys.stdout.buffer.flush()\n")
+    assert frame.shape == (h, w, 4)
+    assert cap.last_read is not None and cap.last_read < 0.10, (
+        f"a stocked pipe should copy quickly, read was {cap.last_read}")
+
+    # Four chunks with a pause after each: the producer, not us, sets the pace.
+    frame, cap = grab_from(
+        f"import sys, time\n"
+        f"for _ in range(4):\n"
+        f"    sys.stdout.buffer.write(b'\\x7f' * ({need} // 4))\n"
+        f"    sys.stdout.buffer.flush()\n"
+        f"    time.sleep(0.08)\n")
+    assert frame.shape == (h, w, 4)
+    assert cap.last_read is not None and cap.last_read > 0.15, (
+        f"a slow producer should show up in read, read was {cap.last_read}")
+
+
 # --- the worker wrapper ---------------------------------------------------
 
 def test_worker_starts_and_sends_its_header(mock_worker_cmd):

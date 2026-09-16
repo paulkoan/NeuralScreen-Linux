@@ -173,8 +173,8 @@ def main(argv: list[str] | None = None) -> int:
     if "capture_wait" in t:
         print(f"capture split: wait {1000 * t['capture_wait']:.1f}ms  "
               f"read {1000 * t['capture_read']:.1f}ms   "
-              f"(wait = the frame arriving from the compositor, "
-              f"read = our copy of it)")
+              f"(read ~19ms at 2560x1440 means we are draining a stocked pipe; "
+              f"read far above that means the compositor was dribbling)")
     if args.save_before:
         print(f"  before -> {args.save_before}")
     if args.save_after:

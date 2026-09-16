@@ -143,21 +143,38 @@ class PortalCapture:
     def grab(self) -> np.ndarray:
         """One frame as (H, W, 4) uint8 RGBA.
 
-        The grab is timed in two halves, because a slow one means opposite
-        things depending on which half is slow:
+        The grab is timed in two halves:
 
-          last_wait  until the first bytes of the frame arrive. That is the
-                     producer — the compositor handing a frame over through
-                     PipeWire.
-          last_read  the rest of the frame. That is throughput — the copy out
-                     of the pipe, which is ours.
+          last_wait  until the frame's first bytes arrive.
+          last_read  draining the rest of the frame out of the pipe.
 
-        Measured on the box, the portal grab is 325ms per frame at 2560x1440. A
-        single number cannot say whether that is a compositor running at 3 fps
-        or our own copy being slow, and the fix is completely different. (It
-        also catches a third case: if the wait is always ~0 the producer is
-        ahead of us, and the capture leg is measuring our loop's pace rather
-        than the compositor's.)
+        The reading of those two is not obvious and the first attempt got it
+        wrong. `BufferedReader.read(n)` blocks until it has all n bytes, so a
+        single read call swallows the whole transfer and `read` comes out as
+        0.0ms no matter who is slow — which is exactly what the box reported
+        (wait 125.1ms, read 0.0ms). So the loop uses `read1`, which returns as
+        soon as data is available, and the two halves separate.
+
+        With read1 the split separates the two cases, verified by driving this
+        same loop from a stocked pipe and from a producer that dribbles a frame
+        out over 120ms:
+
+          pipe stocked (producer ahead of us)   wait 0.1ms   read  18.9ms
+          producer dribbling, ~120ms per frame  wait 0.1ms   read 159.1ms
+
+        So the discriminator is `read`:
+
+          read ~19ms (this box, 2560x1440)  the pipe was stocked and we are
+                                            draining it at memory speed, so the
+                                            producer is keeping up and the
+                                            limit is ours
+          read >> that                      the bytes arrived slowly, so the
+                                            compositor is the limit
+
+        `wait` is ~0 whenever the producer streams continuously, which it does;
+        a large wait means it stalls between frames. The first version of this
+        used a plain buffered read and reported read 0.0ms for every case,
+        because read(n) blocks for the whole request and swallows the split.
         """
         if self._proc is None or self._proc.stdout is None:
             raise CaptureError("the capture pipeline is not running")
@@ -190,10 +207,12 @@ class PortalCapture:
             raise CaptureError("the capture pipeline is not running")
         # When the first chunk comes back is when the frame started arriving —
         # the difference between the compositor being slow and our copy being
-        # slow, which `grab` records as last_wait/last_read.
+        # slow. read1 (not read) because read blocks for the WHOLE request, which
+        # hides the split entirely.
+        read1 = getattr(stream, "read1", None)
         t0 = time.monotonic()
         while got < need:
-            chunk = stream.read(need - got)
+            chunk = read1(need - got) if read1 is not None else stream.read(need - got)
             if not chunk:
                 raise CaptureError(
                     "the PipeWire pipeline ended before a whole frame arrived "

@@ -297,6 +297,23 @@ if [ "$WANT_PUSH" = "1" ] && [ "$WANT_REPORT" = "1" ]; then
         if git diff --cached --quiet -- "$OUT" 2>/dev/null; then
             PUSH_STATUS="nothing new to commit"
         else
+            # The push below has no terminal, so git cannot ask for anything. A
+            # credential helper that PROMPTS works from your shell and fails
+            # here — typically as "wrong credentials" or "could not read
+            # Password" — because there is no TTY to prompt on. Point
+            # NS_GIT_ASKPASS at a script that prints the token and the push
+            # works unattended; that is the same mechanism this repo's own
+            # pushes use.
+            ASKPASS="${NS_GIT_ASKPASS:-$HOME/.neuralscreen/github-askpass.sh}"
+            if [ -x "$ASKPASS" ]; then
+                export GIT_ASKPASS="$ASKPASS"
+                export GIT_TERMINAL_PROMPT=0
+                echo "  auth: GIT_ASKPASS=$ASKPASS"
+            else
+                echo "  auth: no askpass script at $ASKPASS (a prompting"
+                echo "        credential helper cannot work here — see the notes"
+                echo "        in this script about NS_GIT_ASKPASS)"
+            fi
             if git commit -q -m "test results $STAMP" -- "$OUT" 2>/dev/null; then
                 echo "  committed: test results $STAMP"
                 PUSH_OUT="$(git push origin "$BRANCH" 2>&1)"
@@ -307,6 +324,10 @@ if [ "$WANT_PUSH" = "1" ] && [ "$WANT_REPORT" = "1" ]; then
                 else
                     # The commit is safe locally; do not pretend otherwise.
                     PUSH_STATUS="push FAILED — commit is local, push it by hand"
+                    echo "  note: the commit is safe locally. If this was an"
+                    echo "        authentication failure, it is the missing"
+                    echo "        terminal rather than GitHub: set NS_GIT_ASKPASS"
+                    echo "        to an askpass script and re-run with --push."
                 fi
             else
                 PUSH_STATUS="commit failed (is user.name/user.email set?)"
