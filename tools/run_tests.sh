@@ -164,6 +164,12 @@ if [ "$WANT_M0" = "1" ] && [ "$WANT_REPORT" = "1" ]; then
 fi
 
 # --- M0 gate, run separately so its log is captured verbatim ----------------
+# Two variants per round, because each round-trip costs a manual run on the GPU
+# box. `direct` is the default path: create goes through nvngx_dlssnr.dll's own
+# export, evaluate through the SDK helper's Core entry point. `via-core` sends
+# both through NGX Core. If direct yields 0xBAD00004 FAIL_FeatureNotFound and
+# via-core passes, the handle is being registered with one runtime and evaluated
+# by the other, and the fix belongs in the worker rather than in the environment.
 if [ "$WANT_M0" = "1" ] && [ "$WANT_REPORT" = "1" ]; then
     if [ -x tools/m0_env_gate.sh ]; then
         echo ""
@@ -171,6 +177,23 @@ if [ "$WANT_M0" = "1" ] && [ "$WANT_REPORT" = "1" ]; then
         echo " M0 environment gate (worker --test under Wine)"
         echo "=============================================================="
         tools/m0_env_gate.sh --out "$OUT/raw" 2>&1 | tee "$OUT/raw/m0_gate.txt"
+        M0_RC=${PIPESTATUS[0]}
+        echo "     direct exit: $M0_RC (0=pass 1=fail 2=blocked)"
+        # The copy in the pytest block above runs BEFORE this gate, so the log it
+        # checks for is from the previous run or absent. Copy again here, or the
+        # report lists dlss5-feed-host.log as an artifact it never carries.
+        cp -f native/dlss5-feed-host.log "$OUT/raw/" 2>/dev/null || true
+
+        echo ""
+        echo "=============================================================="
+        echo " M0 environment gate — variant: NS_NGX_VIA_CORE=1"
+        echo "=============================================================="
+        mkdir -p "$OUT/raw/via-core"
+        tools/m0_env_gate.sh --out "$OUT/raw/via-core" --via-core 2>&1 \
+            | tee "$OUT/raw/m0_gate_via_core.txt"
+        VIA_RC=${PIPESTATUS[0]}
+        echo "     via-core exit: $VIA_RC (0=pass 1=fail 2=blocked)"
+        cp -f native/dlss5-feed-host.log "$OUT/raw/via-core/" 2>/dev/null || true
     fi
 fi
 
@@ -200,7 +223,9 @@ if [ "$WANT_REPORT" = "1" ]; then
         echo "| \`raw/environment.txt\` | GPU, driver, Wine, Vulkan, session |"
         [ -f "$OUT/raw/wine_ngx_setup.txt" ] && echo "| \`raw/wine_ngx_setup.txt\` | what the NGX/DXVK setup applied |"
         [ -f "$OUT/raw/wine_ngx_environment.txt" ] && echo "| \`raw/wine_ngx_environment.txt\` | the prefix after setup |"
-        [ -f "$OUT/raw/m0_gate.txt" ] && echo "| \`raw/m0_gate.txt\` | M0 gate output |"
+        [ -f "$OUT/raw/m0_gate.txt" ] && echo "| \`raw/m0_gate.txt\` | M0 gate output (direct path) |"
+        [ -f "$OUT/raw/m0_gate_via_core.txt" ] && echo "| \`raw/m0_gate_via_core.txt\` | M0 gate output with NS_NGX_VIA_CORE=1 |"
+        [ -f "$OUT/raw/via-core/dlss5-feed-host.log" ] && echo "| \`raw/via-core/\` | same artifacts for the via-core variant |"
         [ -f "$OUT/raw/dlss5-feed-host.log" ] && echo "| \`raw/dlss5-feed-host.log\` | the worker's own log |"
         echo ""
         echo "## What to do with this"

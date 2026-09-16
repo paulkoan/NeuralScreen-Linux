@@ -9,6 +9,7 @@ gate: each failure names the next missing piece.
 | `20260916T051433Z` | `0xBAD00002` FAIL_PlatformError | NGX Core now loads; NVAPI cannot report the GPU to it |
 | `20260916T063248Z` | `0xBAD00002` still, but NVAPI now *explains itself* | DXVK's dxgi.dll was never installed — the setup had only been run with `--check` |
 | `20260916T064324Z` | `0xBAD00002` unchanged | a dxgi.dll **was** present, so the install was skipped — but it was Wine's builtin, not DXVK's |
+| `20260916T065756Z` | `0xBAD00004` FAIL_FeatureNotFound | **init and feature 18 create now succeed**; the failure has moved to evaluate |
 
 **What the first run proved and the second confirmed** — the expensive half:
 
@@ -24,7 +25,99 @@ killed the port outright; it is cleared.
 
 ---
 
-# Round 4 — presence is not provenance
+# Round 5 — M0 answers YES, and the failure moves to evaluate
+
+The DXVK fix landed and it was the unlock. From `20260916T065756Z`:
+
+```
+✓ wine: wine-11.17 (Staging)          ✓ GPU: RTX 4080 SUPER, 615.71.09, cc 8.9
+✓ installed DXVK dxgi.dll (5.2M)      ✓ installed vkd3d-proton d3d12core.dll (5.7M)
+     after: DXVK v3.1.1 / vkd3d-proton 3.0.1 / dxvk-nvapi v0.9.2
+
+info:nvapi64:DXVK-NVAPI v0.9.2 NVAPI gcc 16.1.0 x86_64 release (nvngx.dll)
+info:nvapi64:NvAPI Device: NVIDIA GeForce RTX 4080 SUPER (615.71.9)
+info:nvapi64:<-NvAPI_Initialize: OK
+[host] NVSDK_NGX_D3D12_Init -> 0x00000001 (Success)
+[pure] direct DLSSNR Init_Ext -> 0x00000001 (Success)
+[pure] direct feature 18 ready: 640x360 preset=0 result=0x00000001
+[host] evaluate failed 0xBAD00004 (?)
+[host] --test finished: 0/300 evaluates succeeded
+```
+
+**The make-or-break question is answered: NGX initialises under Wine, and feature
+18 is created.** Every previous round failed at or before init. This is the first
+run that got past it, and `0xBAD00002` is gone.
+
+## The new failure: 0xBAD00004 FAIL_FeatureNotFound
+
+The host's own `NgxResultName` table has no case for it, hence the `(?)`. NVIDIA's
+header settles it (`NVIDIA/DLSS`, `include/nvsdk_ngx_defs.h`):
+
+```
+NVSDK_NGX_Result_FAIL_FeatureNotFound = NVSDK_NGX_Result_Fail | 4,   // 0xBAD00004
+```
+
+"Feature not found" for a feature that was created successfully two lines earlier
+is worth reading closely, because **create and evaluate do not go to the same
+place**:
+
+| step | symbol | comes from |
+|---|---|---|
+| create | `g_nr_create` | `GetProcAddress(nvngx_dlssnr.dll, "NVSDK_NGX_D3D12_CreateFeature")` |
+| evaluate | `NVSDK_NGX_D3D12_EvaluateFeature_C` | the SDK helper's Core entry point |
+
+`NGX_D3D12_EVALUATE_DLSS_EXT` is a `static inline` in the SDK's
+`nvsdk_ngx_helpers_d3d.h`: it packs the eval params into the parameter block and
+its last line is a call to `NVSDK_NGX_D3D12_EvaluateFeature_C` — the **Core**
+entry, not the NR runtime's. So the handle is registered with one runtime and
+evaluated by the other, and the Core does not know it.
+
+This also explains the one loose end from round 1: the host's import table has
+**no NGX symbols at all** (`objdump -p native/nvngx.dll` — 25 DLLs, none of them
+NGX). Every NGX entry point is resolved by name at runtime, which is why
+`NVSDK_NGX_D3D12_*` shows up as string literals in the binary.
+
+## The experiment
+
+`NS_NGX_VIA_CORE=1` is upstream's own switch (see the comment above the
+`NS_NGX_VIA_CORE` block in `dlss5-feed-host64.cpp`): it routes create *and*
+evaluate through NGX Core. If the mismatch above is the whole story, via-core
+should get past evaluate — and it also tests upstream's stated goal of dropping
+the "the process must be named nvngx.dll" constraint.
+
+So the gate now takes `--via-core`, and `run_tests.sh --report --m0` runs **both
+variants in one report**:
+
+| artifact | variant |
+|---|---|
+| `raw/m0_gate.txt` | direct (default) |
+| `raw/m0_gate_via_core.txt` | `NS_NGX_VIA_CORE=1` |
+| `raw/via-core/` | that variant's own env + worker log |
+
+Both exit codes are printed in the run's stdout.
+
+## Confidence
+
+Init and feature creation are **verified**, not inferred: both report
+`0x00000001 (Success)` with the GPU named by NVAPI. The evaluate diagnosis is
+**inferred** from the two call sites and confirmed against NVIDIA's header for
+the result code; the variant run is what will settle it.
+
+If via-core also fails at evaluate, the next suspects are the `[arch] patch`
+(`architecture 0x190 (spoofed to the DLL's accepted value)` — the host already
+patches NGX's view of the GPU, which is a strong smell) and the eval params
+struct: `Evaluate()` fills `NVSDK_NGX_D3D12_DLSS_Eval_Params`, which is the
+super-resolution shape, for what is feature 18.
+
+## Also fixed this round
+
+`run_tests.sh` copied `native/dlss5-feed-host.log` into `raw/` **before** the
+gate produced it, so every report listed the worker log as an artifact it did
+not carry. It is now copied after the gate, for both variants.
+
+---
+
+# Round 4 — presence is not provenance (kept)
 
 The round-3 fix worked (the setup applied: `copied nvngx.dll -> system32`,
 `4/4 registry values written`), but `0xBAD00002` did not move. The setup said:

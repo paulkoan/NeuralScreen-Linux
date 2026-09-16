@@ -24,6 +24,7 @@ NR_DLL="$NATIVE/nvngx_dlssnr.dll"
 LOG="$NATIVE/dlss5-feed-host.log"
 
 OUT=""
+VIA_CORE=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --out)
@@ -32,14 +33,23 @@ while [ $# -gt 0 ]; do
                 exit 2
             fi
             OUT="$2"; mkdir -p "$OUT"; shift 2 ;;
+        --via-core) VIA_CORE=1; shift ;;
         -h|--help)
             cat <<'USAGE'
 m0_env_gate.sh — the M0 environment gate: can the DLSS5 NR worker run under Wine?
 
   tools/m0_env_gate.sh                 run the gate, print the verdict
   tools/m0_env_gate.sh --out DIR       also copy the logs into DIR
+  tools/m0_env_gate.sh --via-core      set NS_NGX_VIA_CORE=1 for the worker
 
 Exit codes:  0 = PASS   1 = FAIL   2 = BLOCKED (prerequisites missing)
+
+--via-core is a diagnostic variant, not a fix. It makes feature 18's create AND
+evaluate both go through NGX Core. Without it, create goes through
+nvngx_dlssnr.dll's own export while evaluate goes through the SDK helper's Core
+entry point — two different runtimes, and a handle registered with one is not
+known to the other (0xBAD00004 FAIL_FeatureNotFound). Running both variants in
+one report says whether that mismatch is the whole story.
 
 For a full report (pytest + this gate + an environment snapshot) use instead:
 
@@ -135,9 +145,24 @@ export DXVK_ENABLE_NVAPI="${DXVK_ENABLE_NVAPI:-1}"
 # Ask dxvk-nvapi to log, so 'NvAPI_Initialize' / 'NvAPI_GPU_GetArchInfo' show up
 # in the worker's output and prove whether NVAPI answered.
 export DXVK_NVAPI_LOG_LEVEL="${DXVK_NVAPI_LOG_LEVEL:-info}"
+# --via-core: route feature 18's create AND evaluate through NGX Core.
+#
+# Why this is worth a variant run: in the default path create and evaluate do not
+# go to the same place. Create calls g_nr_create, which is
+# GetProcAddress(nvngx_dlssnr.dll, "NVSDK_NGX_D3D12_CreateFeature"). Evaluate goes
+# through the SDK's NGX_D3D12_EVALUATE_DLSS_EXT helper (nvsdk_ngx_helpers_d3d.h),
+# whose inline body ends in a call to NVSDK_NGX_D3D12_EvaluateFeature_C — the
+# Core entry point. A handle registered by the NR runtime and evaluated by the
+# Core is not known to the Core, which is exactly
+# NVSDK_NGX_Result_FAIL_FeatureNotFound = NVSDK_NGX_Result_Fail | 4 = 0xBAD00004.
+# Confirmed against NVIDIA/DLSS include/nvsdk_ngx_defs.h.
+if [ "$VIA_CORE" = "1" ]; then
+    export NS_NGX_VIA_CORE=1
+fi
 echo "  WINEPREFIX=$WINEPREFIX"
 echo "  WINEDLLOVERRIDES=$WINEDLLOVERRIDES"
 echo "  DXVK_ENABLE_NVAPI=$DXVK_ENABLE_NVAPI"
+echo "  NS_NGX_VIA_CORE=${NS_NGX_VIA_CORE:-<unset>}"
 
 # The worker's NGX loader finds NGX Core through the registry on Wine (its D3DKMT
 # and same-directory paths both fail there). Warn if that is not set up yet.
@@ -329,6 +354,7 @@ if [ -n "$OUT" ]; then
         echo "WINEDLLOVERRIDES:  ${WINEDLLOVERRIDES:-}"
         echo "DXVK_ENABLE_NVAPI: ${DXVK_ENABLE_NVAPI:-}"
         echo "DXVK_NVAPI_LOG_LEVEL: ${DXVK_NVAPI_LOG_LEVEL:-}"
+        echo "NS_NGX_VIA_CORE:   ${NS_NGX_VIA_CORE:-<unset>}"
         echo "DISPLAY:           ${DISPLAY:-}"
         echo "WAYLAND_DISPLAY:   ${WAYLAND_DISPLAY:-}"
         echo "XDG_SESSION_TYPE:  ${XDG_SESSION_TYPE:-}"
