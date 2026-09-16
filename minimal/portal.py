@@ -162,6 +162,24 @@ def screencast_version() -> int:
 # as a (signature, value) pair, and getting one of those wrong produces a
 # marshalling error from deep inside the bus code that says nothing useful.
 
+def with_handle_token(args: tuple, token: str) -> tuple:
+    """Return `args` with `handle_token` set in its trailing vardict.
+
+    The value must be a variant pair, `("s", token)`.
+
+    A bare string here is a real mistake this had: jeepney serialises a variant
+    by unpacking `(signature, value)`, so a plain string is unpacked instead —
+    `sig, data = "nsl_create"` — and the handshake dies on its first call with
+    `too many values to unpack (expected 2)`, naming neither the option nor the
+    call it came from. Every value in an `a{sv}` dict has this shape.
+    """
+    body = list(args)
+    opts = dict(body[-1])
+    opts["handle_token"] = ("s", token)
+    body[-1] = opts
+    return tuple(body)
+
+
 def sources_options(*, types: int = SOURCE_MONITOR, multiple: bool = False,
                     cursor_mode: int = CURSOR_EMBEDDED,
                     restore_token: str | None = None) -> dict:
@@ -221,14 +239,11 @@ def _request(conn, queue, addr, rule, method, signature, args, token, timeout):
     handle is predictable, but the returned path is used rather than the
     predicted one.
     """
-    body = list(args)
-    opts = dict(body[-1])
-    opts["handle_token"] = token
-    body[-1] = opts
+    body = with_handle_token(args, token)
 
     with conn.filter(rule, queue=queue):
         reply = conn.send_and_get_reply(
-            new_method_call(addr, method, signature, tuple(body)), timeout=timeout)
+            new_method_call(addr, method, signature, body), timeout=timeout)
         handle = reply.body[0]
         signal = conn.recv_until_filtered(queue, timeout=timeout)
 
@@ -314,4 +329,7 @@ def open_screencast(*, types: int = SOURCE_MONITOR, cursor_mode: int = CURSOR_EM
         raise
     except Exception as exc:
         conn.close()
-        raise PortalError(f"the portal handshake failed: {exc}") from exc
+        # The type matters: a bare message like "too many values to unpack"
+        # reads as prose and hides that it is a marshalling failure.
+        raise PortalError(
+            f"the portal handshake failed ({type(exc).__name__}): {exc}") from exc

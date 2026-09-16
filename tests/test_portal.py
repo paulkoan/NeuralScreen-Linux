@@ -51,6 +51,74 @@ def test_sources_options_do_not_send_a_blank_restore_token():
     assert "restore_token" not in portal.sources_options(restore_token="")
 
 
+# --- handle_token, which is where the handshake actually broke -------------
+
+def test_handle_token_is_a_variant_pair_not_a_bare_string():
+    """A bare string here is what killed the handshake on the GPU box."""
+    out = portal.with_handle_token(({"session_handle_token": ("s", "x")},), "tok")
+    assert out[-1]["handle_token"] == ("s", "tok")
+
+
+def test_handle_token_overrides_whatever_was_already_there():
+    out = portal.with_handle_token(({"handle_token": ("s", "old")},), "new")
+    assert out[-1]["handle_token"] == ("s", "new")
+
+
+def test_handle_token_does_not_mutate_the_caller_s_arguments():
+    args = ({"a": ("s", "b")},)
+    portal.with_handle_token(args, "tok")
+    assert "handle_token" not in args[0], "the caller's dict was modified in place"
+
+
+def _call_bodies():
+    """The exact arguments open_screencast sends, per call."""
+    return [
+        ("CreateSession", "a{sv}",
+         ({"session_handle_token": ("s", "nsl_port")},), "nsl_create"),
+        ("SelectSources", "oa{sv}",
+         ("/org/freedesktop/portal/desktop/session/1_1/nsl", portal.sources_options()), "nsl_select"),
+        ("Start", "osa{sv}",
+         ("/org/freedesktop/portal/desktop/session/1_1/nsl", "", {}), "nsl_start"),
+    ]
+
+
+def test_every_call_body_serialises():
+    """The check that would have caught it: hand each body to jeepney's marshaller.
+
+    A bad variant raises from deep inside the serialiser — `sig, data =
+    "nsl_create"` — naming neither the option nor the call. Nothing short of
+    serialising the real message exposes it, which is why it survived to the GPU
+    box: every test up to this point only ever inspected the dicts.
+    """
+    import array
+    from jeepney import DBusAddress, new_method_call
+
+    addr = DBusAddress(portal.PORTAL_PATH, bus_name=portal.PORTAL_BUS,
+                       interface=portal.SCREENCAST_IFACE)
+    for method, signature, args, token in _call_bodies():
+        body = portal.with_handle_token(args, token)
+        msg = new_method_call(addr, method, signature, body)
+        # serial is normally assigned by the connection; a standalone message has
+        # to be given one or the header cannot be packed.
+        msg.serialise(serial=1, fds=array.array("i"))     # must not raise
+
+
+def test_the_marshaller_really_does_reject_a_bare_string():
+    """Prove the check above bites, by feeding it the original bug."""
+    import array
+    from jeepney import DBusAddress, new_method_call
+
+    addr = DBusAddress(portal.PORTAL_PATH, bus_name=portal.PORTAL_BUS,
+                       interface=portal.SCREENCAST_IFACE)
+    msg = new_method_call(addr, "CreateSession", "a{sv}",
+                          ({"handle_token": "not-a-variant"},))
+    with pytest.raises((ValueError, TypeError)) as exc:
+        msg.serialise(serial=1, fds=array.array("i"))
+    # The same message the GPU box printed.
+    assert "unpack" in str(exc.value), (
+        f"expected the unpacking failure the handshake hit, got: {exc.value}")
+
+
 # --- the Start response ----------------------------------------------------
 
 def test_parse_streams_reads_serial_and_size():
