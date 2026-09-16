@@ -1,10 +1,15 @@
 #!/bin/bash
 # run_tests.sh — run the MVP test suite, optionally write and push a report.
 #
-#   tools/run_tests.sh                        # run the tests, print the summary
-#   tools/run_tests.sh --report               # also write test-results/<timestamp>/
-#   tools/run_tests.sh --report --m0          # include the M0 environment gate
-#   tools/run_tests.sh --report --m0 --push   # and push the report when done
+#   tools/run_tests.sh                          # run the tests, print the summary
+#   tools/run_tests.sh --report                 # also write test-results/<timestamp>/
+#   tools/run_tests.sh --report --m0            # include the M0 environment gate
+#   tools/run_tests.sh --report --m0 --m1       # and the live-pipeline gate
+#   tools/run_tests.sh --report --m0 --m1 --push  # and push the report
+#
+# --m0 runs the synthetic worker self-test. --m1 runs the actual MVP end to end
+# (python -m minimal) and measures whether the pass changed the frame. They are
+# not the same APIs — see the header of tools/m1_pipeline_gate.sh.
 #
 # The report directory carries the human summary plus every raw log, so results
 # travel as files instead of pasted text. See docs/MVP-PLAN.md.
@@ -50,14 +55,16 @@ fi
 
 WANT_REPORT=0
 WANT_M0=0
+WANT_M1=0
 WANT_PUSH=0
 for arg in "$@"; do
     case "$arg" in
         --report) WANT_REPORT=1 ;;
         --m0)     WANT_M0=1 ;;
+        --m1)     WANT_M1=1; WANT_REPORT=1 ;;
         --push)   WANT_PUSH=1; WANT_REPORT=1 ;;
         -h|--help)
-            sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+            sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
             exit 0 ;;
         *) echo "unknown option: $arg" >&2; exit 2 ;;
     esac
@@ -197,6 +204,27 @@ if [ "$WANT_M0" = "1" ] && [ "$WANT_REPORT" = "1" ]; then
     fi
 fi
 
+# --- M1 gate: the live path, end to end -------------------------------------
+# Separate from M0 because it is a different set of calls. M0's --test creates
+# feature 18 through the NR runtime and then evaluates it through NGX Core's
+# entry point, which fails with 0xBAD00004 FAIL_FeatureNotFound. The real
+# pipeline (EvaluateVideo, reached by `wine nvngx.dll --live`) uses the NR
+# runtime for both. This gate therefore runs the MVP and asks the only question
+# that matters for the deliverable: did the frame come out of the pass changed?
+if [ "$WANT_M1" = "1" ] && [ "$WANT_REPORT" = "1" ]; then
+    if [ -x tools/m1_pipeline_gate.sh ]; then
+        echo ""
+        echo "=============================================================="
+        echo " M1 — live pipeline gate (MVP end to end)"
+        echo "=============================================================="
+        mkdir -p "$OUT/raw/m1"
+        tools/m1_pipeline_gate.sh --out "$OUT/raw/m1" 2>&1 \
+            | tee "$OUT/raw/m1_gate.txt"
+        M1_RC=${PIPESTATUS[0]}
+        echo "     m1 exit: $M1_RC (0=pass 1=fail 2=blocked)"
+    fi
+fi
+
 # --- summary ----------------------------------------------------------------
 SUMMARY="$OUT/report.md"
 if [ "$WANT_REPORT" = "1" ]; then
@@ -226,6 +254,10 @@ if [ "$WANT_REPORT" = "1" ]; then
         [ -f "$OUT/raw/m0_gate.txt" ] && echo "| \`raw/m0_gate.txt\` | M0 gate output (direct path) |"
         [ -f "$OUT/raw/m0_gate_via_core.txt" ] && echo "| \`raw/m0_gate_via_core.txt\` | M0 gate output with NS_NGX_VIA_CORE=1 |"
         [ -f "$OUT/raw/via-core/dlss5-feed-host.log" ] && echo "| \`raw/via-core/\` | same artifacts for the via-core variant |"
+        [ -f "$OUT/raw/m1_gate.txt" ] && echo "| \`raw/m1_gate.txt\` | M1 gate: the live path end to end |"
+        [ -f "$OUT/raw/m1/before.png" ] && echo "| \`raw/m1/before.png\` | the frame captured from the screen |"
+        [ -f "$OUT/raw/m1/after.png" ] && echo "| \`raw/m1/after.png\` | the same frame after the NR pass |"
+        [ -f "$OUT/raw/m1/analysis.txt" ] && echo "| \`raw/m1/analysis.txt\` | how much the pass changed the frame |"
         [ -f "$OUT/raw/dlss5-feed-host.log" ] && echo "| \`raw/dlss5-feed-host.log\` | the worker's own log |"
         echo ""
         echo "## What to do with this"

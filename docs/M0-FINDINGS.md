@@ -10,6 +10,7 @@ gate: each failure names the next missing piece.
 | `20260916T063248Z` | `0xBAD00002` still, but NVAPI now *explains itself* | DXVK's dxgi.dll was never installed — the setup had only been run with `--check` |
 | `20260916T064324Z` | `0xBAD00002` unchanged | a dxgi.dll **was** present, so the install was skipped — but it was Wine's builtin, not DXVK's |
 | `20260916T065756Z` | `0xBAD00004` FAIL_FeatureNotFound | **init and feature 18 create now succeed**; the failure has moved to evaluate |
+| `20260916T074715Z` | direct unchanged; **via-core fails earlier, at create** (`0xBAD0000B`) | NGX Core cannot create feature 18 at all — and `--test` evaluates through the Core, so M0 was measuring a path the product does not use |
 
 **What the first run proved and the second confirmed** — the expensive half:
 
@@ -25,7 +26,89 @@ killed the port outright; it is cleared.
 
 ---
 
-# Round 5 — M0 answers YES, and the failure moves to evaluate
+# Round 6 — the two paths are not the same path
+
+Both variants ran in one report (`20260916T074715Z`). The result refutes the
+easy form of the round-5 hypothesis and confirms the important part of it:
+
+| variant | create | evaluate |
+|---|---|---|
+| direct | ✓ `[pure] direct feature 18 ready ... result=0x00000001` | ✗ `0xBAD00004` |
+| via-core | ✗ `0xBAD0000B UnableToInitializeFeature` | never reached |
+
+`NS_NGX_VIA_CORE=1` is **not a fix** — it fails one step earlier. And that is the
+informative part:
+
+- **NGX Core cannot create feature 18 under Wine at all** (`0xBAD0000B`), while
+  the NR runtime can.
+- So `FAIL_FeatureNotFound` from the Core is exactly what you would expect. The
+  Core is the piece that does not know the handle, and it does not know it
+  because it never had it. Nothing here says the pass itself is broken.
+
+## The finding that matters: `--test` is not the product path
+
+Reading `dlss5-feed-host64.cpp` against the two call sites shows the M0 gate has
+been measuring a path the product does not use:
+
+| | create | evaluate |
+|---|---|---|
+| `--test` (`RunTest` → `Evaluate`) | `g_nr_create` — NR runtime | SDK macro `NGX_D3D12_EVALUATE_DLSS_EXT` → `NVSDK_NGX_D3D12_EvaluateFeature_C` — **NGX Core**, with the DLSS-SR `NVSDK_NGX_D3D12_DLSS_Eval_Params` |
+| `EvaluateVideo` (`--live`, what the MVP drives) | `g_nr_create` — NR runtime | `g_nr_evaluate` — **NR runtime**, with the `DLSSNR.*` parameter set and `nullptr` eval params |
+
+`--test` registers a feature with one runtime and evaluates it through another.
+The live path uses one runtime for both. The MVP launches
+`wine nvngx.dll --live`, so `python -m minimal` exercises `EvaluateVideo`.
+
+That makes the M0 `--test` evaluate failure a **proxy artifact**. It does not
+follow that the live path works — only that M0 cannot settle it. The gate's
+"PASS = 250/300 evaluates" criterion was testing a harness, not the deliverable.
+
+## Why not just fix `--test`
+
+Because the worker cannot be rebuilt from this repo:
+`native/dlss5-feed-host64.cpp` includes `spout_bridge.h` and `../src/feed_ipc.h`,
+and **neither is present**. There is no Makefile, CMakeLists or project file, and
+no cross-compiler on the analysis box. `native/nvngx.dll` is a prebuilt binary
+(156K, "built Sep 11 2026 17:26:14"). Chasing the `--test` path would mean
+reconstructing a Windows build for a synthetic harness that is not the product.
+
+## So: M1
+
+`tools/m1_pipeline_gate.sh` runs the actual MVP end to end and asks the only
+question that matters — **did the frame come out changed?**
+
+```
+python -m minimal --frames 30 --headless --save-before before.png --save-after after.png
+```
+
+then measures the pair. A no-op pass exits 0 and looks perfectly healthy, so the
+gate fails on: output byte-identical to input, output blank, or mean absolute
+difference below 0.05/255. Verified against four synthetic pairs (identical,
+blank, sub-threshold, real change) before landing — the identical and blank cases
+must FAIL, and do.
+
+`run_tests.sh --report --m0 --m1 --push` runs everything in one round-trip.
+
+## Confidence
+
+- NGX Core cannot create feature 18 under Wine: **verified** — `0xBAD0000B` from
+  the via-core variant, reproducible.
+- `--test` and the live path use different evaluate APIs: **verified** by
+  reading both call sites in the source.
+- That the live path therefore works: **not established.** It is the next thing
+  measured, and it may well fail the same way. The difference is that its
+  failure would be a real answer about the port rather than about a probe.
+
+## Also fixed
+
+The consistency test parametrised on whole script bodies, so pytest built each
+test ID out of an entire shell script and every report's summary line contained
+the contents of every script. Given a readable `ids=`, the summary line is a
+summary again.
+
+---
+
+# Round 5 — M0 answers YES, and the failure moves to evaluate (kept)
 
 The DXVK fix landed and it was the unlock. From `20260916T065756Z`:
 

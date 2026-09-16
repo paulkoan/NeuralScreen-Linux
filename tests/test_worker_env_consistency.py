@@ -60,7 +60,14 @@ def test_python_constant_is_usable_as_a_wine_override():
             f"{part!r} is not a valid WINEDLLOVERRIDES entry")
 
 
-@pytest.mark.parametrize("name,text", _sources() or [("(none)", "")])
+_SOURCES = _sources() or [("(none)", "")]
+
+
+# ids= is not cosmetic here: without it pytest builds each test ID from the
+# parameter VALUES, and `text` is an entire shell script. Every report's summary
+# line then contained the contents of every script, which made the report
+# unreadable — the one line a human is meant to scan first.
+@pytest.mark.parametrize("name,text", _SOURCES, ids=[n for n, _ in _SOURCES])
 def test_shell_scripts_use_the_same_overrides(name, text):
     """Every shell script that launches the worker carries the same string."""
     if not text:
