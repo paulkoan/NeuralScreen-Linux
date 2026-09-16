@@ -8,6 +8,7 @@ gate: each failure names the next missing piece.
 | `20260916T044806Z` | `0xBAD00001` FAIL_FeatureNotSupported | NGX Core not found at all |
 | `20260916T051433Z` | `0xBAD00002` FAIL_PlatformError | NGX Core now loads; NVAPI cannot report the GPU to it |
 | `20260916T063248Z` | `0xBAD00002` still, but NVAPI now *explains itself* | DXVK's dxgi.dll was never installed — the setup had only been run with `--check` |
+| `20260916T064324Z` | `0xBAD00002` unchanged | a dxgi.dll **was** present, so the install was skipped — but it was Wine's builtin, not DXVK's |
 
 **What the first run proved and the second confirmed** — the expensive half:
 
@@ -23,7 +24,69 @@ killed the port outright; it is cleared.
 
 ---
 
-# Round 3 — `0xBAD00002`, and NVAPI finally says why
+# Round 4 — presence is not provenance
+
+The round-3 fix worked (the setup applied: `copied nvngx.dll -> system32`,
+`4/4 registry values written`), but `0xBAD00002` did not move. The setup said:
+
+```
+✓ dxgi.dll present (248K)      ✓ d3d11.dll present (460K)
+✓ d3d12core.dll present (52K)  ✓ DXVK dxgi.dll + d3d11.dll already present
+```
+
+…and dxvk-nvapi still said *"Querying Vulkan entry point from DXGI factory
+failed, please ensure that DXVK's dxgi.dll (version 2.1 or newer) is present"*.
+
+Both statements were true. There **was** a `dxgi.dll` in `system32` — it was
+just **not DXVK's**. Downloading the pinned releases settles it:
+
+| file | the pinned release | what was in the prefix |
+|---|---|---|
+| DXVK `dxgi.dll` | 5,414,926 B (5.4 MB) | 248K |
+| DXVK `d3d11.dll` | 7,483,406 B (7.4 MB) | 460K |
+| vkd3d-proton `d3d12core.dll` | 5,963,790 B (5.9 MB) | 52K |
+| dxvk-nvapi `nvapi64.dll` | 2.0 MB | 2.0 MB ✓ |
+
+Those are Wine's builtins. The check was `[ -s "$SYS32/$f" ]` — file exists,
+therefore fine — so the installer skipped the very files it existed to install.
+Same class of mistake as round 3 (a diagnostic that could not see what it was
+looking for), one layer down.
+
+## The fix: identify the layers, don't just find them
+
+Each layer is now identified by markers taken from the real binaries, verified
+against them before landing:
+
+| layer | marker | version |
+|---|---|---|
+| DXVK | `strings dxgi.dll \| grep DXVK` — 34 hits in 3.1.1, 0 in anything else | `v3.1.1`, and it must be ≥ 2.1 as dxvk-nvapi requires |
+| vkd3d-proton | `strings d3d12core.dll \| grep vkd3d-proton` — 161 hits | `3.0.1` |
+| dxvk-nvapi | `strings nvapi64.dll \| grep DXVK-NVAPI` | `v0.9.2` |
+
+Anything failing that test is installed or reinstalled, and the setup says which
+test failed and why (including the size comparison, so "that is Wine's builtin"
+is a claim with a number behind it). `--force-layers` reinstalls all three
+regardless, for when the check itself is suspect.
+
+The replaced DLLs are kept as `*.bak_replaced` rather than overwritten silently.
+
+## Also in this round
+
+`tools/run_tests.sh --push` commits `test-results/<timestamp>/` and pushes it.
+Scoping was verified in a throwaway repository: it commits the report directory
+and nothing else, and on a failed push it says so and leaves the commit local
+instead of reporting success.
+
+## Confidence
+
+The failure is now pinned by file size, not inference: the wrong DLLs are
+identifiable and the right ones are downloadable and identifiable. If those
+three markers pass and `NvAPI_Initialize` still fails, the next suspects are the
+override actually taking effect at load time and Wine's own `vulkan-1`.
+
+---
+
+# Round 3 — `0xBAD00002`, and NVAPI finally says why (kept)
 
 The round-2 changes took effect: dxvk-nvapi loaded (`DXVK-NVAPI v0.9.2 ... x86_64
 release (nvngx.dll)`) and `DXVK_ENABLE_NVAPI=1` was clearly in force, because it

@@ -1,13 +1,16 @@
 #!/bin/bash
-# run_tests.sh — run the MVP test suite and (optionally) write a report.
+# run_tests.sh — run the MVP test suite, optionally write and push a report.
 #
-#   tools/run_tests.sh                 # run the tests, print the summary
-#   tools/run_tests.sh --report        # also write test-results/<timestamp>/
-#   tools/run_tests.sh --report --m0   # include the M0 environment gate
+#   tools/run_tests.sh                        # run the tests, print the summary
+#   tools/run_tests.sh --report               # also write test-results/<timestamp>/
+#   tools/run_tests.sh --report --m0          # include the M0 environment gate
+#   tools/run_tests.sh --report --m0 --push   # and push the report when done
 #
-# The report directory is meant to be committed and pushed: it carries the
-# human summary plus every raw log, so results travel as files instead of
-# pasted text. See docs/MVP-PLAN.md.
+# The report directory carries the human summary plus every raw log, so results
+# travel as files instead of pasted text. See docs/MVP-PLAN.md.
+#
+# --push uses whatever git credentials are already configured for this repo;
+# GIT_ASKPASS is honoured if you export it.
 
 set -uo pipefail
 
@@ -47,12 +50,14 @@ fi
 
 WANT_REPORT=0
 WANT_M0=0
+WANT_PUSH=0
 for arg in "$@"; do
     case "$arg" in
         --report) WANT_REPORT=1 ;;
         --m0)     WANT_M0=1 ;;
+        --push)   WANT_PUSH=1; WANT_REPORT=1 ;;
         -h|--help)
-            sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+            sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
             exit 0 ;;
         *) echo "unknown option: $arg" >&2; exit 2 ;;
     esac
@@ -204,6 +209,46 @@ if [ "$WANT_REPORT" = "1" ]; then
     } > "$SUMMARY"
 fi
 
+# --- auto-push the results --------------------------------------------------
+# Opt-in. Commits only the report directory, never anything else that happens to
+# be dirty in the tree, and leaves the commit local if the push fails so nothing
+# is lost.
+PUSH_STATUS="not requested"
+if [ "$WANT_PUSH" = "1" ] && [ "$WANT_REPORT" = "1" ]; then
+    echo ""
+    echo "--- pushing results ---"
+
+    if ! git rev-parse --git-dir >/dev/null 2>&1; then
+        PUSH_STATUS="skipped: not a git repository"
+    elif [ -z "$(git remote 2>/dev/null)" ]; then
+        PUSH_STATUS="skipped: no git remote configured"
+    else
+        BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+        [ -z "$BRANCH" ] || [ "$BRANCH" = "HEAD" ] && BRANCH="main"
+
+        git add -- "$OUT" 2>/dev/null || true
+        if git diff --cached --quiet -- "$OUT" 2>/dev/null; then
+            PUSH_STATUS="nothing new to commit"
+        else
+            if git commit -q -m "test results $STAMP" -- "$OUT" 2>/dev/null; then
+                echo "  committed: test results $STAMP"
+                PUSH_OUT="$(git push origin "$BRANCH" 2>&1)"
+                PUSH_RC=$?
+                echo "$PUSH_OUT" | sed 's/^/  /'
+                if [ "$PUSH_RC" = "0" ]; then
+                    PUSH_STATUS="pushed to origin/$BRANCH"
+                else
+                    # The commit is safe locally; do not pretend otherwise.
+                    PUSH_STATUS="push FAILED — commit is local, push it by hand"
+                fi
+            else
+                PUSH_STATUS="commit failed (is user.name/user.email set?)"
+            fi
+        fi
+    fi
+    echo "  -> $PUSH_STATUS"
+fi
+
 echo ""
 echo "=============================================================="
 if [ "$STATUS" = "0" ]; then
@@ -213,7 +258,12 @@ else
 fi
 if [ "$WANT_REPORT" = "1" ]; then
     echo " report: $OUT/report.md"
-    echo " push it:  git add $OUT && git commit -m 'test results $STAMP' && git push"
+    if [ "$WANT_PUSH" = "1" ]; then
+        echo " push:   $PUSH_STATUS"
+    else
+        echo " push it:  git add $OUT && git commit -m 'test results $STAMP' && git push"
+        echo "           (or pass --push next time)"
+    fi
 fi
 echo "=============================================================="
 exit "$STATUS"

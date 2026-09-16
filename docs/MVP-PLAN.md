@@ -150,14 +150,24 @@ Every milestone is written as a failing test first, then made to pass.
 
 ### Results channel
 
-`tools/run_tests.sh --report` writes `test-results/<UTC-timestamp>/` containing
-`report.md` (human summary + PASS/FAIL per test) and `raw/` (full logs, including
-`dlss5-feed-host.log`). You commit and push that directory; I read it directly.
-For one-liners you can paste, but logs travel as files so nothing is lost to
-truncation.
+```bash
+tools/run_tests.sh --report --m0 --push
+```
 
-`tools/m0_env_gate.sh` writes into the same `test-results/` tree, so M0 and the
-test suite land in one place.
+`--report` writes `test-results/<UTC-timestamp>/` containing `report.md` (human
+summary plus PASS/FAIL per test) and `raw/` (full logs, including
+`dlss5-feed-host.log`). `--m0` includes the environment gate and enables the M0
+tests. `--push` commits that directory and pushes it, so there is no manual git
+step — it is opt-in, commits only the report directory (never anything else that
+happens to be dirty), and leaves the commit local with a clear message if the
+push fails.
+
+`--push` uses whatever git credentials are already configured for the repo;
+`GIT_ASKPASS` is honoured if exported (needed for a fine-grained PAT, which
+cannot go in the URL).
+
+`tools/m0_env_gate.sh` writes into the same `test-results/` tree via `--out`, so
+the gate and the test suite land in one place.
 
 ---
 

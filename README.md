@@ -13,7 +13,7 @@
 > ls native/nvngx_dlssnr.dll    # 159 MB, gitignored — must be supplied
 > tools/wine_ngx_setup.sh       # 1. make the prefix able to load NGX Core
 > tools/m0_env_gate.sh          # 2. START HERE: can NGX run under Wine at all?
-> tools/run_tests.sh --report   # the test suite (works with no GPU)
+> tools/run_tests.sh --report --m0 --push   # gate + suite, then push the report
 > python -m minimal             # the MVP: capture -> DLSS5 pass -> display
 > ```
 >
