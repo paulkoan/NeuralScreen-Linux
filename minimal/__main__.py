@@ -167,6 +167,14 @@ def main(argv: list[str] | None = None) -> int:
                  for k in ("capture", "send", "recv", "display") if k in t]
         print(f"timing: {'  '.join(parts)}   "
               f"(total {1000 * t['total']:.1f}ms/frame, {t['fps']:.1f} fps)")
+    # Only the portal can split its own grab, and the split decides everything:
+    # a slow grab is the compositor if the wait dominates, and us if the read
+    # does.
+    if "capture_wait" in t:
+        print(f"capture split: wait {1000 * t['capture_wait']:.1f}ms  "
+              f"read {1000 * t['capture_read']:.1f}ms   "
+              f"(wait = the frame arriving from the compositor, "
+              f"read = our copy of it)")
     if args.save_before:
         print(f"  before -> {args.save_before}")
     if args.save_after:

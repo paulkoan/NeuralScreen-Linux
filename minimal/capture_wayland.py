@@ -26,6 +26,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 import numpy as np
@@ -66,6 +67,10 @@ class PortalCapture:
         self._gst = gst
         self._proc: subprocess.Popen | None = None
         self._stderr: Path | None = None
+        # Set by every grab: how long the first byte took, then the rest.
+        # Present from construction so a caller can read them unconditionally.
+        self.last_wait = 0.0
+        self.last_read = 0.0
 
         usable, why = requirements()
         if not usable:
@@ -136,11 +141,38 @@ class PortalCapture:
         return self.width, self.height
 
     def grab(self) -> np.ndarray:
-        """One frame as (H, W, 4) uint8 RGBA."""
+        """One frame as (H, W, 4) uint8 RGBA.
+
+        The grab is timed in two halves, because a slow one means opposite
+        things depending on which half is slow:
+
+          last_wait  until the first bytes of the frame arrive. That is the
+                     producer — the compositor handing a frame over through
+                     PipeWire.
+          last_read  the rest of the frame. That is throughput — the copy out
+                     of the pipe, which is ours.
+
+        Measured on the box, the portal grab is 325ms per frame at 2560x1440. A
+        single number cannot say whether that is a compositor running at 3 fps
+        or our own copy being slow, and the fix is completely different. (It
+        also catches a third case: if the wait is always ~0 the producer is
+        ahead of us, and the capture leg is measuring our loop's pace rather
+        than the compositor's.)
+        """
         if self._proc is None or self._proc.stdout is None:
             raise CaptureError("the capture pipeline is not running")
         need = self.width * self.height * 4
+        self.last_wait = None
+        self.last_read = None
+
+        t0 = time.monotonic()
         buf = self._read_exact(need)
+        total = time.monotonic() - t0
+
+        if self.last_wait is None:      # no chunk ever arrived — cannot happen
+            self.last_wait, self.last_read = total, 0.0
+        else:
+            self.last_read = total - self.last_wait
         return np.frombuffer(buf, dtype=np.uint8).reshape(self.height, self.width, 4)
 
     def _read_exact(self, need: int) -> bytes:
@@ -156,12 +188,18 @@ class PortalCapture:
         stream = self._proc.stdout if self._proc is not None else None
         if stream is None:
             raise CaptureError("the capture pipeline is not running")
+        # When the first chunk comes back is when the frame started arriving —
+        # the difference between the compositor being slow and our copy being
+        # slow, which `grab` records as last_wait/last_read.
+        t0 = time.monotonic()
         while got < need:
             chunk = stream.read(need - got)
             if not chunk:
                 raise CaptureError(
                     "the PipeWire pipeline ended before a whole frame arrived "
                     f"({got} of {need} bytes).\n" + self._stderr_tail())
+            if self.last_wait is None:
+                self.last_wait = time.monotonic() - t0
             chunks.append(chunk)
             got += len(chunk)
         return b"".join(chunks)

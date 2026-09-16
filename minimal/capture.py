@@ -34,6 +34,14 @@ class CaptureError(RuntimeError):
 class Capture:
     """Grab the screen on X11 through mss, converted to RGBA."""
 
+    #: Split of the grab into "waiting for the producer" and "copying the
+    #: bytes", when the source can tell the difference. None means it cannot:
+    #: a synthetic source has no producer to wait for, and the X11 grab is a
+    #: local read. The portal sets both, and the distinction is what separates
+    #: a compositor delivering 3 fps from our own copy being slow.
+    last_wait: float | None = None
+    last_read: float | None = None
+
     def __init__(self, monitor_idx: int = 0):
         if not _HAS_MSS:
             from minimal.deps import hint

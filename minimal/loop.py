@@ -91,6 +91,10 @@ class Pipeline:
             self.zero_motion = np.zeros((FLOW_H, FLOW_W, 2), dtype=np.float16)
         else:
             self.zero_motion = np.zeros((self.work_h, self.work_w, 2), dtype=np.float16)
+        #: Split of the capture leg, when the source can tell us (the portal
+        #: can: how long the frame took to arrive, then how long it took to
+        #: copy). Not part of the total — they are a breakdown OF capture.
+        self.capture_split: dict[str, list[float]] = {"wait": [], "read": []}
         self.frames_done = 0
         self.frames_skipped = 0
         # Per-stage times in seconds, one entry per completed frame.
@@ -129,6 +133,12 @@ class Pipeline:
         earlier matched-pair fix landed in one and not the other.
         """
         frame = self._timed("capture", self.capture.grab)
+        # The portal splits its own grab into "waiting for the frame" and
+        # "copying it". A capture leg of 325ms means opposite things in the two
+        # cases, so if the source can tell us, record it.
+        if getattr(self.capture, "last_wait", None) is not None:
+            self.capture_split["wait"].append(self.capture.last_wait)
+            self.capture_split["read"].append(self.capture.last_read)
         if frame.shape[:2] != (self.height, self.width):
             raise RuntimeError(
                 f"capture returned {frame.shape[:2]}, expected "
@@ -159,9 +169,15 @@ class Pipeline:
 
         stamps = {k: mean(v) for k, v in self.timings.items()}
         total = sum(stamps.values())
-        return {**stamps, "total": total,
-                "fps": (1.0 / total) if total > 0 else 0.0,
-                "count": len(self.timings["recv"])}
+        out = {**stamps, "total": total,
+               "fps": (1.0 / total) if total > 0 else 0.0,
+               "count": len(self.timings["recv"])}
+        # A breakdown OF the capture leg, so deliberately excluded from the
+        # total above: adding them would count the grab twice.
+        if self.capture_split["wait"]:
+            out["capture_wait"] = mean(self.capture_split["wait"])
+            out["capture_read"] = mean(self.capture_split["read"])
+        return out
 
     def run(self, frames: int = 0, save_before: str | None = None,
             save_after: str | None = None, on_frame=None) -> dict:

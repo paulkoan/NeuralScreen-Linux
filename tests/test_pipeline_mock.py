@@ -162,6 +162,56 @@ def test_motion_small_shrinks_what_goes_down_the_pipe():
     assert (full - small) / 1e6 > 3.0  # ~3.5 MB saved per frame at 720p
 
 
+def test_the_capture_split_is_reported_without_being_double_counted(
+        fake_capture, fake_display, mock_worker_cmd):
+    """A 325ms grab means opposite things depending on where it goes.
+
+    If the wait dominates, the compositor is delivering slowly and nothing
+    downstream can help. If the read dominates, it is our copy. The split must
+    be reported, and it must NOT be added into the frame total — those are the
+    same milliseconds as the capture stage.
+    """
+    import time
+
+    real_grab = fake_capture.grab
+
+    def slow_grab():
+        """A grab that really takes 330ms, of which 300 is waiting."""
+        time.sleep(0.30)
+        fake_capture.last_wait = 0.30        # the frame arriving
+        frame = real_grab()
+        time.sleep(0.03)
+        fake_capture.last_read = 0.03        # our copy of it
+        return frame
+
+    fake_capture.grab = slow_grab
+    pipe = Pipeline(capture=fake_capture, display=fake_display, headless=True,
+                    worker_cmd=mock_worker_cmd, worker_cwd=REPO)
+    passed = pipe.run(frames=3)
+    t = passed["timing"]
+
+    assert t["capture_wait"] == pytest.approx(0.30, abs=0.02)
+    assert t["capture_read"] == pytest.approx(0.03, abs=0.02)
+    # The capture stage covers both halves, so the total must be built without
+    # them: adding them would count the grab twice and overstate the fps.
+    assert t["total"] == pytest.approx(
+        t["capture"] + t["send"] + t["recv"] + t["display"])
+    assert t["total"] < t["capture"] + t["capture_wait"]
+    assert t["capture"] >= t["capture_wait"] + t["capture_read"] - 0.005
+
+
+def test_a_source_that_cannot_split_says_so(fake_capture, fake_display,
+                                            mock_worker_cmd):
+    """No producer to wait for means no split, rather than a split of zeros."""
+    fake_capture.last_wait = None
+    fake_capture.last_read = None
+    pipe = Pipeline(capture=fake_capture, display=fake_display, headless=True,
+                    worker_cmd=mock_worker_cmd, worker_cwd=REPO)
+    t = pipe.run(frames=2)["timing"]
+    assert "capture_wait" not in t
+    assert "capture_read" not in t
+
+
 # --- the worker wrapper ---------------------------------------------------
 
 def test_worker_starts_and_sends_its_header(mock_worker_cmd):

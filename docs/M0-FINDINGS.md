@@ -96,6 +96,23 @@ screencast is the ceiling and everything downstream is wasted effort until it is
 understood; if it says 60 fps, then our pipeline in front of the grab is the
 problem and the reader is where to look.
 
+The probe was not in the `20260916T194046Z` report, so rather than ask for a
+second run the MVP now answers the same question inside the ordinary one. Each
+grab is timed in two halves — `last_wait`, until the frame's first bytes arrive
+from the compositor, and `last_read`, the rest of the copy — and every run
+prints:
+
+```
+capture split: wait 312.0ms  read 13.5ms   (wait = the frame arriving, read = our copy)
+```
+
+Three readings, three different fixes: a large **wait** is the compositor's rate
+and the fix is not in this repo; a large **read** is our copy out of the pipe and
+is squarely ours; and a **wait near zero** means the producer is ahead of us, so
+the capture leg was measuring our loop's pace all along and the 325ms is really
+the worker's. Both halves are excluded from the frame total, since they are the
+same milliseconds as the capture stage.
+
 ---
 
 # Round 12 — the network is not the bottleneck; the bytes are
