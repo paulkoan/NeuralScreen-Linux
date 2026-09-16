@@ -26,6 +26,15 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+
+# Must happen before the third-party imports below: the shebang resolves to
+# whatever `python3` is on PATH, and without the venv activated that interpreter
+# has neither numpy nor jeepney. See tools/venv_boot.py.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from venv_boot import reexec_into_repo_venv  # noqa: E402
+
+reexec_into_repo_venv(__file__, modules=("numpy", "jeepney"))
+
 sys.path.insert(0, str(REPO))
 
 PASS, FAIL, WARN, INFO = "  \033[32m✓\033[0m", "  \033[31m✗\033[0m", "  \033[33m!\033[0m", "  ·"

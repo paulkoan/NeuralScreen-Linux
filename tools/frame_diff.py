@@ -16,6 +16,15 @@ produce a file. The only way to tell whether work happened is to measure it.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+
+# Before cv2/numpy: this file's own docstring shows a direct invocation
+# (`tools/frame_diff.py BEFORE.png AFTER.png`), so the shebang picks the
+# interpreter and it may not have the dependencies. See tools/venv_boot.py.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from venv_boot import reexec_into_repo_venv  # noqa: E402
+
+reexec_into_repo_venv(__file__, modules=("numpy", "cv2"))
 
 import cv2
 import numpy as np
