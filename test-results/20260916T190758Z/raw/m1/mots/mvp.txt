@@ -1,0 +1,23 @@
+pipeline failed: the worker has been silent for 60s on frame 0 - NGX did not answer after the restart
+Traceback (most recent call last):
+  File "/home/paul/dev/NeuralScreen-Linux/minimal/__main__.py", line 144, in main
+    summary = pipe.run(frames=args.frames,
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/paul/dev/NeuralScreen-Linux/minimal/loop.py", line 194, in run
+    after = self.process_one(index, present=True)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/paul/dev/NeuralScreen-Linux/minimal/loop.py", line 141, in process_one
+    result = self._timed("recv", self.worker.recv, index, timeout)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/paul/dev/NeuralScreen-Linux/minimal/loop.py", line 114, in _timed
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/paul/dev/NeuralScreen-Linux/minimal/worker.py", line 226, in recv
+    return self.reader.recv(index, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/paul/dev/NeuralScreen-Linux/protocol.py", line 768, in recv
+    raise TimeoutError(
+TimeoutError: the worker has been silent for 60s on frame 0 - NGX did not answer after the restart
+source synthetic  capture 1280x720  ->  work 1280x720 (work scale 1.00, NGX ceiling 2560x1440)
+params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+worker: bash /home/paul/dev/NeuralScreen-Linux/native/run_worker.sh
