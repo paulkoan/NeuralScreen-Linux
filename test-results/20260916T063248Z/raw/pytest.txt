@@ -1,0 +1,175 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0 -- /home/paul/dev/NeuralScreen-Linux/.venv/bin/python
+rootdir: /home/paul/dev/NeuralScreen-Linux
+configfile: pyproject.toml
+collecting ... collected 70 items
+
+tests/test_capture_display.py::test_capture_reports_a_resolution SKIPPED [  1%]
+tests/test_capture_display.py::test_capture_returns_rgba_uint8 SKIPPED   [  2%]
+tests/test_capture_display.py::test_capture_consecutive_frames_have_the_same_shape SKIPPED [  4%]
+tests/test_capture_display.py::test_capture_rejects_a_missing_monitor SKIPPED [  5%]
+tests/test_capture_display.py::test_list_monitors SKIPPED (Xvfb not ...) [  7%]
+tests/test_capture_display.py::test_display_headless_presents_without_a_window SKIPPED [  8%]
+tests/test_capture_display.py::test_display_rejects_a_wrong_size SKIPPED [ 10%]
+tests/test_capture_display.py::test_display_rejects_a_wrong_dtype SKIPPED [ 11%]
+tests/test_capture_display.py::test_display_can_be_created_twice_in_a_row SKIPPED [ 12%]
+tests/test_capture_display.py::test_display_polls_without_events SKIPPED [ 14%]
+tests/test_cli_end_to_end.py::test_cli_runs_and_writes_both_pngs SKIPPED [ 15%]
+tests/test_cli_end_to_end.py::test_cli_before_and_after_differ SKIPPED   [ 17%]
+tests/test_cli_end_to_end.py::test_cli_pngs_match_the_capture_resolution SKIPPED [ 18%]
+tests/test_cli_end_to_end.py::test_cli_list_monitors_runs SKIPPED (X...) [ 20%]
+tests/test_cli_end_to_end.py::test_cli_reports_a_dead_worker SKIPPED     [ 21%]
+tests/test_m0_env_gate.py::test_worker_binary_is_present PASSED          [ 22%]
+tests/test_m0_env_gate.py::test_nr_runtime_is_present PASSED             [ 24%]
+tests/test_m0_env_gate.py::test_sidecar_dlls_are_present PASSED          [ 25%]
+tests/test_m0_env_gate.py::test_wine_is_available PASSED                 [ 27%]
+tests/test_m0_env_gate.py::test_m0_uses_the_canonical_environment PASSED [ 28%]
+tests/test_m0_env_gate.py::test_m0_no_ngx_core_not_found_error PASSED    [ 30%]
+tests/test_m0_env_gate.py::test_m0_no_platform_error FAILED              [ 31%]
+tests/test_m0_env_gate.py::test_m0_worker_runs PASSED                    [ 32%]
+tests/test_m0_env_gate.py::test_m0_ngx_initialises FAILED                [ 34%]
+tests/test_m0_env_gate.py::test_m0_feature18_is_created FAILED           [ 35%]
+tests/test_m0_env_gate.py::test_m0_evaluates_succeed FAILED              [ 37%]
+tests/test_pipeline_mock.py::test_work_size[1920-1080-1920-1080] PASSED  [ 38%]
+tests/test_pipeline_mock.py::test_work_size[2560-1440-2560-1440] PASSED  [ 40%]
+tests/test_pipeline_mock.py::test_work_size[3840-2160-2560-1440] PASSED  [ 41%]
+tests/test_pipeline_mock.py::test_work_size[100-100-100-100] PASSED      [ 42%]
+tests/test_pipeline_mock.py::test_work_size[101-101-100-100] PASSED      [ 44%]
+tests/test_pipeline_mock.py::test_work_size_never_exceeds_the_source PASSED [ 45%]
+tests/test_pipeline_mock.py::test_worker_starts_and_sends_its_header PASSED [ 47%]
+tests/test_pipeline_mock.py::test_one_frame_round_trip PASSED            [ 48%]
+tests/test_pipeline_mock.py::test_frame_indices_are_paired PASSED        [ 50%]
+tests/test_pipeline_mock.py::test_stop_terminates_the_worker PASSED      [ 51%]
+tests/test_pipeline_mock.py::test_pipeline_runs_n_frames PASSED          [ 52%]
+tests/test_pipeline_mock.py::test_pipeline_frames_differ_frame_to_frame PASSED [ 54%]
+tests/test_pipeline_mock.py::test_pipeline_reports_worker_death PASSED   [ 55%]
+tests/test_pipeline_mock.py::test_pipeline_quits_on_display_event PASSED [ 57%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoHeader-<10I4f2I-64] PASSED [ 58%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoFrameHeader-<4Iq-24] PASSED [ 60%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoResultHeader-<5Iq-28] PASSED [ 61%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoResizeCmd-<10I4f2I-64] PASSED [ 62%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoResizeAck-<4Iq-24] PASSED [ 64%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoShmCmd-<4Iq64s-88] PASSED [ 65%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoShmAck-<4Iq-24] PASSED [ 67%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoWindowCmd-<4Iq-24] PASSED [ 68%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoWindowAck-<4Iq-24] PASSED [ 70%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoMotionCmd-<4Iq-24] PASSED [ 71%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoMotionAck-<4Iq-24] PASSED [ 72%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoDdaCmd-<4Iq-24] PASSED [ 74%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoDdaAck-<4Iq-24] PASSED [ 75%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoWgcCmd-<4IqQ-32] PASSED [ 77%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoWgcAck-<4Iq-24] PASSED [ 78%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoGrayCmd-<4Iq64s-88] PASSED [ 80%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoGrayAck-<4Iq-24] PASSED [ 81%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoOutCmd-<4Iq64s-88] PASSED [ 82%]
+tests/test_protocol_sizes.py::test_struct_size_matches_cpp[VideoOutAck-<4Iq-24] PASSED [ 84%]
+tests/test_protocol_sizes.py::test_cpp_static_asserts_agree PASSED       [ 85%]
+tests/test_protocol_sizes.py::test_header_is_64_bytes_packed PASSED      [ 87%]
+tests/test_protocol_sizes.py::test_frame_header_pts_offset PASSED        [ 88%]
+tests/test_protocol_sizes.py::test_magic_values PASSED                   [ 90%]
+tests/test_worker_env_consistency.py::test_the_overrides_are_not_empty PASSED [ 91%]
+tests/test_worker_env_consistency.py::test_python_constant_is_usable_as_a_wine_override PASSED [ 92%]
+tests/test_worker_env_consistency.py::test_shell_scripts_use_the_same_overrides[run_worker.sh-#!/bin/bash\n# run_worker.sh \u2014 Launch nvngx.dll (the NGX DLSS5 worker) under Wine + VKD3D.\n#\n# Usage:\n#   ./native/run_worker.sh                # default Wine prefix\n#   ./native/run_worker.sh --prefix /path  # custom prefix\n\nset -euo pipefail\n\nSCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\nNATIVE_DIR="$SCRIPT_DIR"\n\nDEFAULT_PREFIX="${HOME}/.neuralscreen/wine"\nPREFIX="${DEFAULT_PREFIX}"\n\nif [ "${1:-}" = "--prefix" ] && [ -n "${2:-}" ]; then\n    PREFIX="$2"\n    shift 2\nfi\n\nexport WINEPREFIX="$PREFIX"\n# The native translation layers MUST be overridden or Wine loads its builtin\n# dxgi/d3d11/d3d12/nvapi64. dxvk-nvapi needs DXVK's dxgi AND d3d11 extension\n# points, and vkd3d-proton's d3d12 \u2014 through Wine's builtins NGX Core loads but\n# its platform check then fails (0xBAD00002 FAIL_PlatformError) because NVAPI\n# cannot report the GPU.\n#\n#   d3d12/d3d12core  <- vkd3d-proton\n#   dxgi/d3d11       <- DXVK\n#   nvapi64          <- dxvk-nvapi\n#   nvngx_dlssnr     <- the NR runtime itself, never a builtin\nexport WINEDLLOVERRIDES="${NS_WINEDLLOVERRIDES:-d3d12=n,b;d3d12core=n,b;d3d11=n,b;dxgi=n,b;nvapi64=n,b;nvofapi64=n,b;nvngx_dlssnr=n}"\n# dxvk-nvapi requires this to disable DXVK's nvapiHack; without it the NGX/DLSS\n# part of NVAPI stays off and NGX cannot establish the platform.\nexport DXVK_ENABLE_NVAPI="${DXVK_ENABLE_NVAPI:-1}"\nexport WINE="${WINE:-wine}"\n\n# Auto-create prefix\nif [ ! -d "$PREFIX" ]; then\n    echo "[run_worker] Creating Wine prefix at $PREFIX" >&2\n    mkdir -p "$PREFIX"\n    WINEDLLOVERRIDES="" wineboot -u 2>/dev/null || true\n    sleep 2\nfi\n\n# Check deps\nif ! command -v "$WINE" &>/dev/null; then\n    echo "[run_worker] ERROR: '$WINE' not found. Install Wine + VKD3D." >&2\n    exit 1\nfi\n\nWORKER="$NATIVE_DIR/nvngx.dll"\nif [ ! -f "$WORKER" ]; then\n    echo "[run_worker] ERROR: $WORKER not found" >&2\n    exit 1\nfi\n\necho "[run_worker] Starting: $WINE $WORKER --live" >&2\nexec "$WINE" "$WORKER" --live] PASSED [ 94%]
+tests/test_worker_env_consistency.py::test_shell_scripts_use_the_same_overrides[m0_env_gate.sh-#!/bin/bash\n# m0_env_gate.sh \u2014 the M0 gate: can the DLSS5 NR worker run under Wine at all?\n#\n#   tools/m0_env_gate.sh                 # run the gate, print the verdict\n#   tools/m0_env_gate.sh --out DIR       # also write logs into DIR\n#\n# Runs `wine native/nvngx.dll --test`. That path needs no game, no window and no\n# Python: it builds a D3D12 device, creates NGX feature 18 and runs 300\n# evaluates on a synthetic 640x360 pattern.\n#\n# PASS = exit 0, "[pure] direct feature 18 ready" in the log, and\n#        "--test finished: N/300" with N >= 250.\n#\n# If this fails, stop. The log names the stage that failed.\n\nset -uo pipefail\n\nREPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"\ncd "$REPO"\n\nNATIVE="$REPO/native"\nWORKER="$NATIVE/nvngx.dll"\nNR_DLL="$NATIVE/nvngx_dlssnr.dll"\nLOG="$NATIVE/dlss5-feed-host.log"\n\nOUT=""\nwhile [ $# -gt 0 ]; do\n    case "$1" in\n        --out)\n            if [ -z "${2:-}" ]; then\n                echo "m0_env_gate.sh: --out needs a directory" >&2\n                exit 2\n            fi\n            OUT="$2"; mkdir -p "$OUT"; shift 2 ;;\n        -h|--help)\n            cat <<'USAGE'\nm0_env_gate.sh \u2014 the M0 environment gate: can the DLSS5 NR worker run under Wine?\n\n  tools/m0_env_gate.sh                 run the gate, print the verdict\n  tools/m0_env_gate.sh --out DIR       also copy the logs into DIR\n\nExit codes:  0 = PASS   1 = FAIL   2 = BLOCKED (prerequisites missing)\n\nFor a full report (pytest + this gate + an environment snapshot) use instead:\n\n  tools/run_tests.sh --report --m0\n\nwhich writes everything into test-results/<UTC-timestamp>/ \u2014 commit and push\nthat directory and it can be read straight from the repo.\nUSAGE\n            exit 0 ;;\n        *)\n            echo "m0_env_gate.sh: unknown option: $1" >&2\n            echo "try: tools/m0_env_gate.sh --help" >&2\n            exit 2 ;;\n    esac\ndone\n\npass() { printf '  \\033[32m\u2713\\033[0m %s\\n' "$1"; }\nfail() { printf '  \\033[31m\u2717\\033[0m %s\\n' "$1"; }\nwarn() { printf '  \\033[33m!\\033[0m %s\\n' "$1"; }\n\necho "=============================================================="\necho " M0 \u2014 environment gate"\necho "=============================================================="\necho ""\n\necho "--- prerequisites ---"\nMISSING=0\n\nif command -v wine >/dev/null 2>&1; then\n    pass "wine: $(wine --version 2>&1)"\nelse\n    fail "wine is not installed"\n    echo "      Arch:   sudo pacman -S wine"\n    echo "      Debian: sudo apt install wine wine64"\n    MISSING=1\nfi\n\nif command -v nvidia-smi >/dev/null 2>&1; then\n    pass "GPU: $(nvidia-smi --query-gpu=name,driver_version,compute_cap --format=csv,noheader 2>&1 | head -1)"\n    CC="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>&1 | head -1 | tr -d ' ')"\n    case "$CC" in\n        7.5|8.6|8.9|12.0) pass "compute capability $CC is in the runtime's kernel set (sm_75/86/89/120)" ;;\n        "") warn "could not read compute capability" ;;\n        *)  warn "compute capability $CC is NOT in sm_75/86/89/120 \u2014 the NR pass may refuse" ;;\n    esac\nelse\n    fail "nvidia-smi not found \u2014 no NVIDIA driver visible"\n    MISSING=1\nfi\n\nif ls /usr/share/vulkan/icd.d/ 2>/dev/null | grep -qi nvidia; then\n    pass "Vulkan ICD: $(ls /usr/share/vulkan/icd.d/ | grep -i nvidia | head -1)"\nelse\n    warn "no NVIDIA Vulkan ICD found \u2014 D3D12 over VKD3D will likely fail"\nfi\n\nfor f in "$WORKER" "$NR_DLL" "$NATIVE/SpoutDX.dll" "$NATIVE/Spout.dll"; do\n    if [ -f "$f" ]; then\n        pass "$(basename "$f") ($(du -h "$f" | cut -f1))"\n    else\n        fail "missing: $f"\n        if [ "$f" = "$NR_DLL" ]; then\n            echo "      nvngx_dlssnr.dll is gitignored (159 MB). It comes from the"\n            echo "      v1.6.0 release archive and must be copied into native/."\n        fi\n        MISSING=1\n    fi\ndone\n\nif [ "$MISSING" = "1" ]; then\n    echo ""\n    echo "=============================================================="\n    echo " RESULT: BLOCKED \u2014 fix the prerequisites above first"\n    echo "=============================================================="\n    [ -n "$OUT" ] && { env > "$OUT/m0_environment.txt" 2>&1; }\n    exit 2\nfi\n\necho ""\necho "--- running: wine native/nvngx.dll --test ---"\nrm -f "$LOG"\n\nexport WINEPREFIX="${WINEPREFIX:-$HOME/.neuralscreen/wine}"\n# The native translation layers MUST be overridden, or Wine loads its builtin\n# dxgi/d3d11/d3d12/nvapi64. Two distinct failures follow:\n#   0xBAD00001 FAIL_FeatureNotSupported \u2014 NGX Core not found at all\n#   0xBAD00002 FAIL_PlatformError       \u2014 NGX Core found, but NVAPI cannot\n#                                          report the GPU to it\nexport WINEDLLOVERRIDES="${NS_WINEDLLOVERRIDES:-d3d12=n,b;d3d12core=n,b;d3d11=n,b;dxgi=n,b;nvapi64=n,b;nvofapi64=n,b;nvngx_dlssnr=n}"\n# Without this dxvk-nvapi leaves the NGX/DLSS part of NVAPI disabled, and NGX\n# Core cannot establish the platform.\nexport DXVK_ENABLE_NVAPI="${DXVK_ENABLE_NVAPI:-1}"\n# Ask dxvk-nvapi to log, so 'NvAPI_Initialize' / 'NvAPI_GPU_GetArchInfo' show up\n# in the worker's output and prove whether NVAPI answered.\nexport DXVK_NVAPI_LOG_LEVEL="${DXVK_NVAPI_LOG_LEVEL:-info}"\necho "  WINEPREFIX=$WINEPREFIX"\necho "  WINEDLLOVERRIDES=$WINEDLLOVERRIDES"\necho "  DXVK_ENABLE_NVAPI=$DXVK_ENABLE_NVAPI"\n\n# The worker's NGX loader finds NGX Core through the registry on Wine (its D3DKMT\n# and same-directory paths both fail there). Warn if that is not set up yet.\nNGXREG="$(timeout 60 wine reg query 'HKLM\\SOFTWARE\\NVIDIA Corporation\\Global\\NGXCore' 2>/dev/null | grep -iE 'FullPath|NGXPath' | head -1)"\nif [ -n "$NGXREG" ]; then\n    echo "  NGXCore registry: $(echo "$NGXREG" | tr -s ' ')"\nelse\n    echo "  NGXCore registry: NOT SET"\n    echo "     -> NGX Core will not be found and init will fail with 0xBAD00001."\n    echo "     -> run: tools/wine_ngx_setup.sh   (then re-run this gate)"\nfi\necho ""\n\nSTART=$(date +%s)\n( cd "$NATIVE" && timeout 600 wine nvngx.dll --test )\nRC=$?\nELAPSED=$(( $(date +%s) - START ))\necho ""\necho "  exit code: $RC   elapsed: ${ELAPSED}s"\n\nCOMBINED=""\n[ -f "$LOG" ] && COMBINED="$(cat "$LOG")"\n\necho ""\necho "--- verdict ---"\nSTATUS=0\n\nif [ "$RC" = "124" ]; then\n    fail "timed out after 600s \u2014 the worker hung (a known NGX-over-Wine failure mode)"\n    STATUS=1\nelif [ "$RC" != "0" ]; then\n    fail "the worker exited $RC"\n    STATUS=1\nelse\n    pass "the worker exited 0"\nfi\n\nif [ -f "$LOG" ]; then\n    pass "produced dlss5-feed-host.log ($(wc -l < "$LOG") lines)"\nelse\n    fail "produced NO log \u2014 Wine probably never started the process"\n    STATUS=1\nfi\n\nif echo "$COMBINED" | grep -q "no NVIDIA adapter found"; then\n    fail "no NVIDIA adapter visible to D3D12 \u2014 VKD3D/DXGI cannot see the card"\n    STATUS=1\nelif echo "$COMBINED" | grep -q "D3D12CreateDevice failed"; then\n    fail "D3D12CreateDevice failed: $(echo "$COMBINED" | grep 'D3D12CreateDevice failed' | head -1)"\n    STATUS=1\nelif echo "$COMBINED" | grep -q "dxgi/d3d12 exports missing"; then\n    fail "dxgi.dll / d3d12.dll did not load under Wine"\n    STATUS=1\nfi\n\nif echo "$COMBINED" | grep -q "NVSDK_NGX_D3D12_Init"; then\n    NLINE="$(echo "$COMBINED" | grep 'NVSDK_NGX_D3D12_Init' | head -1)"\n    if echo "$NLINE" | grep -q "Success"; then\n        pass "NGX initialised: $NLINE"\n    else\n        fail "NGX init failed: $NLINE"\n        STATUS=1\n        if echo "$NLINE" | grep -q "0xBAD00001"; then\n            cat <<'REMEDY'\n\n     0xBAD00001 = FAIL_FeatureNotSupported, and at the INIT stage it does not\n     mean "unsupported GPU" \u2014 it means NGX Core was never found. The worker's\n     NGX loader (strings: NGXGetPathUsingQAI / NGXGetPathFromRegistry /\n     "NGXCore not found next to the application") can only reach the core\n     through the registry under Wine:\n\n       * the QAI path needs D3DKMT, unimplemented in Wine\n         (`fixme:d3dkmt:NtGdiDdDDIQueryAdapterInfo type 48 not handled`)\n       * "next to the application" collides with the worker itself, whose file\n         name IS nvngx.dll, so it loads a module with no exports\n       * so only HKLM\\...\\NGXCore remains\n\n     Fix:  tools/wine_ngx_setup.sh\nREMEDY\n        fi\n        if echo "$NLINE" | grep -q "0xBAD00002"; then\n            cat <<'REMEDY'\n\n     0xBAD00002 = FAIL_PlatformError. NGX Core IS being found and loaded now,\n     but its platform check fails \u2014 it cannot get a usable answer about the GPU.\n     Under Wine that answer has to come from dxvk-nvapi, and dxvk-nvapi needs:\n\n       * DXVK's dxgi.dll AND d3d11.dll in the prefix (it uses their extension\n         points; Wine's builtin dxgi/d3d11 will not do)\n       * vkd3d-proton's d3d12.dll + d3d12core.dll\n       * DXVK_ENABLE_NVAPI=1 \u2014 without it the NGX/DLSS part of NVAPI is off\n       * all of the above overridden native-first in WINEDLLOVERRIDES\n\n     Check the "NvAPI_Initialize" / "NvAPI_GPU_GetArchInfo" lines below: absent\n     or failing means NVAPI never answered.\n\n     Fix:  tools/wine_ngx_setup.sh   (installs DXVK / vkd3d-proton / dxvk-nvapi)\nREMEDY\n        fi\n    fi\nelse\n    fail "never reached NGX init \u2014 died earlier"\n    STATUS=1\nfi\n\nif echo "$COMBINED" | grep -q "feature 18 ready"; then\n    pass "NGX feature 18 created"\nelse\n    if echo "$COMBINED" | grep -q "feature 18"; then\n        fail "feature 18 create failed: $(echo "$COMBINED" | grep 'feature 18' | tail -1)"\n    else\n        fail "feature 18 was never attempted"\n    fi\n    STATUS=1\nfi\n\nSUMMARY="$(echo "$COMBINED" | grep -o -- '--test finished: [0-9]*/[0-9]*' | tail -1)"\nif [ -n "$SUMMARY" ]; then\n    GOOD="$(echo "$SUMMARY" | sed 's|.*finished: \\([0-9]*\\)/.*|\\1|')"\n    if [ "$GOOD" -ge 250 ]; then\n        pass "$SUMMARY evaluates succeeded"\n    else\n        fail "$SUMMARY \u2014 fewer than 250"\n        STATUS=1\n    fi\nelse\n    fail "no evaluation summary \u2014 the test loop did not finish"\n    STATUS=1\nfi\n\n# --- what NVAPI said (this is what NGX needs for its platform check) --------\necho ""\necho "--- NVAPI (dxvk-nvapi) ---"\nNVLOG="$(echo "$COMBINED" | grep -iE "nvapi|NvAPI_Initialize|GetArchInfo|DXVK_ENABLE_NVAPI" | head -12)"\nif [ -n "$NVLOG" ]; then\n    echo "$NVLOG" | sed 's/^/  /'\nelse\n    warn "no NVAPI output at all \u2014 dxvk-nvapi's nvapi64.dll is probably not"\n    warn "being loaded, or DXVK_ENABLE_NVAPI=1 is not taking effect"\nfi\n\n# --- what the log says about the failure, if it failed ----------------------\nif [ "$STATUS" != "0" ] && [ -f "$LOG" ]; then\n    echo ""\n    echo "--- the log's own explanation ---"\n    grep -iE "fail|error|unavailable|0x[0-9A-Fa-f]{8}|not found|refus" "$LOG" \\\n        | tail -15 | sed 's/^/  /' || echo "  (nothing that looks like an error)"\nfi\n\n# --- copy artifacts out -----------------------------------------------------\nif [ -n "$OUT" ]; then\n    cp "$LOG" "$OUT/" 2>/dev/null || true\n    # Only the variables that matter: a full `env` dump is 100+ lines of noise\n    # and hides the ones this gate is about.\n    {\n        echo "date:              $(date -u)"\n        echo "WINEPREFIX:        ${WINEPREFIX:-}"\n        echo "WINEDLLOVERRIDES:  ${WINEDLLOVERRIDES:-}"\n        echo "DXVK_ENABLE_NVAPI: ${DXVK_ENABLE_NVAPI:-}"\n        echo "DXVK_NVAPI_LOG_LEVEL: ${DXVK_NVAPI_LOG_LEVEL:-}"\n        echo "DISPLAY:           ${DISPLAY:-}"\n        echo "WAYLAND_DISPLAY:   ${WAYLAND_DISPLAY:-}"\n        echo "XDG_SESSION_TYPE:  ${XDG_SESSION_TYPE:-}"\n        echo "wine:              $(wine --version 2>&1)"\n        echo "driver:            $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>&1 | head -1)"\n    } > "$OUT/m0_environment.txt" 2>&1\n    echo ""\n    echo "  artifacts -> $OUT/"\nfi\n\necho ""\necho "=============================================================="\nif [ "$STATUS" = "0" ]; then\n    echo " RESULT: PASS \u2014 the DLSS5 NR pass runs on this machine under Wine."\n    echo " Next: python -m minimal --frames 1 --save-before before.png --save-after after.png"\nelse\n    echo " RESULT: FAIL \u2014 stop here. The port is not viable until this passes."\n    echo " The log above names the stage. Do not build downstream on this."\nfi\necho "=============================================================="\nexit "$STATUS"] PASSED [ 95%]
+tests/test_worker_env_consistency.py::test_python_module_sets_it PASSED  [ 97%]
+tests/test_worker_env_consistency.py::test_ns_override_wins PASSED       [ 98%]
+tests/test_worker_env_consistency.py::test_enable_nvapi_is_set_everywhere PASSED [100%]
+
+=================================== FAILURES ===================================
+__________________________ test_m0_no_platform_error ___________________________
+tests/test_m0_env_gate.py:125: in test_m0_no_platform_error
+    assert "0xBAD00002" not in combined, (
+E   AssertionError: NGX Core's platform check failed. dxvk-nvapi is not answering: check DXVK_ENABLE_NVAPI=1, that DXVK's dxgi.dll and d3d11.dll are installed and overridden, and that dxvk-nvapi's nvapi64.dll is present.
+E     
+E   assert '0xBAD00002' not in '07:32:49.19...navailable\n'
+E     
+E     '0xBAD00002' is contained here:
+E       07:32:49.197  dlss5-feed-host64 (built Sep 11 2026 17:26:14)
+E       07:32:49.365  [host] adapter 0: NVIDIA GeForce RTX 4080 SUPER vendor=0x10DE
+E       07:32:49.458  [host] DRED settings unavailable (settings1=0x80004002, settings=0x80004002)
+E       07:32:49.459  [pure] standalone D3D12 device ready; no swapchain or carrier modules
+E       07:32:49.508  [host] NVSDK_NGX_D3D12_Init -> 0xBAD00002 (?)...
+E     
+E     ...Full output truncated (31 lines hidden), use '-vv' to show
+___________________________ test_m0_ngx_initialises ____________________________
+tests/test_m0_env_gate.py:147: in test_m0_ngx_initialises
+    assert "Success" in combined, (
+E   AssertionError: NVSDK_NGX_D3D12_Init did not report Success.
+E     07:32:49.365  [host] adapter 0: NVIDIA GeForce RTX 4080 SUPER vendor=0x10DE
+E     07:32:49.459  [pure] standalone D3D12 device ready; no swapchain or carrier modules
+E     07:32:49.508  [host] NVSDK_NGX_D3D12_Init -> 0xBAD00002 (?)
+E     07:32:49.529  [host] Init_with_ProjectID -> 0xBAD00002 (?)
+E     07:32:49.365  [host] adapter 0: NVIDIA GeForce RTX 4080 SUPER vendor=0x10DE
+E     07:32:49.459  [pure] standalone D3D12 device ready; no swapchain or carrier modules
+E     07:32:49.508  [host] NVSDK_NGX_D3D12_Init -> 0xBAD00002 (?)
+E     07:32:49.529  [host] Init_with_ProjectID -> 0xBAD00002 (?)
+E   assert 'Success' in '07:32:49.197  dlss5-feed-host64 (built Sep 11 2026 17:26:14)\n07:32:49.365  [host] adapter 0: NVIDIA GeForce RTX 4080 SUPER vendor=0x10DE\n07:32:49.458  [host] DRED settings unavailable (settings1=0x80004002, settings=0x80004002)\n07:32:49.459  [pure] standalone D3D12 device ready; no swapchain or carrier modules\n07:32:49.508  [host] NVSDK_NGX_D3D12_Init -> 0xBAD00002 (?)\n07:32:49.529  [host] Init_with_ProjectID -> 0xBAD00002 (?)\n07:32:49.546  [host] NGX unavailable\n0198:fixme:winediag:loader_init wine-staging 11.17 is a testing version containing experimental patches.\n0198:fixme:winediag:loader_init Please mention your exact version when filing bug reports on winehq.org.\n0198:fixme:win:create_window_handle DPI context 0x22 not implemented\nMESA-EGL: warning: pci id for fd 44: 10de:2702, driver (null)\npci id for fd 45: 10de:2702, driver (null)\npci id for fd 46: 10de:2702, driver (null)\nMESA-EGL: warning: egl: failed to create dri2 screen\nMESA-EGL: warning: pci id for fd 44: 10de:2702, driver (null)\npci id for fd 45: 10de:2702, driver (null)\npci id for fd 46: 10de:2702, driver (null)\nMESA-EGL: warning: egl: failed to create dri2 screen\nMESA-EGL: warning: pci id for ...702, driver (null)\n0198:fixme:ntdll:NtQuerySystemInformation info_class SYSTEM_PERFORMANCE_INFORMATION\n0198:fixme:d3dkmt:NtGdiDdDDIQueryAdapterInfo type 48 not handled.\n0198:fixme:d3dkmt:NtGdiDdDDIQueryAdapterInfo type 48 not handled.\n0198:fixme:cryptasn:CryptDecodeObjectEx Unsupported decoder for lpszStructType 1.3.6.1.4.1.311.2.1.4\n0198:fixme:cryptasn:CryptDecodeObjectEx Unsupported decoder for lpszStructType 1.3.6.1.4.1.311.2.1.4\n0198:fixme:win:create_window_handle DPI context 0x22 not implemented\n0198:fixme:win:create_window_handle DPI context 0x22 not implemented\n0198:fixme:win:create_window_handle DPI context 0x22 not implemented\n0198:fixme:win:create_window_handle DPI context 0x22 not implemented\n07:32:49.197  dlss5-feed-host64 (built Sep 11 2026 17:26:14)\n07:32:49.365  [host] adapter 0: NVIDIA GeForce RTX 4080 SUPER vendor=0x10DE\n07:32:49.458  [host] DRED settings unavailable (settings1=0x80004002, settings=0x80004002)\n07:32:49.459  [pure] standalone D3D12 device ready; no swapchain or carrier modules\n07:32:49.508  [host] NVSDK_NGX_D3D12_Init -> 0xBAD00002 (?)\n07:32:49.529  [host] Init_with_ProjectID -> 0xBAD00002 (?)\n07:32:49.546  [host] NGX unavailable\n'
+_________________________ test_m0_feature18_is_created _________________________
+tests/test_m0_env_gate.py:156: in test_m0_feature18_is_created
+    assert "feature 18 ready" in combined, (
+E   AssertionError: the NR feature was never created.
+E     0198:fixme:win:create_window_handle DPI context 0x22 not implemented
+E     MESA-EGL: warning: egl: failed to create dri2 screen
+E     MESA-EGL: warning: egl: failed to create dri2 screen
+E     0198:fixme:win:create_window_handle DPI context 0x22 not implemented
+E     0198:fixme:win:create_window_handle DPI context 0x22 not implemented
+E     0198:fixme:win:create_window_handle DPI context 0x22 not implemented
+E     0198:fixme:win:create_window_handle DPI context 0x22 not implemented
+E   assert 'feature 18 ready' in '07:32:49.197  dlss5-feed-host64 (built Sep 11 2026 17:26:14)\n07:32:49.365  [host] adapter 0: NVIDIA GeForce RTX 4080 SUPER vendor=0x10DE\n07:32:49.458  [host] DRED settings unavailable (settings1=0x80004002, settings=0x80004002)\n07:32:49.459  [pure] standalone D3D12 device ready; no swapchain or carrier modules\n07:32:49.508  [host] NVSDK_NGX_D3D12_Init -> 0xBAD00002 (?)\n07:32:49.529  [host] Init_with_ProjectID -> 0xBAD00002 (?)\n07:32:49.546  [host] NGX unavailable\n0198:fixme:winediag:loader_init wine-staging 11.17 is a testing version containing experimental patches.\n0198:fixme:winediag:loader_init Please mention your exact version when filing bug reports on winehq.org.\n0198:fixme:win:create_window_handle DPI context 0x22 not implemented\nMESA-EGL: warning: pci id for fd 44: 10de:2702, driver (null)\npci id for fd 45: 10de:2702, driver (null)\npci id for fd 46: 10de:2702, driver (null)\nMESA-EGL: warning: egl: failed to create dri2 screen\nMESA-EGL: warning: pci id for fd 44: 10de:2702, driver (null)\npci id for fd 45: 10de:2702, driver (null)\npci id for fd 46: 10de:2702, driver (null)\nMESA-EGL: warning: egl: failed to create dri2 screen\nMESA-EGL: warning: pci id for ...702, driver (null)\n0198:fixme:ntdll:NtQuerySystemInformation info_class SYSTEM_PERFORMANCE_INFORMATION\n0198:fixme:d3dkmt:NtGdiDdDDIQueryAdapterInfo type 48 not handled.\n0198:fixme:d3dkmt:NtGdiDdDDIQueryAdapterInfo type 48 not handled.\n0198:fixme:cryptasn:CryptDecodeObjectEx Unsupported decoder for lpszStructType 1.3.6.1.4.1.311.2.1.4\n0198:fixme:cryptasn:CryptDecodeObjectEx Unsupported decoder for lpszStructType 1.3.6.1.4.1.311.2.1.4\n0198:fixme:win:create_window_handle DPI context 0x22 not implemented\n0198:fixme:win:create_window_handle DPI context 0x22 not implemented\n0198:fixme:win:create_window_handle DPI context 0x22 not implemented\n0198:fixme:win:create_window_handle DPI context 0x22 not implemented\n07:32:49.197  dlss5-feed-host64 (built Sep 11 2026 17:26:14)\n07:32:49.365  [host] adapter 0: NVIDIA GeForce RTX 4080 SUPER vendor=0x10DE\n07:32:49.458  [host] DRED settings unavailable (settings1=0x80004002, settings=0x80004002)\n07:32:49.459  [pure] standalone D3D12 device ready; no swapchain or carrier modules\n07:32:49.508  [host] NVSDK_NGX_D3D12_Init -> 0xBAD00002 (?)\n07:32:49.529  [host] Init_with_ProjectID -> 0xBAD00002 (?)\n07:32:49.546  [host] NGX unavailable\n'
+__________________________ test_m0_evaluates_succeed ___________________________
+tests/test_m0_env_gate.py:166: in test_m0_evaluates_succeed
+    assert m, f"the worker never reported a test summary.\n{combined[-2000:]}"
+E   AssertionError: the worker never reported a test summary.
+E     7:32:49.529  [host] Init_with_ProjectID -> 0xBAD00002 (?)
+E     07:32:49.546  [host] NGX unavailable
+E     0198:fixme:winediag:loader_init wine-staging 11.17 is a testing version containing experimental patches.
+E     0198:fixme:winediag:loader_init Please mention your exact version when filing bug reports on winehq.org.
+E     0198:fixme:win:create_window_handle DPI context 0x22 not implemented
+E     MESA-EGL: warning: pci id for fd 44: 10de:2702, driver (null)
+E     pci id for fd 45: 10de:2702, driver (null)
+E     pci id for fd 46: 10de:2702, driver (null)
+E     MESA-EGL: warning: egl: failed to create dri2 screen
+E     MESA-EGL: warning: pci id for fd 44: 10de:2702, driver (null)
+E     pci id for fd 45: 10de:2702, driver (null)
+E     pci id for fd 46: 10de:2702, driver (null)
+E     MESA-EGL: warning: egl: failed to create dri2 screen
+E     MESA-EGL: warning: pci id for fd 44: 10de:2702, driver (null)
+E     0198:fixme:ntdll:NtQuerySystemInformation info_class SYSTEM_PERFORMANCE_INFORMATION
+E     0198:fixme:d3dkmt:NtGdiDdDDIQueryAdapterInfo type 48 not handled.
+E     0198:fixme:d3dkmt:NtGdiDdDDIQueryAdapterInfo type 48 not handled.
+E     0198:fixme:cryptasn:CryptDecodeObjectEx Unsupported decoder for lpszStructType 1.3.6.1.4.1.311.2.1.4
+E     0198:fixme:cryptasn:CryptDecodeObjectEx Unsupported decoder for lpszStructType 1.3.6.1.4.1.311.2.1.4
+E     0198:fixme:win:create_window_handle DPI context 0x22 not implemented
+E     0198:fixme:win:create_window_handle DPI context 0x22 not implemented
+E     0198:fixme:win:create_window_handle DPI context 0x22 not implemented
+E     0198:fixme:win:create_window_handle DPI context 0x22 not implemented
+E     07:32:49.197  dlss5-feed-host64 (built Sep 11 2026 17:26:14)
+E     07:32:49.365  [host] adapter 0: NVIDIA GeForce RTX 4080 SUPER vendor=0x10DE
+E     07:32:49.458  [host] DRED settings unavailable (settings1=0x80004002, settings=0x80004002)
+E     07:32:49.459  [pure] standalone D3D12 device ready; no swapchain or carrier modules
+E     07:32:49.508  [host] NVSDK_NGX_D3D12_Init -> 0xBAD00002 (?)
+E     07:32:49.529  [host] Init_with_ProjectID -> 0xBAD00002 (?)
+E     07:32:49.546  [host] NGX unavailable
+E     
+E   assert None
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_capture_display.py:22: Xvfb not installed
+SKIPPED [1] tests/test_capture_display.py:29: Xvfb not installed
+SKIPPED [1] tests/test_capture_display.py:39: Xvfb not installed
+SKIPPED [1] tests/test_capture_display.py:46: Xvfb not installed
+SKIPPED [1] tests/test_capture_display.py:52: Xvfb not installed
+SKIPPED [1] tests/test_capture_display.py:63: Xvfb not installed
+SKIPPED [1] tests/test_capture_display.py:73: Xvfb not installed
+SKIPPED [1] tests/test_capture_display.py:80: Xvfb not installed
+SKIPPED [1] tests/test_capture_display.py:87: Xvfb not installed
+SKIPPED [1] tests/test_capture_display.py:97: Xvfb not installed
+SKIPPED [1] tests/test_cli_end_to_end.py:33: Xvfb not installed
+SKIPPED [1] tests/test_cli_end_to_end.py:53: Xvfb not installed
+SKIPPED [1] tests/test_cli_end_to_end.py:75: Xvfb not installed
+SKIPPED [1] tests/test_cli_end_to_end.py:91: Xvfb not installed
+SKIPPED [1] tests/test_cli_end_to_end.py:97: Xvfb not installed
+FAILED tests/test_m0_env_gate.py::test_m0_no_platform_error - AssertionError:...
+FAILED tests/test_m0_env_gate.py::test_m0_ngx_initialises - AssertionError: N...
+FAILED tests/test_m0_env_gate.py::test_m0_feature18_is_created - AssertionErr...
+FAILED tests/test_m0_env_gate.py::test_m0_evaluates_succeed - AssertionError:...
+=================== 4 failed, 51 passed, 15 skipped in 6.15s ===================

@@ -1,0 +1,41 @@
+==============================================================
+ Wine NGX setup — /home/paul/.neuralscreen/wine
+==============================================================
+
+  [32m✓[0m prefix exists
+  [32m✓[0m DISPLAY=:0
+
+--- 1. NVIDIA NGX bridge (nvngx.dll / _nvngx.dll) ---
+  [32m✓[0m found the driver's NGX bridge at /usr/lib/nvidia/wine
+  [32m✓[0m nvngx.dll (468K)
+  [32m✓[0m _nvngx.dll (2.0M)
+
+--- 2. install into the prefix ---
+  [32m✓[0m nvngx.dll already in system32
+  [32m✓[0m _nvngx.dll already in system32
+
+--- 3. registry: NGXCore -> the bridge directory ---
+  [33m![0m skipped (--check)
+
+--- 4. translation layers (DXVK / vkd3d-proton / dxvk-nvapi) ---
+     Wine's builtin dxgi/d3d11/d3d12/nvapi64 cannot carry NGX: dxvk-nvapi
+     needs DXVK's dxgi and d3d11 extension points, and vkd3d-proton's
+     d3d12. Without them NGX Core loads but its platform check fails
+     (0xBAD00002 FAIL_PlatformError) because NVAPI cannot report the GPU.
+     present now: dxvk-nvapi v0.9.2 / vkd3d-proton missing
+  [33m![0m skipped (--check); re-run without --check to install
+
+--- 4b. driver NGX DLLs in system32 ---
+  [32m✓[0m nvngx.dll (468K)
+  [32m✓[0m _nvngx.dll (2.0M)
+
+--- 5. the DLL overrides the worker must be launched with ---
+
+    WINEDLLOVERRIDES="d3d12,d3d12core,nvapi64,dxgi=n,b;nvngx_dlssnr=n"
+
+  Without d3d12/d3d12core here, Wine loads its own old vkd3d and NGX cannot
+  reach the GPU. native/run_worker.sh and tools/m0_env_gate.sh now set this.
+
+==============================================================
+ RESULT: diagnosis only (--check). Re-run without --check to apply.
+==============================================================
