@@ -264,6 +264,56 @@ def test_the_capture_split_separates_a_stocked_pipe_from_a_slow_producer():
         f"a slow producer should show up in read, read was {cap.last_read}")
 
 
+def test_bypass_is_a_real_no_ngx_control():
+    """BYPASS carries its own flag, and it is not the same as zeroed strengths.
+
+    Zeroed strengths may still run the network; this tells the worker to skip
+    NGX altogether, which is the only way to price the network against the
+    texture path. Checked on the wire so the flag cannot be dropped silently and
+    turn the control into a duplicate of `baseline`.
+    """
+    import io
+    import struct
+
+    from protocol import FRAME_FLAG_BYPASS, FRAME_FLAG_MOTION_SMALL, FRAME_FMT, send_frame
+
+    class Stub:
+        def __init__(self):
+            self.stdin = io.BytesIO()
+
+    head = struct.calcsize(FRAME_FMT)
+    rgba = np.zeros((4, 4, 4), dtype=np.uint8)
+    motion = np.zeros((4, 4, 2), dtype=np.float16)
+
+    stub = Stub()
+    send_frame(stub, 0, rgba, motion, False, 0, None, bypass=True)
+    flags = struct.unpack(FRAME_FMT, stub.stdin.getvalue()[:head])[3]
+    assert flags & FRAME_FLAG_BYPASS, "the worker would not know to skip NGX"
+    assert not flags & FRAME_FLAG_MOTION_SMALL
+
+    stub = Stub()
+    send_frame(stub, 0, rgba, motion, False, 0, None)
+    flags = struct.unpack(FRAME_FMT, stub.stdin.getvalue()[:head])[3]
+    assert not flags & FRAME_FLAG_BYPASS
+
+
+def test_bypass_reaches_the_worker_and_still_runs(fake_capture, fake_display,
+                                                  mock_worker_cmd):
+    """Off by default, set when asked, and the loop still completes."""
+    def build(**kw):
+        return Pipeline(capture=fake_capture, display=fake_display, headless=True,
+                        worker_cmd=mock_worker_cmd, worker_cwd=REPO, **kw)
+
+    plain = build()
+    assert plain.bypass is False and plain.worker.bypass is False
+
+    off = build(bypass=True)
+    assert off.bypass is True and off.worker.bypass is True
+    passed = off.run(frames=2)
+    assert passed["frames_done"] == 2
+    assert passed["frames_skipped"] == 0
+
+
 # --- the worker wrapper ---------------------------------------------------
 
 def test_worker_starts_and_sends_its_header(mock_worker_cmd):

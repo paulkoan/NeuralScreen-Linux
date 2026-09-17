@@ -52,17 +52,32 @@ def requirements() -> tuple[bool, str]:
 
 
 class PortalCapture:
-    """Grab the screen on Wayland via the portal, as RGBA frames.
+    """Grab a screen or a single window on Wayland via the portal, as RGBA.
 
     Note on `monitor_idx`: the portal's SelectSources hands the choice to the
     user through a dialog, so which screen we get is their answer, not ours.
     The index is reported for the log and is otherwise not authoritative on
-    this backend.
+    this backend. The same is true of a window: the user picks it.
+
+    `source` is SOURCE_MONITOR (a whole screen) or SOURCE_WINDOW (one window).
+    A window is the cheaper thing to capture — the compositor's cost scales with
+    the pixels — and it is what a game stream wants, since the desktop around
+    the game is not being watched. Two consequences worth knowing:
+
+      * The size comes from the window when it is picked. Our pipeline forces
+        those exact dimensions, so a window resized afterwards is scaled back to
+        them rather than seen at its new size. Renegotiating needs the per-frame
+        size and a reader that can follow it; until then a resize stretches.
+      * On a fractional-scaled display the portal may report logical dimensions
+        while streaming pixels, and the frame's real size then differs from
+        `width`/`height`. `grab` checks what arrives against what it expects and
+        says so rather than handing back a mangled frame.
     """
 
-    def __init__(self, monitor_idx: int = 0, *, gst: str = GST_LAUNCH,
-                 timeout: float = 120.0, log=print):
+    def __init__(self, monitor_idx: int = 0, *, source: int = SOURCE_MONITOR,
+                 gst: str = GST_LAUNCH, timeout: float = 120.0, log=print):
         self.monitor_idx = monitor_idx
+        self.source = int(source)
         self._log = log
         self._gst = gst
         self._proc: subprocess.Popen | None = None
@@ -77,7 +92,7 @@ class PortalCapture:
             raise CaptureError(f"Wayland capture is not available: {why}")
 
         try:
-            self._sc = open_screencast(types=SOURCE_MONITOR, timeout=timeout, log=log)
+            self._sc = open_screencast(types=self.source, timeout=timeout, log=log)
         except PortalError as exc:
             raise CaptureError(str(exc)) from exc
 

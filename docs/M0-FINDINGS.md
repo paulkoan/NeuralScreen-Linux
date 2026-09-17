@@ -31,6 +31,69 @@ killed the port outright; it is cleared.
 
 ---
 
+# Round 15 — two controls added, and the arithmetic they test
+
+No results yet (the box is unavailable), so this is only what the next run will
+say and why it is worth a run.
+
+## `--bypass`, and a `bypass` gate variant
+
+`FRAME_FLAG_BYPASS` already existed in the protocol — *"NR OFF: skip NGX, show
+the raw capture"* — and the MVP never sent it. It now does, with a variant in the
+gate to pair it against `baseline`.
+
+That pairing is the point. `baseline` zeroes the strengths, and zeroed strengths
+may still run the network end to end; `bypass` skips NGX outright. So:
+
+```
+baseline - bypass   what the network actually costs
+bypass              the texture upload, readback and copies, which no strength
+                    setting touches
+```
+
+At 1280x720 that matters because the numbers do not add up yet. The frame is
+57.7ms with the effect off; the pipe traffic is 11.1MB against a measured
+1.1 GB/s, so ~10ms; the product's own figure for the network is ~2.9ms. Roughly
+**48ms of 57.7ms is unaccounted for**, and it is either the network costing far
+more than its arithmetic or the texture path — which are completely different
+repairs. One extra row settles which.
+
+## `--source window`
+
+The portal's `SelectSources` gets `SOURCE_WINDOW` instead of `SOURCE_MONITOR`,
+so the compositor hands over one window rather than a whole screen. Two reasons
+it is the interesting path:
+
+* **The capture is priced per pixel**, and the capture is the ceiling at
+  2560x1440 (125-325ms per grab). Fewer pixels is the one lever that acts on the
+  leg actually limiting the pipeline — not because the pass upscales, which the
+  upstream source says plainly it does not, but because the compositor bills by
+  area.
+* **It is the GeForce Now case.** A game stream needs the game window; the
+  desktop around it is never watched.
+
+Two limits are documented on the class rather than hidden: a window resized
+after it is picked is scaled back to the picked dimensions, because our pipeline
+forces those exact caps; and on a fractionally-scaled display the portal may
+report logical dimensions while streaming pixels, in which case `grab` says the
+sizes disagree instead of returning a mangled frame.
+
+## The ceiling to keep in mind while reading the next run
+
+Per frame the pipe path moves colour + motion + result. At 1440p that is 44.2MB
+against a measured 1.1 GB/s pipe:
+
+| resolution | per frame | floor | ceiling if everything else were free |
+|---|---|---|---|
+| 2560x1440 | 44.2 MB | 40ms | ~25 fps |
+| 1280x720  | 11.1 MB | 10ms | ~100 fps |
+
+So 1440p cannot be served by this architecture whatever the network costs, and
+720p's problem is not the pipes. That is the shape of the work: keep the frame
+out of the pipes at 1440p, and find the ~48ms at 720p.
+
+---
+
 # Round 14 — the split was measuring nothing, the copy is 11% of the grab
 
 `20260916T204919Z` reported:

@@ -179,3 +179,35 @@ def test_close_is_safe_without_a_pipeline():
     assert cap._proc is None
     assert cap._sc.fd == -1
     assert fd_before >= 0
+
+
+def test_window_capture_asks_the_portal_for_a_window(monkeypatch):
+    """--source window must ask SelectSources for a WINDOW, not a screen.
+
+    That flag alone decides what the portal offers the user, so getting it wrong
+    silently captures the whole desktop and the cheaper thing we were after
+    never happens — no error, just the old behaviour and the old cost. Asserted
+    on the call the constructor actually makes.
+    """
+    from minimal.portal import SOURCE_MONITOR, SOURCE_WINDOW
+
+    seen: list[dict] = []
+
+    class _Session:
+        width, height = 1280, 720
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(cw, "requirements", lambda: (True, ""))
+    monkeypatch.setattr(cw, "open_screencast",
+                        lambda **kw: (seen.append(kw), _Session())[1])
+    monkeypatch.setattr(cw.PortalCapture, "_start_pipeline", lambda self: None)
+
+    cap = cw.PortalCapture(source=SOURCE_WINDOW)
+    assert seen[-1]["types"] == SOURCE_WINDOW
+    assert cap.source == SOURCE_WINDOW
+    assert (cap.width, cap.height) == (1280, 720)
+
+    cw.PortalCapture()                    # the default is still a whole screen
+    assert seen[-1]["types"] == SOURCE_MONITOR

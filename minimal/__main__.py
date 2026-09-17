@@ -55,11 +55,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--frames", type=int, default=0,
                    help="stop after N frames (0 = until the window is closed)")
     p.add_argument("--monitor", type=int, default=0, help="screen index (default 0)")
-    p.add_argument("--source", choices=("auto", "screen", "wayland", "synthetic", "image"),
+    p.add_argument("--source",
+                   choices=("auto", "screen", "wayland", "window", "synthetic",
+                            "image"),
                    default="auto",
                    help="where frames come from: auto (portal on Wayland, X11 "
-                        "grab otherwise), screen, wayland, a generated test "
-                        "card, or a still image")
+                        "grab otherwise), screen, wayland, window (the portal "
+                        "asks for ONE window instead of a screen — cheaper, and "
+                        "what a game stream wants), a generated test card, or a "
+                        "still image")
     p.add_argument("--input-image", metavar="PATH",
                    help="the frame to replay with --source image")
     p.add_argument("--param", action="append", metavar="NAME=VALUE",
@@ -75,6 +79,12 @@ def build_parser() -> argparse.ArgumentParser:
                         "own resolution")
     p.add_argument("--windowed", action="store_true",
                    help="draw in a window instead of fullscreen")
+    p.add_argument("--bypass", action="store_true",
+                   help="NR OFF: the worker skips NGX entirely and hands back "
+                        "the frame it was given. A truer control than "
+                        "--param intensity=0, which may still run the network at "
+                        "zero strength: this one separates the network from the "
+                        "texture upload/readback when hunting the per-frame cost")
     p.add_argument("--motion-small", action="store_true",
                    help="send the motion field at the optical-flow size "
                         "(320x180) and let the worker upscale it. NOT USABLE in "
@@ -124,7 +134,8 @@ def main(argv: list[str] | None = None) -> int:
         pipe = Pipeline(fullscreen=not args.windowed, headless=args.headless,
                         capture=source, params=params,
                         work_scale=args.work_scale,
-                        motion_small=args.motion_small)
+                        motion_small=args.motion_small,
+                        bypass=args.bypass)
     except (CaptureError, DisplayError) as exc:
         print(f"startup failed: {exc}", file=sys.stderr)
         return 2

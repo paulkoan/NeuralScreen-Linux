@@ -291,6 +291,14 @@ run_variant baseline synthetic "" \
     "--param intensity=0 --param local_tone=0 --param local_structure=0" control
 BASELINE_STATUS=$VARIANT_STATUS
 
+# NR OFF for real. `baseline` zeroes the strengths, which may still run the
+# network at zero strength; this tells the worker to skip NGX entirely. The gap
+# between the two rows is the network's own price, and what is left is the
+# texture upload and readback that happen either way — which is the ~48ms that
+# neither the network nor the pipe traffic accounts for at 1280x720.
+run_variant bypass synthetic "" "--bypass" control
+BYPASS_STATUS=$VARIANT_STATUS
+
 # "auto" is what the product does: the portal on a Wayland session, the X11 grab
 # otherwise. Naming it explicitly here means the gate tests the same decision the
 # user's own runs go through.
@@ -312,7 +320,7 @@ fi
 
 # --- copy artifacts out -----------------------------------------------------
 if [ -n "$OUT" ]; then
-    for v in pass scaled baseline capture; do
+    for v in pass scaled baseline bypass capture; do
         mkdir -p "$OUT/$v"
         cp -f "$T/$v/before.png" "$OUT/$v/" 2>/dev/null || true
         cp -f "$T/$v/after.png" "$OUT/$v/" 2>/dev/null || true
@@ -330,7 +338,7 @@ if [ -n "$OUT" ]; then
         echo "driver:            $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>&1 | head -1)"
     } > "$OUT/m1_environment.txt" 2>&1
     echo ""
-    echo "  artifacts -> $OUT/{pass,scaled,baseline,capture}/"
+    echo "  artifacts -> $OUT/{pass,scaled,baseline,bypass,capture}/"
 fi
 
 # --- summary ----------------------------------------------------------------
@@ -354,6 +362,15 @@ else
     echo "  baseline FAIL — the control run did not complete."
     STATUS=1
 fi
+if [ "$BYPASS_STATUS" = "0" ]; then
+    echo "  bypass   measured — NGX skipped entirely. baseline minus bypass is"
+    echo "           the network's own price; what bypass still costs is the"
+    echo "           texture upload and readback, which no strength setting"
+    echo "           touches."
+else
+    echo "  bypass   FAIL — the no-NGX control did not complete."
+    STATUS=1
+fi
 if [ "$CAPTURE_STATUS" = "0" ]; then
     echo "  capture  PASS — a real screen frame comes through."
 else
@@ -361,7 +378,7 @@ else
 fi
 echo ""
 echo "  per-frame cost by variant — the point of the run:"
-for v in pass scaled baseline capture; do
+for v in pass scaled baseline bypass capture; do
     line=$(grep -m1 '^timing:' "$T/$v/mvp.txt" 2>/dev/null || true)
     printf '    %-9s %s\n' "$v" "${line:-<no timing recorded>}"
     # The capture leg's own split, which is the number that decides whether the
@@ -381,6 +398,12 @@ echo "                       Almost exactly scaled's total: turning the effect"
 echo "                       off and quartering the network are worth the same"
 echo "                       ~24ms, which is what a cost sitting in the worker's"
 echo "                       per-frame work and in the bytes both look like."
+echo "    bypass    ?        NGX skipped outright. If baseline and bypass land"
+echo "                       close together then zeroing the strengths was still"
+echo "                       running the network, and the worker's cost is in the"
+echo "                       texture path; if bypass is much cheaper, the network"
+echo "                       is worth more than its measured arithmetic (1.5ms +"
+echo "                       1.51ms/Mpixel is ~2.9ms at 1280x720)."
 echo "    capture  520.0ms   the portal's OWN leg was 375ms of it at 2560x1440."
 echo "                       Nothing downstream can beat the rate the compositor"
 echo "                       hands frames over, so measure that on its own with:"

@@ -175,9 +175,11 @@ def open_capture(source: str, *, monitor: int = 0, input_image=None,
                  width: int | None = None, height: int | None = None):
     """Build the frame source named by --source.
 
-    \"auto\" picks per session: Wayland desktops get the portal (mss would hand
-    back the black XWayland root), everything else gets the X11 grab. \"synthetic\"
-    and \"image\" exist so the pass can be exercised without any real capture.
+    "auto" picks per session: Wayland desktops get the portal (mss would hand
+    back the black XWayland root), everything else gets the X11 grab. "window"
+    is the portal asking for a single window rather than a screen — the user
+    picks it — which is both cheaper and what a game stream wants. "synthetic"
+    and "image" exist so the pass can be exercised without any real capture.
     """
     if source == "auto":
         source = "wayland" if os.environ.get("XDG_SESSION_TYPE") == "wayland" else "screen"
@@ -198,6 +200,12 @@ def open_capture(source: str, *, monitor: int = 0, input_image=None,
         # working on machines where that is not installed.
         from minimal.capture_wayland import PortalCapture
         return PortalCapture(monitor_idx=monitor)
+    if source == "window":
+        # One window instead of a whole screen. The compositor's capture cost
+        # scales with the pixels, and a game stream only needs the game.
+        from minimal.capture_wayland import PortalCapture
+        from minimal.portal import SOURCE_WINDOW
+        return PortalCapture(monitor_idx=monitor, source=SOURCE_WINDOW)
     if source == "synthetic":
         return SyntheticCapture(width or 1280, height or 720)
     if source == "image":

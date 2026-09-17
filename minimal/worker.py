@@ -125,7 +125,8 @@ class Worker:
                  cmd: list[str] | None = None,
                  cwd: Path | None = None,
                  full_w: int = 0, full_h: int = 0,
-                 nr_small: bool = False, motion_small: bool = False):
+                 nr_small: bool = False, motion_small: bool = False,
+                 bypass: bool = False):
         self.width, self.height = int(width), int(height)
         self.work_w, self.work_h = int(work_w), int(work_h)
         self.params = params
@@ -136,6 +137,10 @@ class Worker:
         self.full_w, self.full_h = int(full_w), int(full_h)
         self.nr_small = bool(nr_small)
         self.motion_small = bool(motion_small)
+        # NR OFF: the worker skips NGX and returns the capture unchanged. Not
+        # the same as zeroed strengths — those still run the network, so this is
+        # the control that separates the network from the texture path.
+        self.bypass = bool(bypass)
         self.warmup = int(warmup)
         self.cmd = cmd or default_launcher()
         self.cwd = cwd or NATIVE_DIR
@@ -213,7 +218,7 @@ class Worker:
         assert self.proc is not None and self.proc.stdin is not None
         try:
             send_frame(self.proc, index, rgba, motion, reset, pts, None,
-                       motion_small=self.motion_small)
+                       motion_small=self.motion_small, bypass=self.bypass)
         except (BrokenPipeError, OSError) as exc:
             raise RuntimeError(
                 f"the worker died while sending frame {index} ({exc}). "

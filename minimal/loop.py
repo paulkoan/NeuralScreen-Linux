@@ -38,7 +38,8 @@ class Pipeline:
                  fullscreen: bool = False, headless: bool = False,
                  warmup: int = 2, worker_cmd: list[str] | None = None,
                  worker_cwd: Path | None = None, capture=None, display=None,
-                 work_scale: float = 1.0, motion_small: bool = False):
+                 work_scale: float = 1.0, motion_small: bool = False,
+                 bypass: bool = False):
         self.params = dict(params or DEFAULT_PARAMS)
         self.warmup = warmup
         self.headless = headless
@@ -63,6 +64,10 @@ class Pipeline:
         # the trap the upstream comment records ("handing it the full screen ...
         # is why work_scale never bought anything").
         self.nr_small = self.work_scale < 1.0
+        # NR OFF: the worker skips NGX. Where --param intensity=0 may still run
+        # the network at zero strength, this does not run it at all, so the
+        # difference between the two is what the network actually costs.
+        self.bypass = bool(bypass)
 
         self.worker = Worker(
             self.width, self.height, self.work_w, self.work_h, self.params,
@@ -70,7 +75,8 @@ class Pipeline:
             full_w=self.width if self.nr_small else 0,
             full_h=self.height if self.nr_small else 0,
             nr_small=self.nr_small,
-            motion_small=self.motion_small)
+            motion_small=self.motion_small,
+            bypass=self.bypass)
 
         if display is not None:
             self.display = display
