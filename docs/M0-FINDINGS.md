@@ -31,6 +31,87 @@ killed the port outright; it is cleared.
 
 ---
 
+# Round 26 — Phase A: the transport the own host would use, built and measured
+
+The MVP's floor is not the neural pass. With NGX skipped entirely a 2560x1440
+frame still costs **~85ms**, because the worker's only input paths are a stdin
+pipe and a Windows *named section* — and named sections are not reachable from a
+native Linux process (`mmap.mmap(-1, size, tagname=...)` raises `TypeError`;
+Wine's `OpenFileMappingA` is not in the POSIX shm namespace). So every frame
+crosses a pipe twice and the CPU/GPU boundary twice, and that is where the frame
+rate went.
+
+A *file* might be reachable: Wine maps `/` as `Z:\`, and two `MAP_SHARED`
+mappings of one file are the same physical pages. That is the gate on the whole
+own-host pathway, and it is now built — `experiments/mmap_bridge/`.
+
+## What it is
+
+Four files with one source of truth:
+
+- `bridge_layout.h` — the layout, and the **only** place it is written down.
+  `bridge_check.py` parses it at import rather than restating it, so the two
+  sides cannot drift.
+- `bridge_win.c` — the Windows half. `CreateFileA` → `CreateFileMappingA` →
+  `MapViewOfFile` on `Z:\…`, built with `x86_64-w64-mingw32-gcc`, run under Wine.
+- `bridge_check.py` — the native half: creates the file, maps it, drives the
+  handshake, and times it.
+- `fake_windows.py` — the Windows half's state machine in Python, so the protocol
+  is testable with no Wine installed. `run.sh --selftest` uses it.
+
+Each side fills the payload with its own byte — native `0xA5`, Windows `0x5A` —
+and each verifies *every byte* of what the other wrote. One byte nobody wrote
+means the pages are not shared, so PASS is a real claim, not a liveness check.
+`--bytes` defaults to 14745600: exactly one 2560x1440 RGBA frame.
+
+## The numbers — and they are not from Wine
+
+With the Python stand-in, 14.7MB, four rounds:
+
+```
+  14.7 MB written and returned in 26.97ms mean   (1093 MB/s both ways)
+  of which 6.24ms is our own write               (2362 MB/s one way)
+  the peer's own write: 10.15ms cold → 1.51ms steady state
+```
+
+Against **~1100 MB/s** for a pipe read measured on this box, and the MVP moves
+the frame through a pipe **twice**. So roughly 2x the transport, before any of
+the CPU/GPU crossings are touched.
+
+**This is not a Wine measurement** and the tool says so in its own output. What
+it proves is the layout, the handshake, and that two shared mappings of one file
+are coherent through the page cache — the part Wine would have to reproduce.
+Whether Wine's `CreateFileMappingA` on a `Z:\` path lands on that same page cache
+is the open question, and it needs the GPU box.
+
+## Two things the first version got wrong, both now pinned by tests
+
+- **It flushed every round.** An `msync` per round forces writeback, and it made
+  a 14.7MB round trip look like **113ms** when the truth was 27ms — a 4x error,
+  all of it disk. Coherence does not need it: two `MAP_SHARED` mappings of one
+  file are the same physical pages. `--flush` is now opt-in on both sides, so the
+  cost can be measured instead of assumed, and a real implementation must not pay
+  it per frame.
+- **It claimed more than it did.** With `--windows-cmd` the second process is not
+  Wine, yet the first version still announced "a native process and a Wine
+  process share these pages". It now names the process that actually ran and
+  marks the Wine claim explicitly unproven. Its rate was also labelled GB/s while
+  being MB/s — a 1000x overstatement.
+
+## What is still open
+
+- **The Wine half is unmeasured.** Nothing here says Wine shares the pages.
+- **The worker can't use it anyway.** Its input paths remain a pipe and a named
+  section, so using this transport means **writing our own host** — same job, a
+  transport we choose, reusing the NGX plumbing in
+  `native/dlss5-feed-host64.cpp`. Phase B, a build rather than an experiment.
+- **Phase B is ~2x, not 5x.** Removing the pipe machinery should take 1440p from
+  ~85ms to ~50ms: **~20fps, still not a game stream.** Only keeping the frame on
+  the GPU (Phase C: DMA-BUF from the portal imported as a D3D12 texture under
+  vkd3d-proton) reaches 60fps, and that is research-grade and uncertain.
+
+---
+
 # Round 25 — the capture chain is 33% of a core, and the ceiling this architecture has
 
 `20260918T132847Z` produced the measurement the last three rounds were for:
