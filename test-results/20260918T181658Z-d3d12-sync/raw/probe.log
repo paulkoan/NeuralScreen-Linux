@@ -1,0 +1,143 @@
+002c:fixme:winediag:loader_init wine-staging 11.17 is a testing version containing experimental patches.
+002c:fixme:winediag:loader_init Please mention your exact version when filing bug reports on winehq.org.
+MESA-EGL: warning: pci id for fd 39: 10de:2702, driver (null)
+pci id for fd 40: 10de:2702, driver (null)
+pci id for fd 41: 10de:2702, driver (null)
+MESA-EGL: warning: egl: failed to create dri2 screen
+MESA-EGL: warning: pci id for fd 39: 10de:2702, driver (null)
+pci id for fd 40: 10de:2702, driver (null)
+pci id for fd 41: 10de:2702, driver (null)
+MESA-EGL: warning: egl: failed to create dri2 screen
+MESA-EGL: warning: pci id for fd 39: 10de:2702, driver (null)
+00f4:fixme:wineusb:add_usb_device Interface 1 has 2 alternate settings; using the first one.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+00b4:fixme:wineusb:query_id Unhandled ID query type 0x5.
+0024:fixme:winediag:loader_init wine-staging 11.17 is a testing version containing experimental patches.
+0024:fixme:winediag:loader_init Please mention your exact version when filing bug reports on winehq.org.
+info:  Game: probe.exe
+info:  DXVK: v3.1.1
+info:  Build: x86_64 gcc 16.2.0
+info:  Vulkan: Found vkGetInstanceProcAddr in winevulkan.dll @ 0x6ffffc3579c0
+info:  Extension providers:
+info:    Platform WSI
+info:    OpenVR
+info:  OpenVR: could not open registry key, status 2
+info:  OpenVR: Failed to locate module
+info:    OpenXR
+info:  Enabled instance extensions:
+info:    VK_KHR_get_surface_capabilities2
+info:    VK_KHR_surface
+info:    VK_KHR_surface_maintenance1
+info:    VK_KHR_win32_surface
+info:  Found device: NVIDIA GeForce RTX 4080 SUPER (NVIDIA 615.71.9)
+info:  Found device: Intel(R) UHD Graphics 770 (ADL-S GT1) (Intel open-source Mesa driver 26.2.2)
+info:  Found device: llvmpipe (LLVM 22.1.8, 256 bits) (llvmpipe 26.2.2)
+info:    Skipping: Software driver
+  adapter: NVIDIA GeForce RTX 4080 SUPER vendor=0x10DE
+  frame-sized buffers: 14.7 MB
+warn:  DxgiAdapter::QueryInterface: Unknown interface query
+warn:  f0db4c7f-fe5a-42a2-bd62-f2a6cf6fc83e
+353303.342:0020:0024:info:vkd3d-proton:vkd3d_instance_apply_application_workarounds: Program name: "probe.exe" (hash: 8b199238453555d5)
+353303.342:0020:0024:info:vkd3d-proton:vkd3d_instance_deduce_config_flags_from_environment: shader_cache is used, global_pipeline_cache is enforced.
+353303.342:0020:0024:info:vkd3d-proton:vkd3d_config_flags_init_once: VKD3D_CONFIG=''.
+353303.346:0020:0024:info:vkd3d-proton:vkd3d_get_vk_version: vkd3d-proton - applicationVersion: 3.0.1.
+353303.346:0020:0024:info:vkd3d-proton:vkd3d_instance_init: vkd3d-proton - build: 3b10bd7a7ec6a73.
+353303.382:0020:0024:info:vkd3d-proton:vkd3d_physical_device_info_init_maint9: Implementation supports eliding QFOT for non-compressed optimal images.
+353303.382:0020:0024:info:vkd3d-proton:vkd3d_physical_device_info_init_maint10: Implementation can copy depth aspect on compute queue.
+353303.382:0020:0024:info:vkd3d-proton:vkd3d_physical_device_info_init_maint10: Implementation can copy depth aspect on transfer queue.
+353303.382:0020:0024:info:vkd3d-proton:vkd3d_physical_device_info_init_maint10: Implementation can copy stencil aspect on compute queue.
+353303.721:0020:0024:info:vkd3d-proton:vkd3d_memory_info_decide_hvv_usage: Topology: Device heaps are split. Assuming small BAR situation.
+353303.721:0020:0024:info:vkd3d-proton:vkd3d_memory_info_upload_hvv_memory_properties: Topology: HVV usage is not allowed, using HOST_COHERENT for UPLOAD.
+353303.722:0020:0024:info:vkd3d-proton:vkd3d_bindless_state_get_bindless_flags: Enabling fast paths for advanced ExecuteIndirect() graphics and compute (EXT_dgc).
+353303.722:0020:0024:info:vkd3d-proton:vkd3d_bindless_state_get_bindless_flags: Device supports VK_EXT_mutable_descriptor_type.
+353303.722:0020:0024:info:vkd3d-proton:vkd3d_bindless_state_add_binding: Device supports VK_EXT_descriptor_buffer!
+353303.722:0020:0024:info:vkd3d-proton:vkd3d_bindless_state_add_binding: Device supports VK_EXT_descriptor_buffer!
+353303.722:0020:0024:info:vkd3d-proton:vkd3d_bindless_state_add_binding: Device supports VK_EXT_descriptor_buffer!
+353303.724:0020:0024:info:vkd3d-proton:d3d12_device_caps_init_shader_model: Enabling support for SM 6.6.
+353303.724:0020:0024:info:vkd3d-proton:d3d12_device_caps_init_shader_model: Enabling support for SM 6.7.
+353303.724:0020:0024:info:vkd3d-proton:d3d12_device_caps_init_shader_model: Enabling support for SM 6.8.
+353303.724:0020:0024:fixme:vkd3d-proton:d3d12_device_caps_init_feature_options1: TotalLaneCount = 7680, may be inaccurate.
+353303.724:0020:0024:info:vkd3d-proton:d3d12_device_determine_ray_tracing_tier: DXR support enabled.
+353303.724:0020:0024:info:vkd3d-proton:d3d12_device_determine_ray_tracing_tier: DXR 1.1 support enabled.
+353303.724:0020:0024:info:vkd3d-proton:d3d12_device_caps_init_feature_level: DX Ultimate supported!
+353303.724:0020:0024:info:vkd3d-proton:vkd3d_pipeline_library_init_disk_cache: Remapping VKD3D_SHADER_CACHE to: vkd3d-proton.cache.
+353303.724:0020:0024:info:vkd3d-proton:vkd3d_pipeline_library_init_disk_cache: Attempting to load disk cache from: vkd3d-proton.cache.
+353303.724:0020:0150:info:vkd3d-proton:vkd3d_pipeline_library_disk_thread_main: Performing async setup of stream archive ...
+353303.724:0020:0150:info:vkd3d-proton:vkd3d_pipeline_library_disk_cache_merge: No write cache exists. No need to merge any disk caches.
+353303.724:0020:0150:info:vkd3d-proton:vkd3d_pipeline_library_disk_cache_initial_setup: Merging pipeline libraries took 0.169 ms.
+353303.724:0020:0150:info:vkd3d-proton:vkd3d_pipeline_library_disk_cache_initial_setup: Failed to map read-only cache: vkd3d-proton.cache.
+353303.724:0020:0150:info:vkd3d-proton:vkd3d_pipeline_library_disk_thread_main: Done performing async setup of stream archive.
+
+  A. submit + fence wait, one frame at a time (the host's shape)
+    ExecuteCommandLists + Signal          0.001 ms each   (20 of them, 0.0 ms total)
+    the wait for it to finish             0.058 ms each   (20 of them, 1.2 ms total)
+    the whole round trip                  0.059 ms each   (20 of them, 1.2 ms total)
+
+  B. fence wait on an already-complete value (no GPU work)
+    SetEventOnCompletion + Wait           0.001 ms each   (20 of them, 0.0 ms total)
+
+  C. submit, then poll GetCompletedValue instead of waiting
+    submit + spin to completion           0.044 ms each   (20 of them, 0.9 ms total)
+
+  D. 20 submits back to back, one wait at the end
+353303.731:0020:0024:err:vkd3d-proton:d3d12_command_allocator_Reset: There are still 1 pending command lists awaiting execution from command allocator iface 000000000088c0b0!
+353303.731:0020:0024:err:vkd3d-proton:d3d12_command_allocator_Reset: There are still 1 pending command lists awaiting execution from command allocator iface 000000000088c900!
+353303.731:0020:0024:err:vkd3d-proton:d3d12_command_allocator_Reset: There are still 1 pending command lists awaiting execution from command allocator iface 000000000088d320!
+353303.731:0020:0024:err:vkd3d-proton:d3d12_command_allocator_Reset: There are still 1 pending command lists awaiting execution from command allocator iface 000000000088d5b0!
+353303.731:0020:0024:err:vkd3d-proton:d3d12_command_allocator_Reset: There are still 2 pending command lists awaiting execution from command allocator iface 000000000088c0b0!
+353303.731:0020:0024:err:vkd3d-proton:d3d12_command_allocator_Reset: There are still 2 pending command lists awaiting execution from command allocator iface 000000000088c900!
+353303.731:0020:0024:err:vkd3d-proton:d3d12_command_allocator_Reset: There are still 2 pending command lists awaiting execution from command allocator iface 000000000088d320!
+353303.731:0020:0024:err:vkd3d-proton:d3d12_command_allocator_Reset: There are still 2 pending command lists awaiting execution from command allocator iface 000000000088d5b0!
+353303.731:0020:0024:err:vkd3d-proton:d3d12_command_allocator_Reset: There are still 3 pending command lists awaiting execution from command allocator iface 000000000088c0b0!
+353303.731:0020:0024:err:vkd3d-proton:d3d12_command_allocator_Reset: There are still 3 pending command lists awaiting execution from command allocator iface 000000000088c900!
+353303.731:0020:0024:err:vkd3d-proton:d3d12_command_allocator_Reset: There are still 3 pending command lists awaiting execution from command allocator iface 000000000088d320!
+353303.731:0020:0024:err:vkd3d-proton:d3d12_command_allocator_Reset: There are still 3 pending command lists awaiting execution from command allocator iface 000000000088d5b0!
+353303.731:0020:0024:err:vkd3d-proton:d3d12_command_allocator_Reset: There are still 4 pending command lists awaiting execution from command allocator iface 000000000088c0b0!
+353303.731:0020:0024:err:vkd3d-proton:d3d12_command_allocator_Reset: There are still 4 pending command lists awaiting execution from command allocator iface 000000000088c900!
+353303.731:0020:0024:err:vkd3d-proton:d3d12_command_allocator_Reset: There are still 4 pending command lists awaiting execution from command allocator iface 000000000088d320!
+353303.731:0020:0024:err:vkd3d-proton:d3d12_command_allocator_Reset: There are still 4 pending command lists awaiting execution from command allocator iface 000000000088d5b0!
+    submit, no per-frame wait             0.055 ms each   (20 of them, 1.1 ms total)
+
+  E. a 14.7MB upload copy + 14.7MB readback, with the sync
+    recording the two copies              0.008 ms each   (10 of them, 0.1 ms total)
+    submit + wait                         1.537 ms each   (10 of them, 15.4 ms total)
+    the whole frame-shaped pass           1.545 ms each   (10 of them, 15.4 ms total)
+
+  what the pipeline spends on a frame of ANY size, measured earlier:
+    a 64KB frame with NGX off   64.5ms
+    a 3.7MB frame with NGX off  54.9ms
+  so ~55ms a frame goes on something that is not the bytes.
+
+  one submit+wait round trip:     0.06ms  (the wait alone: 0.06ms)
+  that wait with no GPU work:     0.00ms  <- Wine's own cost, nothing
+                                       else in the process
+  submit then poll instead:       0.04ms
+  submit, never wait per frame:   0.05ms
+  14.7MB copy + 14.7MB readback:   1.54ms  (with the sync)
+
+  RESULT: SYNCHRONISATION IS CHEAP — 0.1ms for a full round trip, and
+  1.5ms for a frame-sized copy with the sync. Neither accounts for the
+  pipeline's ~55ms, so the fixed cost is in the host's own design and
+  a host we write could plausibly get past it.
+015c:fixme:winediag:loader_init wine-staging 11.17 is a testing version containing experimental patches.
+015c:fixme:winediag:loader_init Please mention your exact version when filing bug reports on winehq.org.
