@@ -117,6 +117,26 @@ def worker_env(base: dict | None = None, nr_small: bool = False) -> dict:
     return env
 
 
+def stream_header(work_w: int, work_h: int, warmup: int, params: dict,
+                  full_w: int = 0, full_h: int = 0) -> bytes:
+    """The stream header — the first thing the worker reads.
+
+    One place, because the throughput harness has to produce a stream the worker
+    will accept and a second copy of this would drift. A header the worker
+    rejects kills the run on frame 0, and that has happened before: an
+    even-rounding bug once made the work size larger than the frame.
+    """
+    return struct.pack(
+        HEADER_FMT,
+        VIDEO_MAGIC, work_w, work_h, warmup, 0,
+        params["profile"], params["preset"], params["style"],
+        params["auto_mask"], params["ui_correction"],
+        params["intensity"], params["local_tone"],
+        params["local_structure"], params["skin_structure"],
+        full_w, full_h,
+    )
+
+
 class Worker:
     """A running NR worker process plus its reader thread and log buffer."""
 
@@ -179,15 +199,8 @@ class Worker:
         # the process. Its width/height are the *output* frame size.
         self.reader = WorkerReader(self.proc, self.width, self.height, None)
 
-        header = struct.pack(
-            HEADER_FMT,
-            VIDEO_MAGIC, self.work_w, self.work_h, self.warmup, 0,
-            self.params["profile"], self.params["preset"], self.params["style"],
-            self.params["auto_mask"], self.params["ui_correction"],
-            self.params["intensity"], self.params["local_tone"],
-            self.params["local_structure"], self.params["skin_structure"],
-            self.full_w, self.full_h,
-        )
+        header = stream_header(self.work_w, self.work_h, self.warmup,
+                               self.params, self.full_w, self.full_h)
         self.proc.stdin.write(header)
         self.proc.stdin.flush()
 
