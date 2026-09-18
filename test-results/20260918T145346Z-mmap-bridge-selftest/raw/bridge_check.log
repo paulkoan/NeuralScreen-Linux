@@ -1,0 +1,33 @@
+==================================================================
+ shared-file bridge: can Wine and native Linux share mapped pages?
+==================================================================
+  file:     /tmp/nsb_bridge/frame.bin  (1.0 MB)
+  payload:  1.0 MB per round (3 rounds)
+  windows:  Z:\tmp\nsb_bridge\frame.bin
+  windows:  /opt/data/neuralscreen-linux/.venv/bin/python /opt/data/neuralscreen-linux/experiments/mmap_bridge/fake_windows.py /tmp/nsb_bridge/frame.bin
+  pid:      134589
+
+  the Windows side has the mapping. Exchanging frames.
+
+  round  1: write   1.49ms (    672 MB/s one way)   round trip   5.18ms (    386 MB/s both ways)
+  round  2: write   0.62ms (   1609 MB/s one way)   round trip   3.64ms (    549 MB/s both ways)
+  round  3: write   0.10ms (   9539 MB/s one way)   round trip   2.01ms (    993 MB/s both ways)
+
+  the Windows side said:
+    fake_windows: mapping is live, payload_len 1000000
+    fake_windows: round 1: read 1000000 bytes, wrote 1000000, 1.15 ms
+    fake_windows: round 2: read 1000000 bytes, wrote 1000000, 0.54 ms
+    fake_windows: round 3: read 1000000 bytes, wrote 1000000, 0.09 ms
+    fake_windows: 3 rounds, 0 with mismatches
+
+==================================================================
+ RESULT: PASS — the handshake works end to end. This run did NOT involve Wine.
+         the second process was: /opt/data/neuralscreen-linux/.venv/bin/python /opt/data/neuralscreen-linux/experiments/mmap_bridge/fake_windows.py /tmp/nsb_bridge/frame.bin
+         so the layout and the protocol are proven; that Wine shares the pages is NOT proven by this run.
+
+  1.0 MB written and returned in 3.61ms mean over 3 rounds (553 MB/s both ways)
+  of which 0.74ms is our own write (1355 MB/s one way)
+  (no msync per round: two MAP_SHARED mappings of one file are the same physical pages, so a per-frame flush would be paid for nothing)
+
+  for scale: a pipe read measured ~1100 MB/s on the analysis box,
+  and the MVP's 2560x1440 floor with NGX skipped is ~85ms a frame.
