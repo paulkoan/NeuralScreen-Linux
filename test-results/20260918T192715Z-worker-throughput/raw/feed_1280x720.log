@@ -1,0 +1,5 @@
+  size: 1280x720   frames: 30 then 60   bypass: False
+  bytes per frame across the pipe: 11.1 MB (8/pixel in, 4/pixel back)
+   30 frames:   2.350s   (worker exit 0)
+   60 frames:   1.700s   (worker exit 0)
+  the longer run was not slower — the difference cannot give a per-frame cost. Nothing to report.

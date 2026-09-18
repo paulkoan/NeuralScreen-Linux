@@ -1,0 +1,13 @@
+  size: 2560x1440   frames: 30 then 60   bypass: False
+  bytes per frame across the pipe: 44.2 MB (8/pixel in, 4/pixel back)
+   30 frames:   2.485s   (worker exit 0)
+   60 frames:   3.009s   (worker exit 0)
+
+  derived per frame: 17.46 ms  =  57.3 fps
+  the pipe alone would be: 40.2 ms/frame at ~1.1 GB/s = 24.9 fps
+  this run is 0.43x the pipe floor
+
+  RESULT: AT THE PIPE'S RATE. With no handshake and no client in the way, the
+  worker saturates the pipe — so the pipeline's much lower rate is the client's
+  serial loop, and a faster transport (mmap_bridge, proven ~4x one way) lifts
+  this ceiling directly.
