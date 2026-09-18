@@ -66,6 +66,18 @@ def test_the_shared_tail_is_valid_bash():
 
 # --- the environment --------------------------------------------------------
 
+def test_the_runner_also_times_the_workers_own_loop():
+    """The substrate probe says the GPU layer is cheap, so the 55ms has to be
+    somebody's; the worker's own --test rate is what tells whose, and the project
+    had never recorded it. The rate must be derived, not left to the reader."""
+    runner = (EXPERIMENTS / "d3d12_sync" / "run.sh").read_text()
+    assert "nvngx.dll" in runner and "--test" in runner, (
+        "the runner must time the worker's own loop, not just the substrate")
+    assert "ms/evaluate" in runner, (
+        "the ms/evaluate derivation has to be in the tool")
+    assert "host_test.log" in runner, "and its output has to be kept"
+
+
 def test_the_probe_runs_in_the_workers_own_environment():
     """The overrides must come from minimal/worker.py, not a second copy here."""
     sync = EXPERIMENTS / "d3d12_sync"

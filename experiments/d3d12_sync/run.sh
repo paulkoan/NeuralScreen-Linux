@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
-# Build the D3D12 sync probe and run it under the worker's own Wine environment.
+# Two measurements, both about where a frame's time actually goes.
 #
-#   ./run.sh            build, then run
+#   1. the D3D12 substrate: what a submit, a fence wait, a copy and a readback
+#      cost under Wine with nothing else in the process
+#   2. the worker's own loop: 300 evaluates at 640x360 through its --test path,
+#      with no pipe, no client and nothing feeding it
+#
+# Both run under the worker's own Wine environment — see wine_env.py.
+#
+#   ./run.sh            build, then run both
 #   ./run.sh --push     ...and commit the run to test-results/ so the answer
 #                       travels as a file rather than a pasted terminal
 #
-# Exit: 0 the probe completed, 1 it did not, 2 a prerequisite is missing.
+# Exit: 0 both completed, 1 something did not, 2 a prerequisite is missing.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,60 +49,121 @@ echo "building probe.exe with $CXX"
 "$CXX" -O2 -Wall -o "$HERE/probe.exe" "$HERE/probe.cpp" -ld3d12 -ldxgi -luuid
 echo
 
-# Show the environment first. If this probe runs under different DLL overrides
-# than the worker, its numbers are about a different D3D12 and the run is void —
-# so it is printed, not assumed.
-echo "  the D3D12 environment it will run in (from minimal/worker.py):"
+# Show the environment first. If this runs under different DLL overrides than the
+# worker, its numbers are about a different D3D12 and the run is void — so it is
+# printed, not assumed.
+echo "  the D3D12 environment (from minimal/worker.py):"
 "$PY" "$HERE/wine_env.py" --show | sed 's/^/    /'
 echo
 
+run_probe() {
+    "$PY" "$HERE/wine_env.py" wine "$HERE/probe.exe" ${ARGS[@]+"${ARGS[@]}"}
+}
+
+# The worker's own harness. --test builds the D3D12 device, creates NGX feature
+# 18 and runs 300 evaluates on a synthetic 640x360 pattern with NO pipe, NO
+# client and nothing feeding it — so its wall time is the worker's own per-frame
+# cost, which nothing in this project has ever recorded. Its loop calls
+# PumpPresent() before every evaluate, i.e. a swapchain present per frame, and
+# the pipe path additionally polls with Sleep(8) per poll.
+run_host_test() {
+    ( cd "$REPO/native" && "$PY" "$HERE/wine_env.py" wine nvngx.dll --test )
+}
+
 if [ -z "$PUSH" ]; then
-    exec "$PY" "$HERE/wine_env.py" wine "$HERE/probe.exe" ${ARGS[@]+"${ARGS[@]}"}
+    echo "--- 1. the D3D12 substrate ---"
+    set +e
+    run_probe
+    rc_probe=$?
+    echo
+    echo "--- 2. the worker's own loop (--test, no pipe, no client) ---"
+    host_start="$(date +%s)"
+    run_host_test
+    rc_host=$?
+    echo "  elapsed: $(( $(date +%s) - host_start ))s"
+    set -e
+    if [ "$rc_probe" != 0 ] || [ "$rc_host" != 0 ]; then exit 1; fi
+    exit 0
 fi
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUT="$REPO/test-results/${STAMP}-d3d12-sync"
 mkdir -p "$OUT/raw"
 LOG="$OUT/raw/probe.log"
+HOSTLOG="$OUT/raw/host_test.log"
 
+echo "--- 1. the D3D12 substrate ---"
 set +e
-"$PY" "$HERE/wine_env.py" wine "$HERE/probe.exe" ${ARGS[@]+"${ARGS[@]}"} 2>&1 | tee "$LOG"
-RC="${PIPESTATUS[0]}"
+run_probe 2>&1 | tee "$LOG"
+RC_PROBE="${PIPESTATUS[0]}"
+echo
+echo "--- 2. the worker's own loop (--test, no pipe, no client) ---"
+HOST_START="$(date +%s)"
+run_host_test 2>&1 | tee "$HOSTLOG"
+RC_HOST="${PIPESTATUS[0]}"
+HOST_ELAPSED=$(( $(date +%s) - HOST_START ))
+echo "  elapsed: ${HOST_ELAPSED}s"
 set -e
 
 FIRST="$(grep -m1 'RESULT:' "$LOG" | sed 's/^ *//' || true)"
 [ -n "$FIRST" ] || FIRST="RESULT: none — the probe did not reach a verdict"
 FULL="$(grep -A5 'RESULT:' "$LOG" | sed 's/^ *//' | tr '\n' ' ' | sed 's/  */ /g')"
 
+# The worker's own number, derived rather than eyeballed: the run's wall time,
+# minus its known ~1s hook-arming warm-up, over the evaluates it reports.
+GOOD="$(grep -o -- '--test finished: [0-9]*' "$HOSTLOG" | tail -1 | grep -o '[0-9]*$' || true)"
+HOST_LINE="the worker's --test did not report a completed count"
+if [ -n "$GOOD" ] && [ "$GOOD" -gt 0 ]; then
+    HOST_LINE="$(awk -v s="$HOST_ELAPSED" -v n="$GOOD" 'BEGIN{
+        warm = 1.0;                      # 120 x Sleep(8) before the loop starts
+        busy = s - warm; if (busy < 0) busy = 0;
+        printf "%d evaluates in %ss wall (minus ~1s warm-up): %.1f ms/evaluate, %.1f fps",
+               n, s, 1000 * busy / n, n / busy;
+    }')"
+fi
+
 {
-    echo "# D3D12 sync probe — ${STAMP}"
+    echo "# D3D12 substrate, and the worker's own loop — ${STAMP}"
     echo
-    echo "**${FULL}**"
+    echo "**Probe: ${FULL}**"
     echo
-    echo "## What it measured"
+    echo "**Worker --test: ${HOST_LINE}**"
+    echo
+    echo "## 1. The D3D12 substrate"
     echo
     echo '```'
     grep -E '^  [A-E]\.|ms each|round trip:|no GPU work:|poll instead:|never wait|readback:' "$LOG" || true
     echo '```'
     echo
-    echo "## How to read it"
+    echo "## 2. The worker's own loop, with nothing feeding it"
     echo
-    echo "- Ran \`experiments/d3d12_sync/run.sh\` on the box with the GPU, under the"
-    echo "  same Wine environment the worker gets (printed in the log)."
-    echo "- Headless on purpose: no window, no swapchain, no NGX, no pipe. A window"
-    echo "  would measure DXVK's present path instead of the synchronisation."
-    echo "- The discriminator is **B**, the wait on an already-complete fence with no"
-    echo "  GPU work outstanding. Whatever that costs is paid by every wait, whoever"
-    echo "  wrote the host, so it is the part that is not ours to fix."
-    echo "- Context: the pipeline spends ~55ms per frame with NGX off at *any* size"
-    echo "  (a 64KB frame cost 64.5ms, a 3.7MB frame 54.9ms), so the cost is not the"
-    echo "  bytes and not the network."
+    echo '```'
+    grep -E -- '--test finished|feature 18|Init.*Success|adapter' "$HOSTLOG" | tail -8 || true
+    echo "elapsed: ${HOST_ELAPSED}s"
+    echo '```'
     echo
-    echo "Full output: \`raw/probe.log\`."
+    echo "## How to read the two together"
+    echo
+    echo "- Both ran under the worker's own Wine environment (printed in the log)."
+    echo "- **1** says what the GPU layer can do: a 14.7MB upload copy, a 14.7MB"
+    echo "  readback and the sync cost ~1.5ms. That is the floor for a frame's GPU"
+    echo "  work, and it is not why a frame costs 55-175ms."
+    echo "- **2** says what the worker does per frame with no pipe and no client. Its"
+    echo "  loop calls \`PumpPresent()\` before every evaluate — a swapchain present"
+    echo "  per frame — and the pipe path additionally polls with \`Sleep(8)\`."
+    echo "- Compare **2** against the pipeline's number for the same size:"
+    echo "  \`bypass360\` (640x360, through the pipe, NGX off) measured 69.2ms a"
+    echo "  frame. If **2** is a fraction of that, the pipe and the client protocol"
+    echo "  are the cost and the worker is not."
+    echo
+    echo "Full output: \`raw/probe.log\` and \`raw/host_test.log\`."
 } > "$OUT/report.md"
 
 # shellcheck source=../lib/report.sh
 . "$HERE/../lib/report.sh"
-push_report "$OUT" "d3d12 sync probe $STAMP: $FIRST"
+push_report "$OUT" "d3d12 sync probe $STAMP: $FIRST" "$HOST_LINE"
 
-exit "$RC"
+if [ "$RC_PROBE" != 0 ] || [ "$RC_HOST" != 0 ]; then
+    exit 1
+fi
+exit 0
