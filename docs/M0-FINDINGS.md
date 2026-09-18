@@ -98,9 +98,53 @@ is the open question, and it needs the GPU box.
   marks the Wine claim explicitly unproven. Its rate was also labelled GB/s while
   being MB/s — a 1000x overstatement.
 
+## And Wine's own source says the pages are shared
+
+`dlls/ntdll/unix/virtual.c` (wine-10.0), `map_file_into_view`:
+
+```c
+unsigned int flags = MAP_FIXED | ((vprot & VPROT_WRITECOPY) ? MAP_PRIVATE : MAP_SHARED);
+...
+if (mmap( (char *)view->base + start, size, prot, flags, fd, offset ) != MAP_FAILED)
+    goto done;
+```
+
+A writable file-backed view — `PAGE_READWRITE`, which is what `CreateFileMapping`
+plus `FILE_MAP_ALL_ACCESS` asks for — carries no `VPROT_WRITECOPY`, so Wine maps
+it `MAP_SHARED` on the file's own descriptor: the same page cache a native
+`mmap(MAP_SHARED)` uses. The pages are shared by construction, not by luck. And
+where Wine cannot mmap, it **refuses** the shared mapping rather than quietly
+falling back to `read()`:
+
+```c
+case ENODEV:  /* filesystem doesn't support mmap(), fall back to read() */
+    if (vprot & VPROT_WRITE) {
+        ERR( "shared writable mmap not supported, broken filesystem?\n" );
+        return STATUS_NOT_SUPPORTED;
+    }
+```
+
+So the failure mode is loud and named rather than a silent private copy that
+looks healthy until the frames stop matching. That turns the Wine test from "does
+this work?" into "confirm it on the real prefix" — a much better thing to be
+asking.
+
+## The Windows half has been through a compiler
+
+Not `mingw-w64-gcc` — that needs root, which this box does not have — but
+`zig cc -target x86_64-windows-gnu`: same target ABI, same class of mingw
+headers. It found one real thing, a function my refactor had orphaned
+(`wait_for_state`, replaced by `wait_for_either`), and after deleting it the
+compile is clean and produces a valid **x86_64 console PE** (machine `0x8664`,
+subsystem 3, 7 sections). A build failure on the GPU box is therefore unlikely,
+and would point at the real mingw-w64 headers rather than at the code.
+
+
 ## What is still open
 
-- **The Wine half is unmeasured.** Nothing here says Wine shares the pages.
+- **Confirmation on the real prefix.** The source says the pages are shared; the
+  GPU box should say so too, since `Z:\` path handling and the prefix's
+  filesystem are the parts a source reading cannot settle.
 - **The worker can't use it anyway.** Its input paths remain a pipe and a named
   section, so using this transport means **writing our own host** — same job, a
   transport we choose, reusing the NGX plumbing in

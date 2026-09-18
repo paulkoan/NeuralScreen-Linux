@@ -30,6 +30,51 @@ in for the Windows side. That covers the layout and the protocol and says
 about Wine rather than about the handshake, and so CI can cover the protocol with
 no Wine installed at all.
 
+## Why this should pass, from Wine's own source
+
+This is not a guess. `dlls/ntdll/unix/virtual.c` in wine-10.0, `map_file_into_view`:
+
+```c
+unsigned int flags = MAP_FIXED | ((vprot & VPROT_WRITECOPY) ? MAP_PRIVATE : MAP_SHARED);
+...
+if (mmap( (char *)view->base + start, size, prot, flags, fd, offset ) != MAP_FAILED)
+    goto done;
+```
+
+A **writable** file-backed view — `PAGE_READWRITE`, which is what
+`CreateFileMapping` + `FILE_MAP_ALL_ACCESS` asks for — has no `VPROT_WRITECOPY`,
+so Wine maps it `MAP_SHARED` on the file's own descriptor. That is the same page
+cache a native `mmap(MAP_SHARED)` uses, so the two processes are looking at the
+same physical pages by construction rather than by luck.
+
+And where Wine *cannot* do that, it refuses instead of silently copying:
+
+```c
+case ENODEV:  /* filesystem doesn't support mmap(), fall back to read() */
+    if (vprot & VPROT_WRITE) {
+        ERR( "shared writable mmap not supported, broken filesystem?\n" );
+        return STATUS_NOT_SUPPORTED;
+    }
+```
+
+So a failure would be loud and named, not a quiet private copy that looks fine
+until the frames stop matching. We should not see it on a normal filesystem.
+
+**What remains open** is therefore narrow: not whether the mechanism can work,
+but whether Wine's `Z:\` path handling and the prefix's filesystem get us there
+without a hitch. The test is a confirmation, and `--bytes 14745600` also gives
+the throughput figure Phase B would be built on.
+
+## The Windows half has been through a compiler
+
+Not `mingw-w64-gcc` — that needs root and this box does not have it — but
+`zig cc -target x86_64-windows-gnu`, which is the same target ABI and the same
+class of mingw headers. Result: one warning (a function the refactor orphaned,
+now deleted), then clean, and a valid **x86_64 console PE**. So a compile error
+on the GPU box is unlikely; if `run.sh` fails at the build step, paste it, because
+that would be something about the real mingw-w64 headers rather than about the
+code.
+
 ## Reading the result
 
 ```

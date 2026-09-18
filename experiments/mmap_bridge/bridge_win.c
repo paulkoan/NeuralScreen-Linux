@@ -64,21 +64,6 @@ static void set_state(unsigned int v)
         FlushViewOfFile(g_view, NSB_HDR_BYTES);
 }
 
-static int wait_for_state(unsigned int want, unsigned int timeout_ms)
-{
-    unsigned int waited = 0;
-    while (rd32(NSB_STATE_OFF) != want) {
-        if (waited >= timeout_ms) {
-            fprintf(stderr, "bridge_win: timed out waiting for state %u (saw %u)\n",
-                    want, rd32(NSB_STATE_OFF));
-            return 0;
-        }
-        Sleep(1);
-        waited += 1;
-    }
-    return 1;
-}
-
 /* Wait for either of two states. Needed because DONE can only arrive after a
  * round, so waiting on it alone blocks for the full timeout on every round —
  * which is what the first version of this loop did. */
