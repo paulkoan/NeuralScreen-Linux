@@ -31,6 +31,12 @@ DEFAULT_PARAMS = {
 }
 
 
+def _prefetch_stats(capture):
+    """`stats()` from a prefetching source, or None for a plain one."""
+    fn = getattr(capture, "stats", None)
+    return fn() if fn is not None else None
+
+
 class Pipeline:
     """Capture a frame, run it through the worker, put the result on screen."""
 
@@ -244,6 +250,8 @@ class Pipeline:
             "before": pair_before,
             "after": last_after,
             "timing": self.timing_summary(),
+            # Only a prefetching source has anything to say here.
+            "prefetch": _prefetch_stats(self.capture),
         }
 
     def close(self) -> None:

@@ -79,6 +79,13 @@ def build_parser() -> argparse.ArgumentParser:
                         "own resolution")
     p.add_argument("--windowed", action="store_true",
                    help="draw in a window instead of fullscreen")
+    p.add_argument("--prefetch", action="store_true",
+                   help="drain the frame source on its own thread and always "
+                        "process the newest frame. A screencast whose client "
+                        "stops consuming stops producing, so without this the "
+                        "capture leg absorbs a producer round trip every frame "
+                        "(measured: 238ms per grab in the loop against 13ms "
+                        "with nothing else running). Costs a busy core")
     p.add_argument("--bypass", action="store_true",
                    help="NR OFF: the worker skips NGX entirely and hands back "
                         "the frame it was given. A truer control than "
@@ -131,6 +138,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         source = open_capture(args.source, monitor=args.monitor,
                               input_image=args.input_image)
+        if args.prefetch:
+            # Wrap before the Pipeline sees it: the loop then reads a frame that
+            # is already waiting instead of one the producer makes on demand.
+            from minimal.prefetch import Prefetch
+            source = Prefetch(source, log=print)
         pipe = Pipeline(fullscreen=not args.windowed, headless=args.headless,
                         capture=source, params=params,
                         work_scale=args.work_scale,
@@ -186,6 +198,15 @@ def main(argv: list[str] | None = None) -> int:
               f"read {1000 * t['capture_read']:.1f}ms   "
               f"(read ~19ms at 2560x1440 means we are draining a stocked pipe; "
               f"read far above that means the compositor was dribbling)")
+    # What the prefetch drain saw. The frame age is the honest latency the
+    # capture adds: with old frames dropped it stays near one frame time rather
+    # than growing with a queue.
+    pf = summary.get("prefetch")
+    if pf:
+        age = pf.get("age")
+        age_s = f"{1000 * age:.1f}ms old when used" if age else "no frame used"
+        print(f"prefetch: drained {pf['drained']} frames on its own thread, "
+              f"{pf['dropped']} dropped, newest was {age_s}")
     if args.save_before:
         print(f"  before -> {args.save_before}")
     if args.save_after:

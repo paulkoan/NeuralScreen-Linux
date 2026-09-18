@@ -305,6 +305,15 @@ BYPASS_STATUS=$VARIANT_STATUS
 run_variant capture auto
 CAPTURE_STATUS=$VARIANT_STATUS
 
+# The same capture with the producer kept unthrottled. This is the A/B that
+# matters at 2560x1440: the portal hands over a frame every ~13ms (75-78 fps,
+# measured with nothing else in the loop), while inside the loop the same grab
+# measured 238ms — because a screencast whose client stops consuming stops
+# producing. If that is the whole story, this variant's capture leg collapses
+# and its total falls with it.
+run_variant capturepf auto "" "--prefetch"
+CAPTUREPF_STATUS=$VARIANT_STATUS
+
 # --- environment ------------------------------------------------------------
 echo ""
 echo "--- environment ---"
@@ -320,7 +329,7 @@ fi
 
 # --- copy artifacts out -----------------------------------------------------
 if [ -n "$OUT" ]; then
-    for v in pass scaled baseline bypass capture; do
+    for v in pass scaled baseline bypass capture capturepf; do
         mkdir -p "$OUT/$v"
         cp -f "$T/$v/before.png" "$OUT/$v/" 2>/dev/null || true
         cp -f "$T/$v/after.png" "$OUT/$v/" 2>/dev/null || true
@@ -338,7 +347,7 @@ if [ -n "$OUT" ]; then
         echo "driver:            $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>&1 | head -1)"
     } > "$OUT/m1_environment.txt" 2>&1
     echo ""
-    echo "  artifacts -> $OUT/{pass,scaled,baseline,bypass,capture}/"
+    echo "  artifacts -> $OUT/{pass,scaled,baseline,bypass,capture,capturepf}/"
 fi
 
 # --- summary ----------------------------------------------------------------
@@ -376,9 +385,19 @@ if [ "$CAPTURE_STATUS" = "0" ]; then
 else
     echo "  capture  FAIL — no usable screen frame (see the variant output)."
 fi
+if [ "$CAPTUREPF_STATUS" = "0" ]; then
+    echo "  capturepf measured — same capture, producer kept unthrottled."
+    echo "            Compare its capture leg with 'capture': the difference is"
+    echo "            the producer round trip the loop was paying every frame,"
+    echo "            not a compositor limit. Measured off the loop, the same"
+    echo "            portal hands over 2560x1440 every ~13ms (75-78 fps)."
+else
+    echo "  capturepf FAIL — the prefetching capture did not complete."
+    STATUS=1
+fi
 echo ""
 echo "  per-frame cost by variant — the point of the run:"
-for v in pass scaled baseline bypass capture; do
+for v in pass scaled baseline bypass capture capturepf; do
     line=$(grep -m1 '^timing:' "$T/$v/mvp.txt" 2>/dev/null || true)
     printf '    %-9s %s\n' "$v" "${line:-<no timing recorded>}"
     # The capture leg's own split, which is the number that decides whether the

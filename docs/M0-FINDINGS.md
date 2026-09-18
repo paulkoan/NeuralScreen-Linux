@@ -31,6 +31,71 @@ killed the port outright; it is cleared.
 
 ---
 
+# Round 17 — the portal does 75 fps; the loop was throttling it
+
+The probe, twice, 2560x1440, same pipeline, screen verifiably changing:
+
+```
+still desktop   grab: first 81.1ms (pipeline start), then 12.8ms/frame = 78.3 fps
+video fullscreen grab: first 98.1ms (pipeline start), then 13.4ms/frame = 74.6 fps
+```
+
+**The portal hands over 2560x1440 frames every ~13ms — 75-78 fps.** Round 13's
+"the capture is the ceiling" was wrong, and wrong by a factor of twenty. The
+same pipeline and the same portal measured **238ms per grab inside the M1 loop**
+and **13ms per grab with nothing else running**.
+
+Round 16's rate-limited finding was also wrong in its cause. The 225ms `wait`
+was not the compositor withholding frames; it was the loop. A screencast whose
+client stops consuming stops producing — the queue leaks, buffers are not
+recycled, and the pipe is 64KB against a 14.7MB frame — so the producer and the
+consumer ping-pong with a full pipeline latency per cycle and the capture leg
+absorbs the whole round trip as "waiting for the compositor".
+
+The still-screen suspicion from round 16 is also settled, in the other
+direction: both runs reported the screen changing (2.10 and 2.59/255), and the
+second one is visibly the video (frame mean 81.6 on the desktop, 20.6 with the
+video up). The portal was not idle because the desktop was; it was idle because
+we were.
+
+## The fix: keep the producer unthrottled
+
+`minimal/prefetch.py` drains the source on its own thread and leaves the newest
+frame waiting, so a frame costs the worker's time instead of the worker's time
+plus a producer round trip. Opt-in (`--prefetch`) because the drain itself is a
+busy core: 14.7MB at 75fps is memcpy-bound.
+
+Verified against the mock worker, and the capture leg is the evidence:
+
+```
+without   timing: capture 12.9ms  send 12.1ms  recv 480.2ms  display 0.5ms
+with      timing: capture  2.1ms  send 12.3ms  recv 484.6ms  display 0.6ms
+          prefetch: drained 245 frames on its own thread, 244 dropped,
+                    newest was 0.5ms old when used
+```
+
+245 frames drained while 5 were processed, and the frame actually used was
+**0.5ms old**. The capture leg collapses to a lock and a reference, and the
+staleness that dropping frames would otherwise cause is reported rather than
+hidden — that age is the honest latency the capture adds.
+
+The gate gains `capturepf`, the same capture with the producer kept unthrottled
+against `capture`, so the size of the round trip is in one run rather than
+across two.
+
+## What this leaves
+
+The capture is not a limit, so the roadmap is now only two things:
+
+* **the ~50ms plumbing floor** with NGX skipped (round 16), and
+* **the pass itself**, somewhere between 25ms and 74ms over that floor.
+
+Both are inside the worker, and the 1440p pipe arithmetic still stands — 44.2MB
+per frame against a measured 1.1 GB/s is a 40ms floor, so the pipes remain the
+structural problem at 1440p whatever the capture does.
+
+---
+
 # Round 16 — the floor with NGX skipped, and the capture is rate-limited
 
 `20260918T083240Z`, all five variants, 1280x720 synthetic except `capture`:
