@@ -31,6 +31,84 @@ killed the port outright; it is cleared.
 
 ---
 
+# Round 16 — the floor with NGX skipped, and the capture is rate-limited
+
+`20260918T083240Z`, all five variants, 1280x720 synthetic except `capture`:
+
+```
+pass      capture   9.8ms  send 108.4ms  recv 15.0ms  display 1.3ms  (134.5ms,  6.6 fps)
+scaled    capture   7.2ms  send  53.0ms  recv  8.8ms  display 0.7ms  ( 69.6ms, 12.6 fps)
+baseline  capture   6.2ms  send  57.5ms  recv 10.1ms  display 0.7ms  ( 74.5ms, 11.9 fps)
+bypass    capture   6.1ms  send  47.5ms  recv  6.4ms  display 0.6ms  ( 60.5ms, 14.6 fps)
+capture   capture 238.1ms  send  68.2ms  recv 54.4ms  display 4.1ms  (364.8ms,  2.7 fps)
+          capture split: wait 225.3ms  read 12.7ms
+```
+
+`bypass` and `baseline` both report `mean abs diff 0.0000` — byte-identical,
+`the pass returned the input unchanged` — so the worker's NGX-skip does exactly
+what the protocol says, and those two rows are honest controls.
+
+## The floor with NGX skipped is 60.5ms
+
+**That is the number worth staring at.** With the network not running at all, a
+1280x720 frame still costs 60.5ms. Its pipe traffic is 11.1MB, which at the
+measured 1.1 GB/s is ~10ms. Capture is 6.1ms and display 0.6ms.
+
+So roughly **50ms per frame is spent in the worker's plumbing** — the texture
+upload, readback and copies — with no network involved. That is the largest
+single unexplained cost in the project, and it is roughly half the frame at full
+strength.
+
+## Which corrects something I said earlier
+
+I claimed the network was cheap and the bytes were the story. `baseline` and
+`bypass` disagree: zeroing the strengths costs 14ms over skipping NGX, so simply
+*running* the network costs ~10-14ms per frame at 720p, against the upstream's
+`1.5ms + 1.51ms/Mpixel` arithmetic of ~2.9ms on a 5070 Ti. And the effect at
+full strength costs 74ms over `bypass` in this run — though `pass` came in at
+134.5ms here against 82-85ms in three earlier runs, so this run is ~1.6x slow
+across the board and that 74ms should not be trusted on its own. What is
+consistent is the ordering: bypass < baseline ≈ scaled < pass.
+
+**Run-to-run variance is now large enough to matter.** Only comparisons within
+one run are safe, and the gate prints the whole table for that reason.
+
+Also consistent with earlier runs: `scaled` (network at 640x360) sits within
+5ms of `baseline` (network at 1280x720, zero strength), so the network's own
+resolution barely matters — the cost is fixed, not per-pixel. That is the
+upstream's point about `work_scale` restated from the other side.
+
+## The capture is rate-limited, not bandwidth-limited
+
+```
+capture split: wait 225.3ms  read 12.7ms
+```
+
+Read is 12.7ms, near the ~19ms it costs to drain a stocked 14.7MB pipe, so our
+copy is efficient and is **5% of the grab**. The other 225ms is the producer:
+frames arrive about every 238ms, i.e. ~4 fps. This is a cadence problem, not a
+throughput one — which is a different repair from the one I was expecting.
+
+## But it is probably an artefact of a still screen
+
+A compositor renders on damage. On a desktop where nothing is changing, it may
+produce almost no new frames, and a screencast fed from the compositor inherits
+that: few damage events, few frames. These runs capture a static desktop — the
+MVP is headless, so the test itself changes nothing on screen.
+
+If that is what is happening, the ~4 fps says nothing about the case that
+matters. A game is constant damage, and the portal would be delivering far more.
+It would also mean the "the capture is the ceiling" conclusion is wrong for a
+moving picture, and the whole roadmap changes: the capture stops being the
+blocker and the ~50ms plumbing floor becomes the thing to attack.
+
+That is testable in a minute and needs no code: run the same probe with
+something moving on screen. If `wait` collapses to tens of milliseconds, the
+portal was never the problem; if it stays at 225ms with a video playing
+fullscreen, the capture really is capped and everything above stands.
+
+---
+
 # Round 15 — two controls added, and the arithmetic they test
 
 No results yet (the box is unavailable), so this is only what the next run will

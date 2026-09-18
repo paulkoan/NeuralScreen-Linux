@@ -202,6 +202,29 @@ def main(argv: list[str] | None = None) -> int:
                   f"grab {1000 * grabs[-1]:6.1f}ms")
         ok(f"read {len(frames)} frame(s)")
 
+        # Whether the screen was actually changing, which decides how to read
+        # the rate below. A compositor renders on damage: on a still desktop it
+        # may produce very few new frames, and a screencast fed from it inherits
+        # that. So a slow rate on a still screen says nothing about the case
+        # that matters — a game changes every pixel continuously — and the two
+        # numbers have to be read together.
+        if len(frames) >= 2:
+            diffs = [float(np.abs(frames[i].astype(np.int16)
+                                  - frames[i + 1].astype(np.int16)).mean())
+                     for i in range(len(frames) - 1)]
+            moving = sum(diffs) / len(diffs)
+            if moving < 0.5:
+                bad(f"the screen was STATIC during this run "
+                    f"(frame-to-frame difference {moving:.2f}/255). A "
+                    f"compositor renders on damage, so a still desktop hands "
+                    f"back almost nothing and the rate above is a still-screen "
+                    f"rate — do not conclude anything from it. Repeat with "
+                    f"something moving on screen.")
+                problems += 1
+            else:
+                ok(f"the screen was changing (frame-to-frame difference "
+                   f"{moving:.2f}/255), so the rate above is meaningful")
+
         # How fast the compositor actually hands frames over, with no worker,
         # no Wine and no network in the way. This is the ceiling for the whole
         # pipeline: if the portal delivers 2 fps, nothing downstream can be
