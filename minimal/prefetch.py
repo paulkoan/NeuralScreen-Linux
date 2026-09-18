@@ -59,6 +59,12 @@ class Prefetch:
         self._age_last = 0.0
         self._age_max = 0.0
         self._age_sum = 0.0
+        #: The drain sequence number of the frame the last grab returned. The
+        #: consumer's frame and the drain's newest are read at different times,
+        #: and with a fast producer several more arrive in between — a test
+        #: comparing the frame against the drain count read afterwards is
+        #: comparing two different moments.
+        self._seq_taken = 0
         # The split the portal reports does not apply here: the grab is a lock
         # and a reference, and the waiting has moved to the drain thread. Set to
         # None so a caller reports no split rather than a split of zeros.
@@ -109,6 +115,7 @@ class Prefetch:
             if self.error is not None:
                 raise self.error
             self._taken += 1
+            self._seq_taken = self._seq
             age = time.monotonic() - self._stamp
             self._age_last = age
             self._age_sum += age
@@ -142,6 +149,7 @@ class Prefetch:
                 "drained": self._seq,
                 "taken": self._taken,
                 "dropped": self._dropped,
+                "seq_taken": self._seq_taken,
                 "age_mean": (self._age_sum / self._taken) if self._taken else None,
                 "age_max": self._age_max if self._taken else None,
                 "age_last": self._age_last if self._taken else None,

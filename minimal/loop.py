@@ -38,17 +38,34 @@ def _prefetch_stats(capture):
 
 
 def _capture_cpu_summary(before: float | None, after: float | None,
-                         wall: float) -> dict | None:
-    """The capture chain's CPU over the run, or None if it cannot be read.
+                         wall: float, *, supported: bool,
+                         pid: int | None = None) -> dict | None:
+    """The capture chain's CPU over the run.
 
-    None rather than zeros: a missing measurement must not read as "the chain
-    did nothing", which is the opposite of the case worth knowing about.
+    Three outcomes, deliberately distinct:
+
+      None                the source cannot report its own CPU at all. A
+                          synthetic source has no chain to measure, and a line
+                          about it every run would be noise.
+      share is None       the source CAN report it and the reading failed. That
+                          is a bug, and saying so is the point: the first
+                          version simply omitted the line, which looked exactly
+                          like "the chain used no CPU" and cost a round trip to
+                          notice.
+      otherwise           seconds used, wall clock, and the share of a core.
+
+    No fabricated zeroes anywhere: a zero would read as "the chain did nothing",
+    which is the opposite of the case worth knowing about.
     """
-    if before is None or after is None:
+    if not supported:
         return None
+    if before is None or after is None:
+        return {"seconds": None, "wall": wall, "share": None, "pid": pid,
+                "reason": "the source reports its own CPU but the reading "
+                          "failed — check /proc/<pid>/stat for the pid above"}
     from minimal.cpu import cpu_share
 
-    return {"seconds": after - before, "wall": wall,
+    return {"seconds": after - before, "wall": wall, "pid": pid,
             "share": cpu_share(before, after, wall)}
 
 
@@ -211,6 +228,14 @@ class Pipeline:
         fn = getattr(self.capture, "cpu_seconds", None)
         return fn() if fn is not None else None
 
+    def _capture_cpu_supported(self) -> bool:
+        """Whether the source has a CPU reading at all, which is not the same
+        as the reading working — see _capture_cpu_summary."""
+        return getattr(self.capture, "cpu_seconds", None) is not None
+
+    def _capture_cpu_pid(self) -> int | None:
+        return getattr(self.capture, "pipeline_pid", None)
+
     def run(self, frames: int = 0, save_before: str | None = None,
             save_after: str | None = None, on_frame=None) -> dict:
         """Run the loop. frames=0 means until quit/EOF.
@@ -223,6 +248,7 @@ class Pipeline:
         # in the grab time — the pipeline's copies and conversions happen while
         # the worker waits — and it is where the portal's ~47ms went at 1440p.
         capture_cpu0 = self._capture_cpu()
+        capture_cpu_supported = self._capture_cpu_supported()
         index = 0
         # The pair kept for --save-before/--save-after must come from ONE
         # iteration. Saving the first input against the last output measures
@@ -279,8 +305,9 @@ class Pipeline:
             # The capture chain's own CPU over the run. Not part of the frame
             # time — it is work that happens while the worker waits, and at
             # 2560x1440 that is where the portal's extra ~47ms of `send` went.
-            "capture_cpu": _capture_cpu_summary(capture_cpu0, self._capture_cpu(),
-                                                time.monotonic() - started),
+            "capture_cpu": _capture_cpu_summary(
+                capture_cpu0, self._capture_cpu(), time.monotonic() - started,
+                supported=capture_cpu_supported, pid=self._capture_cpu_pid()),
         }
 
     def close(self) -> None:

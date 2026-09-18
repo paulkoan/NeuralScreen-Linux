@@ -418,6 +418,19 @@ for v in pass scaled baseline bypass pass14 scaled14 bypass14 capture capturebp;
     # portal is the ceiling or we are.
     split=$(grep -m1 '^capture split:' "$T/$v/mvp.txt" 2>/dev/null || true)
     [ -n "$split" ] && printf '    %-9s %s\n' "" "$split"
+    # The producer's wait is bimodal: 0-21ms normally, 225-303ms in some runs
+    # (two of the seven recorded so far). When it is the slow mode the variant's
+    # total is not a measurement of anything except that, so say so rather than
+    # let it be read as the pass being slower.
+    if [ -n "$split" ]; then
+        wait_ms=$(echo "$split" | grep -oE 'wait [0-9.]+' | grep -oE '[0-9.]+')
+        if [ -n "$wait_ms" ] && awk -v w="$wait_ms" 'BEGIN{exit !(w > 100)}'; then
+            echo "              ! PRODUCER IN SLOW MODE (${wait_ms}ms waiting for"
+            echo "                frames, against 0-21ms normally). This variant's"
+            echo "                total is not a measurement. The copy is always"
+            echo "                10-15ms, so it is never our end of the grab."
+        fi
+    fi
 done
 echo ""
 echo "  Read the split, not just the fps. What the box has measured so far:"

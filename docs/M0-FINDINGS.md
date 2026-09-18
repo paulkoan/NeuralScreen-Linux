@@ -31,6 +31,80 @@ killed the port outright; it is cleared.
 
 ---
 
+# Round 23 — a test of mine failed on the box, and the capture wait is bimodal
+
+`20260918T124926Z`. Three things, one of them a bug I shipped.
+
+## My prefetch test failed, and the test was wrong
+
+```
+assert latest == stats["drained"] % 251
+AssertionError: got frame 0, newest drained was 44430
+```
+
+The frame was grabbed *now*; `drained` was read *after*. With a fake source that
+produces flat out, three more frames land in between, so the assertion compared
+two different moments — the same mistake as the age bug two rounds earlier,
+where a value was read at the wrong time and looked like a measurement.
+
+Fixed by recording the drain sequence number **when the frame is taken**
+(`stats["seq_taken"]`) and comparing against that. Twenty-five consecutive runs
+pass. Loosening the assertion would have hidden the thing it is for: that the
+consumer gets the newest frame, not one that was queued.
+
+## The `capture cpu:` line never printed
+
+The code path is right — `_capture_cpu_summary` was called, the key was in the
+summary — so on the box either the source had no reading or the reading failed.
+My first version omitted the line in both cases, which is indistinguishable from
+"the chain used no CPU" and is precisely the failure mode this whole area keeps
+producing: a measurement that isn't there, looking like a measurement that says
+zero.
+
+It now distinguishes three outcomes:
+
+```
+capture cpu: the pipeline used 1.42s over 4.31s = 33% of one core
+capture cpu: NOT measured — the source reports its own CPU but the reading
+             failed — check /proc/<pid>/stat for the pid above (pid 3156709)
+<no line>   the source cannot report its own CPU (a synthetic source has none)
+```
+
+So the next run says which it was, instead of costing another round trip to
+guess.
+
+## The third replication, and a bimodal grab
+
+The 1440p synthetic figure came in at **5.7ms** (pass14 102.8 − bypass14 97.1),
+so the network's price at 2560x1440 is now **5.4, 4.8, 5.7** across three runs.
+That is the one number in this area that has held every time it was measured.
+
+And the capture leg inflated again — on `capturebp` this run, 313.3ms against
+`capture`'s 32.9ms. Every split recorded so far:
+
+```
+083240Z capture      wait 225.3ms  read 12.7ms   <- producer slow
+100600Z capture      wait   0.1ms  read 14.8ms
+102028Z capture      wait   0.1ms  read 15.3ms
+113304Z capture      wait  14.6ms  read 13.6ms
+120102Z capture      wait  21.1ms  read 11.7ms
+124926Z capture      wait  21.1ms  read 11.7ms
+124926Z capturebp    wait 303.3ms  read  9.9ms   <- producer slow
+```
+
+**`read` is 9.9-15.3ms in every one of the seven** — our copy, and it never
+varies. `wait` is bimodal: 0-21ms, or 225-303ms. So the grab is never our end,
+and when the total inflates it is the compositor being late by 200-300ms and
+everything downstream inheriting it. Two of seven, on whichever capture variant
+happens to hit it, which is why the real-screen totals are the least reliable
+numbers in the gate.
+
+The gate now says so itself, printing `PRODUCER IN SLOW MODE` against any variant
+whose wait exceeds 100ms, rather than leaving a 400ms row to be read as the pass
+being slow.
+
+---
+
 # Round 22 — what replicated, what didn't, and moving the CPU reading into the run
 
 Two runs of the same nine variants, and one of round 21's numbers did not

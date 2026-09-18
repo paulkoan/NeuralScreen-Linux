@@ -236,13 +236,19 @@ def main(argv: list[str] | None = None) -> int:
     # The capture chain's own CPU. It never shows in the frame time, and at
     # 2560x1440 it competes with the worker rather than waiting for it.
     cc = summary.get("capture_cpu")
-    if cc and cc.get("share") is not None:
+    if cc is not None and cc.get("share") is not None:
         print(f"capture cpu: the pipeline used {cc['seconds']:.2f}s over "
               f"{cc['wall']:.2f}s = {100 * cc['share']:.0f}% of one core")
         if cc["share"] > 0.5:
             print(f"          ! that work runs while the worker waits: the same "
                   f"2560x1440 frame cost send 114.2ms through the portal against "
                   f"67.3ms produced synthetically")
+    elif cc is not None:
+        # The source says it can report its CPU and the reading failed. Saying
+        # so, rather than omitting the line, is the difference between a bug and
+        # a measurement that quietly looks like zero.
+        print(f"capture cpu: NOT measured — {cc['reason']} "
+              f"(pid {cc.get('pid')})")
     if args.save_before:
         print(f"  before -> {args.save_before}")
     if args.save_after:

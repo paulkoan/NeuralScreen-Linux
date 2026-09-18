@@ -75,10 +75,14 @@ def test_the_newest_frame_wins_and_the_skipped_ones_are_counted():
         stats = pf.stats()
 
         assert stats["dropped"] > 0, "a running producer should have outrun us"
-        assert stats["drained"] >= latest, "the drain should have seen it"
-        # Sampling the newest, not the one that happened to be queued first.
-        assert latest == stats["drained"] % 251, (
-            f"got frame {latest}, newest drained was {stats['drained']}")
+        # Compare against the sequence number recorded WHEN THE FRAME WAS TAKEN.
+        # Comparing against `drained` reads the count later, and with a producer
+        # this fast several more frames land in between — which is what made an
+        # earlier version of this test fail on the box, correctly.
+        assert latest == stats["seq_taken"] % 251, (
+            f"got frame {latest}, but the frame taken was "
+            f"{stats['seq_taken']} — the newest, not one that was queued")
+        assert stats["seq_taken"] <= stats["drained"]
     finally:
         pf.close()
 
