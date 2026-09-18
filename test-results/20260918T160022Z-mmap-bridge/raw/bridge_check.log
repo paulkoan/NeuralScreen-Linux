@@ -1,0 +1,61 @@
+==================================================================
+ shared-file bridge: can Wine and native Linux share mapped pages?
+==================================================================
+  file:     /tmp/nsb_bridge/frame.bin  (14.7 MB)
+  payload:  14.7 MB per round (10 rounds)
+  windows:  Z:\tmp\nsb_bridge\frame.bin
+  windows:  /usr/bin/wine /home/paul/dev/NeuralScreen-Linux/experiments/mmap_bridge/bridge_win.exe Z:\tmp\nsb_bridge\frame.bin
+  pid:      4105011
+
+  the Windows side has the mapping. Exchanging frames.
+
+  round  1: write   9.28ms (   1590 MB/s one way)   round trip  17.04ms (   1730 MB/s both ways)
+  round  2: write   3.96ms (   3722 MB/s one way)   round trip  10.58ms (   2787 MB/s both ways)
+  round  3: write   2.72ms (   5421 MB/s one way)   round trip   9.40ms (   3136 MB/s both ways)
+  round  4: write   2.06ms (   7166 MB/s one way)   round trip   8.12ms (   3631 MB/s both ways)
+  round  5: write   1.95ms (   7575 MB/s one way)   round trip   8.01ms (   3684 MB/s both ways)
+  round  6: write   1.98ms (   7449 MB/s one way)   round trip   8.01ms (   3681 MB/s both ways)
+  round  7: write   2.09ms (   7056 MB/s one way)   round trip   8.19ms (   3603 MB/s both ways)
+  round  8: write   2.03ms (   7260 MB/s one way)   round trip   8.06ms (   3659 MB/s both ways)
+  round  9: write   2.10ms (   7028 MB/s one way)   round trip   7.58ms (   3893 MB/s both ways)
+  round 10: write   2.11ms (   6976 MB/s one way)   round trip   8.19ms (   3601 MB/s both ways)
+
+  the Windows side said:
+    002c:fixme:winediag:loader_init wine-staging 11.17 is a testing version containing experimental patches.
+    002c:fixme:winediag:loader_init Please mention your exact version when filing bug reports on winehq.org.
+    MESA-EGL: warning: pci id for fd 39: 10de:2702, driver (null)
+    pci id for fd 40: 10de:2702, driver (null)
+    pci id for fd 41: 10de:2702, driver (null)
+    MESA-EGL: warning: egl: failed to create dri2 screen
+    MESA-EGL: warning: pci id for fd 39: 10de:2702, driver (null)
+    pci id for fd 40: 10de:2702, driver (null)
+    pci id for fd 41: 10de:2702, driver (null)
+    MESA-EGL: warning: egl: failed to create dri2 screen
+    MESA-EGL: warning: pci id for fd 39: 10de:2702, driver (null)
+    0024:fixme:winediag:loader_init wine-staging 11.17 is a testing version containing experimental patches.
+    0024:fixme:winediag:loader_init Please mention your exact version when filing bug reports on winehq.org.
+    bridge_win: opened Z:\tmp\nsb_bridge\frame.bin, 14745664 bytes
+    bridge_win: mapping is live, payload_len 14745600, telling the native side we are up
+    bridge_win: round 1: read 14745600 bytes, wrote 14745600, 6.8 ms
+    bridge_win: round 2: read 14745600 bytes, wrote 14745600, 5.5 ms
+    bridge_win: round 3: read 14745600 bytes, wrote 14745600, 6.2 ms
+    bridge_win: round 4: read 14745600 bytes, wrote 14745600, 5.3 ms
+    bridge_win: round 5: read 14745600 bytes, wrote 14745600, 5.1 ms
+    bridge_win: round 6: read 14745600 bytes, wrote 14745600, 5.4 ms
+    bridge_win: round 7: read 14745600 bytes, wrote 14745600, 5.3 ms
+    bridge_win: round 8: read 14745600 bytes, wrote 14745600, 5.3 ms
+    bridge_win: round 9: read 14745600 bytes, wrote 14745600, 5.3 ms
+    bridge_win: round 10: read 14745600 bytes, wrote 14745600, 5.3 ms
+    bridge_win: 10 rounds, 0 with mismatches, worst 6.8 ms
+    0140:fixme:winediag:loader_init wine-staging 11.17 is a testing version containing experimental patches.
+    0140:fixme:winediag:loader_init Please mention your exact version when filing bug reports on winehq.org.
+
+==================================================================
+ RESULT: PASS — a native process and a Wine process share these pages in both directions.
+
+  14.7 MB written and returned in 9.32ms mean over 10 rounds (3165 MB/s both ways)
+  of which 3.03ms is our own write (4871 MB/s one way)
+  (no msync per round: two MAP_SHARED mappings of one file are the same physical pages, so a per-frame flush would be paid for nothing)
+
+  for scale: a pipe read measured ~1100 MB/s on the analysis box,
+  and the MVP's 2560x1440 floor with NGX skipped is ~85ms a frame.
