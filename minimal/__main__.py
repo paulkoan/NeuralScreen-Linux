@@ -64,6 +64,13 @@ def build_parser() -> argparse.ArgumentParser:
                         "asks for ONE window instead of a screen — cheaper, and "
                         "what a game stream wants), a generated test card, or a "
                         "still image")
+    p.add_argument("--capture-no-scale", action="store_true",
+                   help="drop videoscale from the capture pipeline. The chain "
+                        "measures 33%% of a core at 2560x1440 — about 42ms of CPU "
+                        "per frame — and this removes one 14.7MB pass from it. "
+                        "The risk is caps negotiation failing when the portal's "
+                        "reported size and the stream's disagree (fractional "
+                        "scaling), which is loud rather than silent")
     p.add_argument("--size", metavar="WxH",
                    help="force the frame size for sources that can make one "
                         "(synthetic). Lets the 2560x1440 matrix be measured "
@@ -157,7 +164,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         source = open_capture(args.source, monitor=args.monitor,
                               input_image=args.input_image,
-                              width=force_w, height=force_h)
+                              width=force_w, height=force_h,
+                              video_scale=not args.capture_no_scale)
         if args.prefetch:
             # Wrap before the Pipeline sees it: the loop then reads a frame that
             # is already waiting instead of one the producer makes on demand.

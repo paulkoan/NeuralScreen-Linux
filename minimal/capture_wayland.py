@@ -75,9 +75,11 @@ class PortalCapture:
     """
 
     def __init__(self, monitor_idx: int = 0, *, source: int = SOURCE_MONITOR,
-                 gst: str = GST_LAUNCH, timeout: float = 120.0, log=print):
+                 gst: str = GST_LAUNCH, timeout: float = 120.0, log=print,
+                 video_scale: bool = True):
         self.monitor_idx = monitor_idx
         self.source = int(source)
+        self.video_scale = bool(video_scale)
         self._log = log
         self._gst = gst
         self._proc: subprocess.Popen | None = None
@@ -108,25 +110,35 @@ class PortalCapture:
     def _pipeline_args(self) -> list[str]:
         """The pipeline, in one place so a failure can be read against it.
 
-        videoscale is deliberate. The portal's reported size and the stream's
-        actual size can disagree — fractional scaling on Plasma is the easy way
-        to hit this — and a negotiation failure is a much worse outcome than one
-        extra passthrough element.
+        videoscale is deliberate, and it is also a third pass over the frame:
+        the chain already copies through PipeWire, converts format and writes
+        down the pipe, and at 2560x1440 the whole thing measures 33% of a core —
+        about 42ms of CPU per frame — which is the same order as the penalty the
+        worker pays in `send` when the source is the portal rather than a
+        synthetic card. `video_scale=False` drops it so that cost can be
+        compared; the risk is that the portal's reported size and the stream's
+        actual size disagree — fractional scaling on Plasma is the easy way to
+        hit this — and then caps negotiation fails instead of scaling. That
+        failure is loud and names itself, which is the trade.
 
         `queue max-size-buffers=1 leaky=downstream` keeps us on the newest frame
         instead of chewing through a backlog: this is a mirror, not a recording.
         """
         caps = (f"video/x-raw,format=RGBA,width={self.width},height={self.height},"
                 f"pixel-aspect-ratio=1/1")
-        return [
+        args = [
             self._gst, "-q",
             "pipewiresrc", f"fd={self._sc.fd}", *self._sc.pipewire_target,
             "!", "videoconvert",
-            "!", "videoscale",
+        ]
+        if self.video_scale:
+            args += ["!", "videoscale"]
+        args += [
             "!", caps,
             "!", "queue", "max-size-buffers=1", "leaky=downstream",
             "!", "fdsink", "fd=1",
         ]
+        return args
 
     def _start_pipeline(self) -> None:
         # The child needs the PipeWire fd. pass_fds both marks it inheritable

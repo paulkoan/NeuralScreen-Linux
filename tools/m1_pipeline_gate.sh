@@ -319,11 +319,13 @@ B14_STATUS=$VARIANT_STATUS
 run_variant capture auto
 CAPTURE_STATUS=$VARIANT_STATUS
 
-# The real-screen no-NGX control at 2560x1440: what the whole frame costs with
-# the network out of it, capture included. `capture` minus this is the pass's
-# price on a real desktop, measured rather than modelled.
-run_variant capturebp auto "" "--bypass" control
-CAPTUREBP_STATUS=$VARIANT_STATUS
+# The capture chain's CPU is the one cost so far that sits in our own code: 33%
+# of a core at 2560x1440, about 42ms of CPU per frame, which is the same order as
+# the 18-47ms the worker's `send` pays extra when the source is the portal. This
+# variant drops the videoscale element, one 14.7MB pass out of the chain, so the
+# `capture cpu:` line and `send` can be compared against `capture` in one run.
+run_variant capturens auto "" "--capture-no-scale"
+CAPTURENS_STATUS=$VARIANT_STATUS
 
 # --- environment ------------------------------------------------------------
 echo ""
@@ -340,7 +342,7 @@ fi
 
 # --- copy artifacts out -----------------------------------------------------
 if [ -n "$OUT" ]; then
-    for v in pass scaled baseline bypass pass14 scaled14 bypass14 capture capturebp; do
+    for v in pass scaled baseline bypass pass14 scaled14 bypass14 capture capturens; do
         mkdir -p "$OUT/$v"
         cp -f "$T/$v/before.png" "$OUT/$v/" 2>/dev/null || true
         cp -f "$T/$v/after.png" "$OUT/$v/" 2>/dev/null || true
@@ -358,7 +360,7 @@ if [ -n "$OUT" ]; then
         echo "driver:            $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>&1 | head -1)"
     } > "$OUT/m1_environment.txt" 2>&1
     echo ""
-    echo "  artifacts -> $OUT/{pass,scaled,baseline,bypass,pass14,scaled14,bypass14,capture,capturebp}/"
+    echo "  artifacts -> $OUT/{pass,scaled,baseline,bypass,pass14,scaled14,bypass14,capture,capturens}/"
 fi
 
 # --- summary ----------------------------------------------------------------
@@ -396,14 +398,17 @@ if [ "$CAPTURE_STATUS" = "0" ]; then
 else
     echo "  capture  FAIL — no usable screen frame (see the variant output)."
 fi
-if [ "$CAPTUREBP_STATUS" = "0" ]; then
-    echo "  capturebp measured — the same real screen with NGX skipped."
-    echo "            capture minus this is the pass's price at 2560x1440,"
-    echo "            measured instead of modelled. pass14 minus bypass14 is the"
-    echo "            same number without the portal in it."
+if [ "$CAPTURENS_STATUS" = "0" ]; then
+    echo "  capturens measured — the same capture with videoscale dropped."
+    echo "            Compare its 'capture cpu:' line and its send against"
+    echo "            'capture'. The chain was 33% of a core (about 42ms of CPU"
+    echo "            per frame) and send was 18-47ms worse through the portal"
+    echo "            than synthetically; if both fall, the contention was real"
+    echo "            and it is our element to delete."
 else
-    echo "  capturebp FAIL — the no-NGX capture did not complete."
-    STATUS=1
+    echo "  capturens FAIL — caps negotiation may have refused without"
+    echo "            videoscale (the portal's size and the stream's disagreeing"
+    echo "            is the known way); read the variant output above."
 fi
 if [ "$P14_STATUS" != "0" ] || [ "$S14_STATUS" != "0" ] || [ "$B14_STATUS" != "0" ]; then
     echo "  the 2560x1440 synthetic trio did not all complete."
@@ -411,7 +416,7 @@ if [ "$P14_STATUS" != "0" ] || [ "$S14_STATUS" != "0" ] || [ "$B14_STATUS" != "0
 fi
 echo ""
 echo "  per-frame cost by variant — the point of the run:"
-for v in pass scaled baseline bypass pass14 scaled14 bypass14 capture capturebp; do
+for v in pass scaled baseline bypass pass14 scaled14 bypass14 capture capturens; do
     line=$(grep -m1 '^timing:' "$T/$v/mvp.txt" 2>/dev/null || true)
     printf '    %-9s %s\n' "$v" "${line:-<no timing recorded>}"
     # The capture leg's own split, which is the number that decides whether the

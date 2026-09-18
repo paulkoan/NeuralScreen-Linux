@@ -172,7 +172,8 @@ class ImageCapture:
 
 
 def open_capture(source: str, *, monitor: int = 0, input_image=None,
-                 width: int | None = None, height: int | None = None):
+                 width: int | None = None, height: int | None = None,
+                 video_scale: bool = True):
     """Build the frame source named by --source.
 
     "auto" picks per session: Wayland desktops get the portal (mss would hand
@@ -199,13 +200,14 @@ def open_capture(source: str, *, monitor: int = 0, input_image=None,
         # Imported lazily: it pulls in jeepney, and the other sources must keep
         # working on machines where that is not installed.
         from minimal.capture_wayland import PortalCapture
-        return PortalCapture(monitor_idx=monitor)
+        return PortalCapture(monitor_idx=monitor, video_scale=video_scale)
     if source == "window":
         # One window instead of a whole screen. The compositor's capture cost
         # scales with the pixels, and a game stream only needs the game.
         from minimal.capture_wayland import PortalCapture
         from minimal.portal import SOURCE_WINDOW
-        return PortalCapture(monitor_idx=monitor, source=SOURCE_WINDOW)
+        return PortalCapture(monitor_idx=monitor, source=SOURCE_WINDOW,
+                             video_scale=video_scale)
     if source == "synthetic":
         return SyntheticCapture(width or 1280, height or 720)
     if source == "image":

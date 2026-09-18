@@ -31,6 +31,63 @@ killed the port outright; it is cleared.
 
 ---
 
+# Round 25 — the capture chain is 33% of a core, and the ceiling this architecture has
+
+`20260918T132847Z` produced the measurement the last three rounds were for:
+
+```
+capture    capture cpu: the pipeline used 1.25s over 3.81s = 33% of one core
+capturens  (the same, before this round's change)
+```
+
+**33% of a core, both capture variants, at 2560x1440.** Over 30 frames that is
+**~42ms of CPU per frame** spent in the capture chain — PipeWire delivery, a
+format conversion, a scale and a 14.7MB write into the pipe. That is the same
+order as the 18-47ms the worker's `send` pays extra when the source is the portal
+rather than a synthetic card, so the contention reading is supported. Not proven:
+two costs of the same size are not the same cost, and only a run with the chain
+made cheaper will show whether `send` follows it down.
+
+## The one lever in our own code
+
+Everything else worth attacking lives in a binary we cannot rebuild, so this is
+the only element available: **`--capture-no-scale`** drops `videoscale` from the
+pipeline, one 14.7MB pass out of the chain. It stays off by default because the
+element is deliberate — the portal's reported size and the stream's actual size
+can disagree, fractional scaling on Plasma being the easy way, and then caps
+negotiation fails instead of scaling. The failure is loud and names itself.
+
+The gate swaps `capturebp` for `capturens` to measure it. `capturebp` had served
+its purpose: the pass's price at 1440p is known from `pass14 - bypass14`, and the
+real-screen version was the least reproducible row in the table.
+
+## The ceiling, stated plainly
+
+Four rounds of decomposition now agree on this:
+
+| | no NGX at all | with the pass | pass's share |
+|---|---|---|---|
+| 1280x720 | 51.1ms (19.6 fps) | 78.6ms (12.7 fps) | 27.5ms |
+| 2560x1440 | 85.5ms (11.7 fps) | 98.6ms (10.1 fps) | 5-13ms |
+
+**With the network switched off entirely, a 2560x1440 frame still costs ~85ms and
+a 1280x720 frame ~51ms.** That is the floor of this architecture, and it is the
+frame's journey: read out of the capture pipe, written into the worker's stdin,
+uploaded to a D3D12 texture, read back, written back down the pipe, uploaded to
+the display. The pass is 5-13ms on top at 1440p and 25-30ms at 720p — visible
+only at the smaller size, because at the larger one it hides behind four times
+the copying.
+
+So: **~12 fps at 2560x1440 and ~20 fps at 1280x720, with the pass costing almost
+nothing at the top size.** Trimming the capture chain might move this by 10-20ms.
+Nothing else on this side of the boundary will. Getting to usable rates means not
+putting the frame on the CPU at all, which is a different piece of work — a host
+of our own, with the frame arriving over a memory-mapped file that both a native
+process and the Wine process can see — and that is a project rather than another
+variant.
+
+---
+
 # Round 24 — the CPU reading failed because I sampled it after closing it
 
 `20260918T131218Z` printed the line, and the line said why:

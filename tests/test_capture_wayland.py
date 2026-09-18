@@ -35,6 +35,8 @@ def _capture(width=1920, height=1080, fd=None, serial=991, node_id=42):
         fd = os.open(os.devnull, os.O_RDONLY)
     cap = cw.PortalCapture.__new__(cw.PortalCapture)
     cap.monitor_idx = 0
+    cap.source = cw.SOURCE_MONITOR
+    cap.video_scale = True
     cap._log = lambda *_: None
     cap._gst = "gst-launch-1.0"
     cap._proc = None
@@ -179,6 +181,33 @@ def test_close_is_safe_without_a_pipeline():
     assert cap._proc is None
     assert cap._sc.fd == -1
     assert fd_before >= 0
+
+
+def test_videoscale_is_in_the_pipeline_by_default():
+    """It is deliberate: the portal's size and the stream's can disagree."""
+    args = _capture()._pipeline_args()
+    assert "videoscale" in args
+    assert args.index("videoscale") > args.index("videoconvert")
+
+
+def test_videoscale_can_be_dropped():
+    """--capture-no-scale removes one 14.7MB pass from a 33%-of-a-core chain.
+
+    The chain measured 33% of a core at 2560x1440 — about 42ms of CPU per frame
+    — which is the same order as the penalty the worker's `send` pays when the
+    source is the portal rather than a synthetic card. This is the one element
+    of it we can delete without changing anything else.
+    """
+    cap = _capture()
+    cap.video_scale = False
+    args = cap._pipeline_args()
+    assert "videoscale" not in args
+    # Everything else must be untouched: the conversion, the caps and the
+    # newest-frame queue are not optional.
+    assert "videoconvert" in args
+    assert "fdsink" in args
+    assert any("format=RGBA" in a for a in args)
+    assert "leaky=downstream" in args
 
 
 def test_window_capture_asks_the_portal_for_a_window(monkeypatch):
