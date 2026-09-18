@@ -16,6 +16,7 @@ copy and nowhere else.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -132,3 +133,38 @@ def test_a_python_tool_runs_by_its_documented_path():
     assert "RESULT:" in proc.stdout, (
         "the probe did not reach a verdict:\n"
         + (proc.stdout + proc.stderr)[-2000:])
+
+
+GATE = TOOLS / "m1_pipeline_gate.sh"
+
+
+def test_every_gate_variant_is_also_reported():
+    """A variant runs, has its artifacts copied out, and appears in the table.
+
+    Those three lists are written separately in the gate, so adding a variant to
+    the first and forgetting the others means it runs, costs time on the GPU box,
+    and then never shows up in the report. Nothing errors; the reading is just
+    missing. Same shape as a duplicated code path.
+    """
+    text = GATE.read_text()
+    ran = re.findall(r"^run_variant\s+([a-z0-9_]+)", text, re.M)
+    assert ran, "no run_variant calls found — has the gate changed shape?"
+
+    lists = re.findall(r"^\s*for v in ([^;]+); do", text, re.M)
+    assert len(lists) >= 2, (
+        f"expected the artifact-copy and summary loops, found {len(lists)} — has "
+        f"the gate changed shape?")
+
+    for i, lst in enumerate(lists, 1):
+        names = set(lst.split())
+        missing = [v for v in ran if v not in names]
+        extra = sorted(names - set(ran))
+        assert not missing, f"loop {i} runs variants it does not report: {missing}"
+        assert not extra, f"loop {i} reports variants that never run: {extra}"
+
+    # And the sweep this was added for has to still be a sweep: a line through
+    # two points fits anything, which is how the ~48ms claim was made.
+    bypasses = [v for v in ran if v.startswith("bypass")]
+    assert len(bypasses) >= 4, (
+        f"the bypass size sweep needs at least four sizes to be a fit, has "
+        f"{bypasses}")

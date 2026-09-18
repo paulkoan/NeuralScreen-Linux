@@ -313,6 +313,20 @@ S14_STATUS=$VARIANT_STATUS
 run_variant bypass14 synthetic "" "--size 2560x1440 --bypass" control
 B14_STATUS=$VARIANT_STATUS
 
+# A SIZE SWEEP, to split the frame's cost into the part that scales with bytes
+# and the part that does not. Only the first part is something a different
+# transport can remove; the second is the worker's own per-frame work and would
+# survive any transport at all. bypass (1280x720) and bypass14 (2560x1440) give
+# two points, and a line through two points fits anything — round 21's note that
+# "~48ms at 1280x720 is neither the network nor the pipe traffic" came from
+# exactly that kind of two-point reasoning and has never been tested against a
+# third size. These add two, both small enough that the bytes barely matter, so
+# the intercept is nearly readable directly off the smallest one.
+run_variant bypass128 synthetic "" "--size 128x128 --bypass" control
+B128_STATUS=$VARIANT_STATUS
+run_variant bypass360 synthetic "" "--size 640x360 --bypass" control
+B360_STATUS=$VARIANT_STATUS
+
 # "auto" is what the product does: the portal on a Wayland session, the X11 grab
 # otherwise. Naming it explicitly here means the gate tests the same decision the
 # user's own runs go through.
@@ -342,7 +356,7 @@ fi
 
 # --- copy artifacts out -----------------------------------------------------
 if [ -n "$OUT" ]; then
-    for v in pass scaled baseline bypass pass14 scaled14 bypass14 capture capturens; do
+    for v in pass scaled baseline bypass pass14 scaled14 bypass14 bypass128 bypass360 capture capturens; do
         mkdir -p "$OUT/$v"
         cp -f "$T/$v/before.png" "$OUT/$v/" 2>/dev/null || true
         cp -f "$T/$v/after.png" "$OUT/$v/" 2>/dev/null || true
@@ -414,9 +428,26 @@ if [ "$P14_STATUS" != "0" ] || [ "$S14_STATUS" != "0" ] || [ "$B14_STATUS" != "0
     echo "  the 2560x1440 synthetic trio did not all complete."
     STATUS=1
 fi
+if [ "$B128_STATUS" != "0" ] || [ "$B360_STATUS" != "0" ]; then
+    echo "  the small end of the size sweep did not complete. That is itself a"
+    echo "  reading: it would mean the worker refuses frames that small, and the"
+    echo "  intercept has to be extrapolated up from 1280x720 instead."
+fi
+echo ""
+echo "  the size sweep — fit bypass128, bypass360, bypass (1280x720) and bypass14"
+echo "  (2560x1440) as ms/frame against bytes/frame:"
+echo "    the SLOPE is the part of the journey that a different transport could"
+echo "    remove. The INTERCEPT is the worker's own per-frame work, and no"
+echo "    transport touches it."
+echo "    for scale, the pipe measures ~1.1 GB/s and a frame crosses it three"
+echo "    times in this loop (our write, the worker's read, our read of the"
+echo "    result), so a purely byte-bound journey would slope at about 2.7ms per"
+echo "    MB: 14.7MB would be ~40ms of pipe traffic, and 128x128 (64KB) would be"
+echo "    nearly zero. A large intercept means an own-host build cannot pay for"
+echo "    itself, and that the ceiling is not the transport at all."
 echo ""
 echo "  per-frame cost by variant — the point of the run:"
-for v in pass scaled baseline bypass pass14 scaled14 bypass14 capture capturens; do
+for v in pass scaled baseline bypass pass14 scaled14 bypass14 bypass128 bypass360 capture capturens; do
     line=$(grep -m1 '^timing:' "$T/$v/mvp.txt" 2>/dev/null || true)
     printf '    %-9s %s\n' "$v" "${line:-<no timing recorded>}"
     # The capture leg's own split, which is the number that decides whether the

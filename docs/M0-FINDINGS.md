@@ -84,6 +84,76 @@ are coherent through the page cache — the part Wine would have to reproduce.
 Whether Wine's `CreateFileMappingA` on a `Z:\` path lands on that same page cache
 is the open question, and it needs the GPU box.
 
+## The box result — PASS, with real Wine
+
+`test-results/20260918T160022Z-mmap-bridge`, wine-staging 11.17:
+
+```
+  14.7 MB written and returned in 9.32ms mean over 10 rounds (3165 MB/s both ways)
+  of which 3.03ms is our own write (4871 MB/s one way)
+  bridge_win: 10 rounds, 0 with mismatches, worst 6.8 ms
+```
+
+Round by round the write is 9.28ms cold, then 3.96, 2.72, and **1.95-2.11ms from
+round 4 on** — about **7.0-7.6 GB/s one way** against the **~1.1 GB/s** measured
+for a pipe read. The first round pays the page faults; the steady state is the
+number that matters.
+
+So two `MAP_SHARED` mappings of one file are the same physical pages **across the
+Wine boundary**, exactly as `map_file_into_view` predicts, and the transport is
+roughly **4x** the pipe one-way. Phase A passes: the transport is no longer the
+reason a frame cannot move.
+
+## What it does not buy: the frame still cannot stay on the GPU
+
+The point of an own host was never only the mapping. It was the chance to keep the
+frame on the GPU — a PipeWire DMA-BUF imported straight into the worker's
+texture, with no CPU round trip at all. **That route is not open.**
+
+vkd3d-proton is the only D3D12 on this machine, and it cannot see a Linux
+buffer. Checked in the source, both the pinned 3.0.1 and current master:
+
+```
+$ grep -rn "dma_buf\|DMA_BUF\|OPAQUE_FD\|EXTERNAL_MEMORY_FD" libs --include=*.c --include=*.h | wc -l
+0
+```
+
+Every external handle type it uses is a Win32 one —
+`VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT`, `…_KMT_BIT`, plus
+`HOST_ALLOCATION_BIT_EXT`. There is no `VK_KHR_external_memory_fd` path and no
+`VK_EXT_external_memory_dma_buf`. So a native process cannot hand a GPU buffer to
+a Wine D3D12 host through the D3D12 API, and "never touch the CPU" is not
+available today. (The driver side may well be fine — NVIDIA exposes
+`VK_EXT_external_memory_dma_buf` with `nvidia_drm.modeset=1`, which Wayland
+requires anyway. It is the D3D12-on-Linux layer that has no door for it.)
+
+That does not kill the host, but it prices it: the host buys the **transport**
+(~1.5-4x on the byte-bound part) and nothing beyond it. Everything the worker
+spends per frame on its own — upload, readback, NGX itself — would still be spent.
+
+## So the next measurement is a size sweep, not a host
+
+Since only the byte-bound part of the journey is removable, the question "is a
+host worth building?" is really "how much of the frame's cost is bytes?". Round 21
+answered it from two points (`bypass` 1280x720 and `bypass14` 2560x1440) and a line
+through two points fits anything — that is where the "~48ms that neither the
+network nor the pipe traffic accounts for" came from, and it has never been tested
+against a third size.
+
+The gate now runs a four-point sweep — `bypass128`, `bypass360`, `bypass` (720p)
+and `bypass14` (1440p) — all synthetic, so it costs no portal dialog and no
+capture. Fitting ms/frame against bytes/frame splits the journey into a **slope**
+(what a transport can remove) and an **intercept** (the worker's own per-frame
+work, which no transport touches). A purely byte-bound journey would slope at
+~2.7ms per MB, putting 14.7MB at ~40ms of pipe traffic and 128x128 near zero. The
+gate prints that comparison next to the table, because a large intercept means the
+host cannot pay for itself.
+
+The gate also had its variant lists in three places, which is how a variant can
+run, cost a pass on the box, and never appear in the report. A test now fails if
+they disagree — verified by dropping one from the summary loop and watching it
+fail.
+
 ## Two things the first version got wrong, both now pinned by tests
 
 - **It flushed every round.** An `msync` per round forces writeback, and it made
