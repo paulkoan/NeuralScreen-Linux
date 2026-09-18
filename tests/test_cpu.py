@@ -113,6 +113,43 @@ def test_the_summary_reports_the_capture_cpu_when_the_source_can(
     assert cc["wall"] > 0
 
 
+def test_the_end_reading_is_taken_before_the_capture_is_closed(
+        fake_capture, fake_display, mock_worker_cmd):
+    """The bug this shipped with: run() closed the capture, then sampled it.
+
+    PortalCapture.close() drops the pipeline handle, so the end reading came
+    back None and every run printed "pid None" with "the reading failed" — the
+    measurement was taken after the thing it measures was gone. The fake here
+    behaves the same way, so the ordering is pinned rather than assumed.
+    """
+    import time as _time
+
+    from minimal.loop import Pipeline
+
+    state = {"t0": _time.monotonic(), "closed": False}
+
+    def cpu_seconds():
+        return None if state["closed"] else _time.monotonic() - state["t0"]
+
+    def close():
+        state["closed"] = True          # exactly what PortalCapture does
+
+    fake_capture.cpu_seconds = cpu_seconds
+    fake_capture.pipeline_pid = 12345
+    fake_capture.close = close
+
+    pipe = Pipeline(capture=fake_capture, display=fake_display, headless=True,
+                    worker_cmd=mock_worker_cmd, worker_cwd=REPO)
+    cc = pipe.run(frames=3)["capture_cpu"]
+
+    assert cc is not None
+    assert cc["share"] is not None, (
+        "the end reading was taken after close(); sample it in the finally "
+        "block BEFORE the capture is closed")
+    assert cc["share"] > 0
+    assert cc["pid"] == 12345
+
+
 def test_a_source_with_no_cpu_reading_reports_none(fake_capture, fake_display,
                                                    mock_worker_cmd):
     """No measurement is None, never a zero that reads as "did nothing"."""

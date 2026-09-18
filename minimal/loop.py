@@ -249,6 +249,7 @@ class Pipeline:
         # the worker waits — and it is where the portal's ~47ms went at 1440p.
         capture_cpu0 = self._capture_cpu()
         capture_cpu_supported = self._capture_cpu_supported()
+        pid0 = self._capture_cpu_pid()
         index = 0
         # The pair kept for --save-before/--save-after must come from ONE
         # iteration. Saving the first input against the last output measures
@@ -279,6 +280,11 @@ class Pipeline:
                         on_frame(index, after)
                 index += 1
         finally:
+            # Sample the capture's CPU before close(): close() drops the
+            # pipeline handle, and taking the end reading after it reported
+            # "pid None" and a failed reading on every run — the measurement
+            # was being taken after the thing it measures was gone.
+            capture_cpu1 = self._capture_cpu()
             self.worker.stop()
             self.capture.close()
             self.display.close()
@@ -306,8 +312,8 @@ class Pipeline:
             # time — it is work that happens while the worker waits, and at
             # 2560x1440 that is where the portal's extra ~47ms of `send` went.
             "capture_cpu": _capture_cpu_summary(
-                capture_cpu0, self._capture_cpu(), time.monotonic() - started,
-                supported=capture_cpu_supported, pid=self._capture_cpu_pid()),
+                capture_cpu0, capture_cpu1, elapsed,
+                supported=capture_cpu_supported, pid=pid0),
         }
 
     def close(self) -> None:

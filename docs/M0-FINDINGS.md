@@ -31,6 +31,56 @@ killed the port outright; it is cleared.
 
 ---
 
+# Round 24 — the CPU reading failed because I sampled it after closing it
+
+`20260918T131218Z` printed the line, and the line said why:
+
+```
+capture cpu: NOT measured — the source reports its own CPU but the reading
+             failed — check /proc/<pid>/stat for the pid above (pid None)
+```
+
+`pid None` was the clue: `pipeline_pid` reads `self._proc`, and `_proc` is set to
+`None` by `close()` — which `run()` calls in its `finally`, **before** the return
+statement builds the summary. So the end sample was taken after the pipeline was
+gone, which is why the pid was `None` and the reading failed. Both symptoms, one
+cause, and it was in my code rather than in `/proc`.
+
+The end sample now happens in the `finally` before the capture is closed. The
+regression test uses a fake whose `close()` removes the reading exactly as
+`PortalCapture` does, and it was verified by reintroducing the bug: the test
+fails, and passes again with the fix.
+
+Worth noting the shape of it, because it is the fourth time: a measurement whose
+number was produced at the wrong moment. The age that was read when `stats()` was
+called instead of when the frame was taken; the flaky test comparing a frame
+against a count read afterwards; the split that a buffered read swallowed; and
+now this. The lesson is not "be careful with timing" but that any derived number
+should be recorded at the moment it happens, and read back later.
+
+Also confirmed on the box: the prefetch flakiness is gone (164 passed, 0 failed,
+against 1 failed the run before).
+
+## And the 5ms figure did not hold this time
+
+| network's price | `120102Z` | `122822Z` | `124926Z` | `131218Z` |
+|---|---|---|---|---|
+| 1440p synthetic | 5.4ms | 4.8ms | 5.7ms | **13.1ms** |
+| 720p synthetic | 24.4ms | 39.8ms | 32.4ms | 27.5ms |
+| 1440p real screen | 9.5ms | 44.3ms | 9.5ms | 9.5ms |
+
+So the 1440p figure is **5-13ms**, not a stable 5. I called it "the one number
+that keeps holding" one round too early. What survives is the conclusion rather
+than the figure: 5-13ms against a 100-135ms frame means the pass is not where the
+time goes at this size, whether the true value is 5 or 13. What does not survive
+is quoting any particular millisecond value for it.
+
+Everything else in the run was healthy: the capture legs were 11.0ms and 10.4ms
+with no slow-mode stall, and the two capture variants agreed on `send` to within
+0.4ms (90.3 against 90.7).
+
+---
+
 # Round 23 — a test of mine failed on the box, and the capture wait is bimodal
 
 `20260918T124926Z`. Three things, one of them a bug I shipped.
