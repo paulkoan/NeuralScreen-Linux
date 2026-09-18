@@ -10,10 +10,9 @@
 #                            about page sharing (and says so in its own result)
 #   ./run.sh --rounds 20     anything else is passed to bridge_check.py
 #
-# --push uses whatever git credentials are already configured for this repo, the
-# same way tools/run_tests.sh does: GIT_ASKPASS is honoured, and there is no
-# terminal here for git to prompt on, so set NS_GIT_ASKPASS to a script that
-# prints the token or the push will fail as "wrong credentials".
+# --push writes the run to test-results/<UTC>-mmap-bridge/ (report plus the raw
+# log) and pushes it via ../lib/report.sh, which owns the auth convention and the
+# honest failure messages for both experiments.
 #
 # Exit: 0 the pages were shared, 1 they were not, 2 a prerequisite is missing.
 set -euo pipefail
@@ -136,30 +135,9 @@ VERDICT="$(grep -m1 'RESULT:' "$LOG" | sed 's/^ *//' || true)"
     echo "\`raw/bridge_check.log\`."
 } > "$OUT/report.md"
 
-echo
-echo "report: $OUT/report.md"
-
-cd "$REPO"
-ASKPASS="${NS_GIT_ASKPASS:-$HOME/.neuralscreen/github-askpass.sh}"
-if [ -x "$ASKPASS" ]; then
-    export GIT_ASKPASS="$ASKPASS"
-    export GIT_TERMINAL_PROMPT=0
-    echo "  auth: GIT_ASKPASS=$ASKPASS"
-else
-    echo "  auth: no askpass script at $ASKPASS. There is no terminal here, so a"
-    echo "        prompting credential helper will fail as 'wrong credentials'."
-    echo "        Set NS_GIT_ASKPASS to a script that prints the token."
-fi
-
-if git add "$OUT" && git commit -q -m "mmap bridge result $STAMP: $VERDICT" -m "$(grep -E 'written and returned|our own write' "$LOG" || true)"; then
-    echo "  committed: mmap bridge result $STAMP"
-    if git push origin HEAD 2>&1 | sed 's/^/  /'; then
-        echo "  pushed $(git rev-parse --short HEAD)"
-    else
-        echo "  push FAILED — the commit is safe locally at $OUT, push it by hand" >&2
-    fi
-else
-    echo "  commit failed (is user.name/user.email set?)" >&2
-fi
+# shellcheck source=../lib/report.sh
+. "$HERE/../lib/report.sh"
+push_report "$OUT" "mmap bridge result $STAMP: $VERDICT" \
+    "$(grep -E 'written and returned|our own write' "$LOG" || true)"
 
 exit "$RC"

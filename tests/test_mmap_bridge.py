@@ -133,8 +133,11 @@ def test_a_selftest_report_cannot_be_mistaken_for_a_box_result():
     s = (BRIDGE / "run.sh").read_text()
     assert "-mmap-bridge-selftest" in s, "the selftest needs its own suffix"
     assert "Not a box result" in s, "and the report has to say so too"
-    assert "--push" in s and "NS_GIT_ASKPASS" in s, (
-        "the push must use the same auth convention as tools/run_tests.sh"
+    # The auth convention moved into experiments/lib/report.sh so the two
+    # experiments cannot explain a failed push differently. See
+    # tests/test_experiment_reporting.py, which tests it against a local origin.
+    assert "--push" in s and "report.sh" in s, (
+        "the push must go through the shared tail, which owns the auth convention"
     )
 
 

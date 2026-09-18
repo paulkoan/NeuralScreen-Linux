@@ -31,6 +31,73 @@ killed the port outright; it is cleared.
 
 ---
 
+# Round 27 — the size sweep does not fit, the 1440p path drifts by 2x, and the probe that could still settle it
+
+## What the sweep said
+
+`20260918T173602Z`, every variant synthetic, NGX off, so neither the portal nor
+the pass is in these numbers:
+
+| frame | bytes | ms/frame |
+|---|---|---|
+| 128×128 | 0.07 MB | 64.5 |
+| 640×360 | 0.92 MB | 69.2 |
+| 1280×720 | 3.7 MB | 54.9 |
+| 2560×1440 | 14.7 MB | 174.8 |
+
+Fit: slope **7.9ms/MB**, intercept **52.6ms**, **R² 0.898** — and the 720p point
+sits 26.7ms *below* the line, the largest residual of the four. But the fit is not
+the problem. **The ordering is not physical.** A 64KB frame took 64.5ms; a 3.7MB
+frame took 54.9ms. Under any model where the bytes set the pace, the smaller frame
+cannot be the slower one.
+
+So the question the sweep was built to answer — how much of a frame's cost a
+different transport could remove — has no answer in this data. The one thing it
+does support: **the ~55ms floor is not the bytes**, because 64KB of frame pays it
+in full.
+
+## And the same run puts the 1440p path at nearly 2x its previous cost
+
+Identical synthetic variants, this run against the one before:
+
+- `bypass14` 85.5 → **174.8ms**
+- `capture` (the 1440p capture leg — synthetic, no portal) 18.9 → **44.8ms**
+- `pass14` 98.6 → 110.2ms
+
+The 720p variants held steady (51.1 → 54.9) while the 1440p ones doubled. So
+twenty-six rounds of 5-25ms deltas have been measured on a box whose 1440p numbers
+move by 90ms between runs. That is worth writing down plainly: **several of the
+differences this project has been quoting are smaller than the drift in the
+quantity they were measuring.**
+
+## So: no host build, and a probe instead
+
+The own host was justified by the transport, and the transport is now measured and
+proven (round 26: ~7 GB/s one way across the Wine boundary, against ~1.1 GB/s for
+a pipe). But if the frame's cost is not dominated by the bytes, buying a faster
+transport buys little — which is the opposite of what Phase A was supposed to
+decide, and it is why the host is not being built.
+
+The remaining candidate for a per-frame cost that ignores size is
+**synchronisation**. The host waits on a fence every frame
+(`SetEventOnCompletion` + `WaitForSingleObject`, lines 546-558 and 1784-1799) and
+polls the pipe with `Sleep(8)` per poll (lines 4741-4748); under Wine each of
+those is a wine-server and driver round trip.
+
+`experiments/d3d12_sync/` measures that in isolation: headless, no NGX, no
+swapchain, no pipe, no capture, under the worker's own Wine environment — imported
+from `worker_env()` rather than restated, because a probe measuring a different
+D3D12 stack would measure nothing. Its discriminator is **B**, a wait on an
+*already-complete* fence with no GPU work outstanding: whatever that costs is paid
+by every wait, whoever wrote the host, so it is the part that is not ours to fix.
+
+- **B ≈ 15ms** → the ceiling is Wine's synchronisation latency, no host we write
+  avoids it, and the answer to "can this reach a playable rate" is no.
+- **B ≈ 1ms** → the current host is spending ~50ms a frame on its own design, and
+  a host we write is the first lever with real upside.
+
+---
+
 # Round 26 — Phase A: the transport the own host would use, built and measured
 
 The MVP's floor is not the neural pass. With NGX skipped entirely a 2560x1440
