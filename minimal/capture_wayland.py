@@ -207,6 +207,25 @@ class PortalCapture:
             self.last_read = total - self.last_wait
         return np.frombuffer(buf, dtype=np.uint8).reshape(self.height, self.width, 4)
 
+    def cpu_seconds(self) -> float | None:
+        """CPU time the capture pipeline has used, or None if it is not running.
+
+        This is the chain's own cost — PipeWire delivery, videoconvert,
+        videoscale, the pipe — and it is invisible in the grab time. Measured
+        in the MVP, the same 2560x1440 frame cost `send` 114.2ms arriving
+        through the portal against 67.3ms produced synthetically, and none of
+        that difference showed up in the capture leg. If this comes back near a
+        core, that work is competing with the worker rather than waiting for it.
+        """
+        from minimal.cpu import process_cpu_seconds
+
+        proc = self._proc
+        return process_cpu_seconds(proc.pid if proc is not None else None)
+
+    @property
+    def pipeline_pid(self) -> int | None:
+        return self._proc.pid if self._proc is not None else None
+
     def _read_exact(self, need: int) -> bytes:
         """Read exactly `need` bytes, or explain why we could not.
 

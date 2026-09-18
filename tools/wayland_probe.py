@@ -42,21 +42,14 @@ PASS, FAIL, WARN, INFO = "  \033[32m✓\033[0m", "  \033[31m✗\033[0m", "  \033
 
 
 def _cpu_seconds(pid: int) -> float | None:
-    """CPU time a process has used, in seconds (utime + stime). None if gone.
+    """CPU time a process has used. One implementation, in minimal/cpu.py.
 
-    Field 2 of /proc/<pid>/stat is the command name in parentheses and may
-    itself contain spaces, so the fields after it are counted from the last ')'
-    rather than from a whitespace split of the whole line. utime/stime are
-    fields 14 and 15, i.e. indices 11 and 12 once state (field 3) leads.
+    It was written twice — here and for the MVP — which is how the worker's
+    launch environment drifted apart in an earlier round.
     """
-    try:
-        with open(f"/proc/{pid}/stat", "rb") as fh:
-            raw = fh.read()
-        rest = raw[raw.rfind(b")") + 2:].split()
-        utime, stime = int(rest[11]), int(rest[12])
-        return (utime + stime) / os.sysconf("SC_CLK_TCK")
-    except Exception:
-        return None
+    from minimal.cpu import process_cpu_seconds
+
+    return process_cpu_seconds(pid)
 
 
 def main(argv: list[str] | None = None) -> int:

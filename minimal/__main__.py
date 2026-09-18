@@ -233,6 +233,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"          ! the drain is being starved ({1000 * mean:.0f}ms "
                   f"mean age): it competes with the worker for memory "
                   f"bandwidth, so it may cost more than the round trip it saves")
+    # The capture chain's own CPU. It never shows in the frame time, and at
+    # 2560x1440 it competes with the worker rather than waiting for it.
+    cc = summary.get("capture_cpu")
+    if cc and cc.get("share") is not None:
+        print(f"capture cpu: the pipeline used {cc['seconds']:.2f}s over "
+              f"{cc['wall']:.2f}s = {100 * cc['share']:.0f}% of one core")
+        if cc["share"] > 0.5:
+            print(f"          ! that work runs while the worker waits: the same "
+                  f"2560x1440 frame cost send 114.2ms through the portal against "
+                  f"67.3ms produced synthetically")
     if args.save_before:
         print(f"  before -> {args.save_before}")
     if args.save_after:

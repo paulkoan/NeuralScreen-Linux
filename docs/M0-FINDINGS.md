@@ -31,6 +31,53 @@ killed the port outright; it is cleared.
 
 ---
 
+# Round 22 — what replicated, what didn't, and moving the CPU reading into the run
+
+Two runs of the same nine variants, and one of round 21's numbers did not
+survive:
+
+| network's price | `120102Z` | `122822Z` |
+|---|---|---|
+| 720p synthetic | 24.4ms | 39.8ms |
+| **1440p synthetic** | **5.4ms** | **4.8ms** |
+| 1440p real screen | 9.5ms | 44.3ms |
+
+**The 1440p synthetic figure replicated** (5.4, 4.8): the network costs ~5ms at
+2560x1440, and that is now measured twice. **The real-screen figure did not**
+(9.5 against 44.3), so `capture - capturebp` is too variable to carry the claim
+on its own and should not be quoted without a repeat.
+
+The portal gap replicated in direction but not magnitude: the same 2560x1440
+frame cost `send` 47ms more through the portal than synthetically in one run and
+18ms more in the other (+70% and +30%). Worth chasing, not worth quantifying
+until the CPU reading explains it.
+
+## The reading belongs in the run, not in a separate command
+
+Twice now a report has come back without the probe output, and the CPU share is
+the measurement that would explain the whole portal gap. Asking again would be
+the third time, so the MVP now reports it itself: `PortalCapture.cpu_seconds()`
+reads the pipeline's `/proc/<pid>/stat`, `Pipeline.run` samples it around the
+loop, and every run prints
+
+```
+capture cpu: the pipeline used 1.42s over 4.31s = 33% of one core
+```
+
+with a warning when it exceeds half a core, since that work runs while the
+worker waits rather than instead of waiting.
+
+The reader lives in `minimal/cpu.py` and both the probe and the MVP use it.
+Written twice it would drift — which is exactly what happened to the worker's
+launch environment in an earlier round, and the reason that one is enforced by a
+test. The reader is verified against a busy process (100% of a core), an
+executable whose name contains a space (the comm-field trap, and the test asserts
+the space is really there), an idle sleeper (0) and a missing pid (`None`, never a
+fabricated zero — a zero would read as "the chain did nothing", which is the
+opposite of the case worth knowing about).
+
+---
+
 # Round 21 — the network is not the cost at 1440p, and the capture chain steals from the worker
 
 `20260918T120102Z`, all nine, and the first run where the 1440p matrix cost no

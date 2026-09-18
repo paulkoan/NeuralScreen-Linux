@@ -37,6 +37,21 @@ def _prefetch_stats(capture):
     return fn() if fn is not None else None
 
 
+def _capture_cpu_summary(before: float | None, after: float | None,
+                         wall: float) -> dict | None:
+    """The capture chain's CPU over the run, or None if it cannot be read.
+
+    None rather than zeros: a missing measurement must not read as "the chain
+    did nothing", which is the opposite of the case worth knowing about.
+    """
+    if before is None or after is None:
+        return None
+    from minimal.cpu import cpu_share
+
+    return {"seconds": after - before, "wall": wall,
+            "share": cpu_share(before, after, wall)}
+
+
 class Pipeline:
     """Capture a frame, run it through the worker, put the result on screen."""
 
@@ -191,6 +206,11 @@ class Pipeline:
             out["capture_read"] = mean(self.capture_split["read"])
         return out
 
+    def _capture_cpu(self) -> float | None:
+        """The capture chain's CPU time, if the source can report it."""
+        fn = getattr(self.capture, "cpu_seconds", None)
+        return fn() if fn is not None else None
+
     def run(self, frames: int = 0, save_before: str | None = None,
             save_after: str | None = None, on_frame=None) -> dict:
         """Run the loop. frames=0 means until quit/EOF.
@@ -199,6 +219,10 @@ class Pipeline:
         """
         self.worker.start()
         started = time.monotonic()
+        # The capture chain's own CPU, sampled around the loop. It is invisible
+        # in the grab time — the pipeline's copies and conversions happen while
+        # the worker waits — and it is where the portal's ~47ms went at 1440p.
+        capture_cpu0 = self._capture_cpu()
         index = 0
         # The pair kept for --save-before/--save-after must come from ONE
         # iteration. Saving the first input against the last output measures
@@ -252,6 +276,11 @@ class Pipeline:
             "timing": self.timing_summary(),
             # Only a prefetching source has anything to say here.
             "prefetch": _prefetch_stats(self.capture),
+            # The capture chain's own CPU over the run. Not part of the frame
+            # time — it is work that happens while the worker waits, and at
+            # 2560x1440 that is where the portal's extra ~47ms of `send` went.
+            "capture_cpu": _capture_cpu_summary(capture_cpu0, self._capture_cpu(),
+                                                time.monotonic() - started),
         }
 
     def close(self) -> None:
