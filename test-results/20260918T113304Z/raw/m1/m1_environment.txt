@@ -1,0 +1,8 @@
+date:              Fri 18 Sep 11:33:46 UTC 2026
+XDG_SESSION_TYPE:  wayland
+XDG_CURRENT_DESKTOP: KDE
+DISPLAY:           :0
+WAYLAND_DISPLAY:   wayland-0
+frames pushed:     30
+wine:              wine-11.17 (Staging)
+driver:            615.71.09

@@ -1,0 +1,268 @@
+==============================================================
+ M1 — live pipeline gate (MVP end to end)
+==============================================================
+
+  [32m✓[0m wine: wine-11.17 (Staging)
+  [32m✓[0m worker: nvngx.dll (156K)
+  [32m✓[0m NR runtime: nvngx_dlssnr.dll (159M)
+
+==============================================================
+ variant: pass   (--source synthetic)
+==============================================================
+  | source synthetic  capture 1280x720  ->  work 1280x720 (work scale 1.00, NGX ceiling 2560x1440)
+  | params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+  | worker: bash /home/paul/dev/NeuralScreen-Linux/native/run_worker.sh
+  | pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+  | Hello from the pygame community. https://www.pygame.org/contribute.html
+  | frames: 30 done, 0 skipped, 2.871s (10.45 fps), worker exit 0
+  | timing: capture 5.6ms  send 72.1ms  recv 9.6ms  display 0.5ms   (total 87.8ms/frame, 11.4 fps)
+  |   before -> /tmp/tmp.K0v9EpRN3p/pass/before.png
+  |   after  -> /tmp/tmp.K0v9EpRN3p/pass/after.png
+  exit code: 0   elapsed: 4s
+  [32m✓[0m the MVP exited 0
+  [32m✓[0m before.png written (92K)
+  [32m✓[0m after.png written (560K)
+
+  --- did the pass change the frame? ---
+  size              1280x720
+  mean abs diff     17.6189  (0 = byte-identical)
+  p99 abs diff      44.00
+  PSNR              21.981463450918536
+  before is blank   False
+  after is blank    False
+  after == before   False
+  VERDICT the pass changed the frame (mean abs diff 17.6189/255)
+  [32m✓[0m the pass changed the frame
+
+==============================================================
+ variant: scaled   (--source synthetic)
+          --work-scale 0.5
+==============================================================
+  | source synthetic  capture 1280x720  ->  work 640x360 (work scale 0.50, NGX ceiling 2560x1440)
+  | params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+  | worker: bash /home/paul/dev/NeuralScreen-Linux/native/run_worker.sh
+  | pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+  | Hello from the pygame community. https://www.pygame.org/contribute.html
+  | frames: 30 done, 0 skipped, 2.086s (14.38 fps), worker exit 0
+  | timing: capture 5.4ms  send 46.0ms  recv 8.0ms  display 0.6ms   (total 59.9ms/frame, 16.7 fps)
+  |   before -> /tmp/tmp.K0v9EpRN3p/scaled/before.png
+  |   after  -> /tmp/tmp.K0v9EpRN3p/scaled/after.png
+  exit code: 0   elapsed: 3s
+  [32m✓[0m the MVP exited 0
+  [32m✓[0m before.png written (92K)
+  [32m✓[0m after.png written (316K)
+
+  --- did the pass change the frame? ---
+  size              1280x720
+  mean abs diff     16.8060  (0 = byte-identical)
+  p99 abs diff      37.00
+  PSNR              22.513490137205512
+  before is blank   False
+  after is blank    False
+  after == before   False
+  VERDICT the pass changed the frame (mean abs diff 16.8060/255)
+  [32m✓[0m the pass changed the frame
+
+==============================================================
+ variant: baseline   (--source synthetic)
+          --param intensity=0 --param local_tone=0 --param local_structure=0
+==============================================================
+  | source synthetic  capture 1280x720  ->  work 1280x720 (work scale 1.00, NGX ceiling 2560x1440)
+  | params: auto_mask=0 intensity=0.0 local_structure=0.0 local_tone=0.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+  | worker: bash /home/paul/dev/NeuralScreen-Linux/native/run_worker.sh
+  | pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+  | Hello from the pygame community. https://www.pygame.org/contribute.html
+  | frames: 30 done, 0 skipped, 2.225s (13.48 fps), worker exit 0
+  | timing: capture 5.7ms  send 46.9ms  recv 9.8ms  display 0.5ms   (total 62.9ms/frame, 15.9 fps)
+  |   before -> /tmp/tmp.K0v9EpRN3p/baseline/before.png
+  |   after  -> /tmp/tmp.K0v9EpRN3p/baseline/after.png
+  exit code: 0   elapsed: 3s
+  [32m✓[0m the MVP exited 0
+  [32m✓[0m before.png written (92K)
+  [32m✓[0m after.png written (92K)
+
+  --- did the pass change the frame? ---
+  size              1280x720
+  mean abs diff     0.0000  (0 = byte-identical)
+  p99 abs diff      0.00
+  PSNR              inf
+  before is blank   False
+  after is blank    False
+  after == before   True
+  VERDICT the pass returned the input unchanged
+  control variant: the diff below is the floor, not the effect
+  [32m✓[0m with the effect off the frame barely moves (mean abs diff 0.0000/255)
+
+==============================================================
+ variant: bypass   (--source synthetic)
+          --bypass
+==============================================================
+  | source synthetic  capture 1280x720  ->  work 1280x720 (work scale 1.00, NGX ceiling 2560x1440)
+  | params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+  | worker: bash /home/paul/dev/NeuralScreen-Linux/native/run_worker.sh
+  | pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+  | Hello from the pygame community. https://www.pygame.org/contribute.html
+  | frames: 30 done, 0 skipped, 1.951s (15.38 fps), worker exit 0
+  | timing: capture 5.2ms  send 45.5ms  recv 5.9ms  display 0.6ms   (total 57.2ms/frame, 17.5 fps)
+  |   before -> /tmp/tmp.K0v9EpRN3p/bypass/before.png
+  |   after  -> /tmp/tmp.K0v9EpRN3p/bypass/after.png
+  exit code: 0   elapsed: 2s
+  [32m✓[0m the MVP exited 0
+  [32m✓[0m before.png written (92K)
+  [32m✓[0m after.png written (92K)
+
+  --- did the pass change the frame? ---
+  size              1280x720
+  mean abs diff     0.0000  (0 = byte-identical)
+  p99 abs diff      0.00
+  PSNR              inf
+  before is blank   False
+  after is blank    False
+  after == before   True
+  VERDICT the pass returned the input unchanged
+  control variant: the diff below is the floor, not the effect
+  [32m✓[0m with the effect off the frame barely moves (mean abs diff 0.0000/255)
+
+==============================================================
+ variant: capture   (--source auto)
+==============================================================
+  |   CreateSession
+  |   session /org/freedesktop/portal/desktop/session/1_4372495/nsl_port
+  |   SelectSources
+  |   Start  (the compositor will ask you to choose a screen)
+  |   stream node=90 serial=None 2560x1440
+  |   OpenPipeWireRemote
+  |   pipeline pid 2776732: gst-launch-1.0 -q pipewiresrc fd=5 path=90 ! videoconvert ! videoscale ! video/x-raw,format=RGBA,width=2560,height=1440,pixel-aspect-ratio=1/1 ! queue max-size-buffers=1 leaky=downstream ! fdsink fd=1
+  | source auto  capture 2560x1440  ->  work 2560x1440 (work scale 1.00, NGX ceiling 2560x1440)
+  | params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+  | worker: bash /home/paul/dev/NeuralScreen-Linux/native/run_worker.sh
+  | pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+  | Hello from the pygame community. https://www.pygame.org/contribute.html
+  | frames: 30 done, 0 skipped, 4.544s (6.6 fps), worker exit 0
+  | timing: capture 14.3ms  send 82.0ms  recv 38.7ms  display 4.7ms   (total 139.7ms/frame, 7.2 fps)
+  | capture split: wait 0.1ms  read 14.1ms   (read ~19ms at 2560x1440 means we are draining a stocked pipe; read far above that means the compositor was dribbling)
+  |   before -> /tmp/tmp.K0v9EpRN3p/capture/before.png
+  |   after  -> /tmp/tmp.K0v9EpRN3p/capture/after.png
+  exit code: 0   elapsed: 8s
+  [32m✓[0m the MVP exited 0
+  [32m✓[0m before.png written (2.0M)
+  [32m✓[0m after.png written (3.1M)
+
+  --- did the pass change the frame? ---
+  size              2560x1440
+  mean abs diff     4.7460  (0 = byte-identical)
+  p99 abs diff      44.00
+  PSNR              28.50807308863356
+  before is blank   False
+  after is blank    False
+  after == before   False
+  VERDICT the pass changed the frame (mean abs diff 4.7460/255)
+  [32m✓[0m the pass changed the frame
+
+==============================================================
+ variant: capturews   (--source auto)
+          --work-scale 0.5
+==============================================================
+  |   CreateSession
+  |   session /org/freedesktop/portal/desktop/session/1_4372792/nsl_port
+  |   SelectSources
+  |   Start  (the compositor will ask you to choose a screen)
+  |   stream node=192 serial=None 2560x1440
+  |   OpenPipeWireRemote
+  |   pipeline pid 2777501: gst-launch-1.0 -q pipewiresrc fd=5 path=192 ! videoconvert ! videoscale ! video/x-raw,format=RGBA,width=2560,height=1440,pixel-aspect-ratio=1/1 ! queue max-size-buffers=1 leaky=downstream ! fdsink fd=1
+  | source auto  capture 2560x1440  ->  work 1280x720 (work scale 0.50, NGX ceiling 2560x1440)
+  | params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+  | worker: bash /home/paul/dev/NeuralScreen-Linux/native/run_worker.sh
+  | pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+  | Hello from the pygame community. https://www.pygame.org/contribute.html
+  | frames: 30 done, 0 skipped, 4.74s (6.33 fps), worker exit 0
+  | timing: capture 14.4ms  send 99.3ms  recv 30.0ms  display 4.2ms   (total 148.0ms/frame, 6.8 fps)
+  | capture split: wait 0.1ms  read 14.3ms   (read ~19ms at 2560x1440 means we are draining a stocked pipe; read far above that means the compositor was dribbling)
+  |   before -> /tmp/tmp.K0v9EpRN3p/capturews/before.png
+  |   after  -> /tmp/tmp.K0v9EpRN3p/capturews/after.png
+  exit code: 0   elapsed: 8s
+  [32m✓[0m the MVP exited 0
+  [32m✓[0m before.png written (1.7M)
+  [32m✓[0m after.png written (2.5M)
+
+  --- did the pass change the frame? ---
+  size              2560x1440
+  mean abs diff     4.5626  (0 = byte-identical)
+  p99 abs diff      32.00
+  PSNR              30.691531703527318
+  before is blank   False
+  after is blank    False
+  after == before   False
+  VERDICT the pass changed the frame (mean abs diff 4.5626/255)
+  [32m✓[0m the pass changed the frame
+
+--- environment ---
+  DISPLAY:           :0
+  WAYLAND_DISPLAY:   wayland-0
+  XDG_SESSION_TYPE:  wayland
+  [33m![0m Wayland session: the screen variant is expected to capture nothing
+  [33m![0m (the worker does not write dlss5-feed-host.log in --live mode; that is
+  [33m![0m  deliberate — 'if (!g_video_mode)' in dlss5-feed-host64.cpp, so its
+  [33m![0m  absence is not a failure here)
+
+  artifacts -> test-results/20260918T113304Z/raw/m1/{pass,scaled,baseline,bypass,capture,capturews}/
+
+==============================================================
+ M1 summary
+==============================================================
+  pass     PASS — the NR pass changes a known frame.
+  baseline measured — see the variant output for the transport floor;
+           subtract it from 'pass' and 'capture' before reading those
+           as the network's work.
+  bypass   measured — NGX skipped entirely. baseline minus bypass is
+           the network's own price; what bypass still costs is the
+           texture upload and readback, which no strength setting
+           touches.
+  capture  PASS — a real screen frame comes through.
+  capturews measured — 2560x1440 output, network working at 1280x720.
+            This is the fullscreen case. The model puts it near 85-90ms
+            against capture's ~150ms; if it does not move, the network's
+            cost is not per-pixel and the model above is wrong.
+
+  per-frame cost by variant — the point of the run:
+    pass      timing: capture 5.6ms  send 72.1ms  recv 9.6ms  display 0.5ms   (total 87.8ms/frame, 11.4 fps)
+    scaled    timing: capture 5.4ms  send 46.0ms  recv 8.0ms  display 0.6ms   (total 59.9ms/frame, 16.7 fps)
+    baseline  timing: capture 5.7ms  send 46.9ms  recv 9.8ms  display 0.5ms   (total 62.9ms/frame, 15.9 fps)
+    bypass    timing: capture 5.2ms  send 45.5ms  recv 5.9ms  display 0.6ms   (total 57.2ms/frame, 17.5 fps)
+    capture   timing: capture 14.3ms  send 82.0ms  recv 38.7ms  display 4.7ms   (total 139.7ms/frame, 7.2 fps)
+              capture split: wait 0.1ms  read 14.1ms   (read ~19ms at 2560x1440 means we are draining a stocked pipe; read far above that means the compositor was dribbling)
+    capturews timing: capture 14.4ms  send 99.3ms  recv 30.0ms  display 4.2ms   (total 148.0ms/frame, 6.8 fps)
+              capture split: wait 0.1ms  read 14.3ms   (read ~19ms at 2560x1440 means we are draining a stocked pipe; read far above that means the compositor was dribbling)
+
+  Read the split, not just the fps. What the box has measured so far:
+    pass      82.0ms   the reference: effect on, full work resolution
+    scaled    57.6ms   -30%, but it changes TWO things at once: the
+                       network's resolution and the size of the motion
+                       field, which travels at the work resolution. So it
+                       does not say which of the two paid.
+    baseline  57.9ms   the effect dialled to zero, same bytes as pass.
+                       Almost exactly scaled's total: turning the effect
+                       off and quartering the network are worth the same
+                       ~24ms, which is what a cost sitting in the worker's
+                       per-frame work and in the bytes both look like.
+    bypass    ?        NGX skipped outright. If baseline and bypass land
+                       close together then zeroing the strengths was still
+                       running the network, and the worker's cost is in the
+                       texture path; if bypass is much cheaper, the network
+                       is worth more than its measured arithmetic (1.5ms +
+                       1.51ms/Mpixel is ~2.9ms at 1280x720).
+    capture  520.0ms   the portal's OWN leg was 375ms of it at 2560x1440.
+                       Nothing downstream can beat the rate the compositor
+                       hands frames over, so measure that on its own with:
+                         tools/wayland_probe.py --frames 20
+
+  The isolating experiment (MOTS: same zeros, sent at the flow size) is not
+  in this list because the worker does not accept it from the pipe path —
+  it goes silent on frame 0. See the note above it.
+
+  The artifact that decides the milestone is pass/after.png next to
+  pass/before.png — look at them. A pair of numbers can agree on a
+  flat frame, which is how the last round looked healthy.
+
+ RESULT: PASS — capture -> DLSS5 NR pass -> display works.
+==============================================================
