@@ -31,6 +31,83 @@ killed the port outright; it is cleared.
 
 ---
 
+# Round 29 — the worker does 42.5fps at 1440p, the pipeline does 9.1, and the pipe arithmetic was measuring Python
+
+`20260918T194217Z`, with a warm-up pass and three points to fit:
+
+```
+2560x1440   pipe rate measured in this run: 7306 MB/s  ->  floor 6.1 ms/frame
+  warm-up   5 frames: 1.538s
+            30 frames: 2.340s
+            60 frames: 2.980s
+            90 frames: 3.751s
+  fit: 23.51 ms/frame = 42.5 fps   (startup 1.61s, R^2 0.9972)
+  residuals: +0.022s, -0.043s, +0.022s
+```
+
+**The worker alone does 42.5fps at 2560x1440 with the pass on**, fed a stream with
+no client loop, no capture, no display. The pipeline does **9.1fps** for the same
+work (`pass14` 110.2ms). So roughly **86ms of the ~110ms per frame is our own
+client.**
+
+## The pipe was never the limit
+
+The pipe rate is now measured in the same run — write 200 MB to a `cat > /dev/null`
+— and it is **7306 MB/s**. Against 44.2 MB per frame that is **6.1ms**, not the
+~40ms this project has been quoting since round 12.
+
+That 40ms came from timing a Python `read1` into a numpy buffer on the analysis
+box: **1100 MB/s was Python's throughput, not the pipe's**, and every "ceiling"
+derived from it — the "25fps pipes-only ceiling", the "44.2MB ÷ 1.1GB/s" floor, the
+argument that the transport was the whole problem — inherited the error. It was
+never checked against a reader that does nothing but read.
+
+So the transport that Phase A proved (round 26: ~7 GB/s one way across the Wine
+boundary, ~4x what the pipe was thought to do) is worth about **6ms a frame at
+1440p**, not 40. It is real and it works, and it is no longer the lever.
+
+## Where the worker's own 23.5ms goes
+
+- **6.1ms**: the bytes crossing the pipe at the measured rate
+- **1.4ms**: the D3D12 upload copy, readback and fence (round 26's probe)
+- **~16ms**: NGX and the worker's own per-frame loop
+
+The last of those is the worker's business and it is the only part a host we write
+would change — and it is a quarter of the frame, not the frame.
+
+## And 720p did not fit — because the worker stalls
+
+```
+1280x720   30 frames: 18.896s      <-- 630ms a frame
+           60 frames:  1.830s
+           90 frames:  1.945s
+```
+
+60 and 90 frames are consistent with each other; the 30-frame run stalled for
+eighteen seconds. That is the same family as the two symptoms this project has met
+before — MOTS hanging the worker ("silent for 60s on frame 0"), and the 600s
+timeout the M0 gate watches for. The R² guard refused the fit, which is what it is
+for, and the stall is worth knowing on its own: **the worker intermittently stops
+moving frames**, and any client fix has to survive that rather than assume it away.
+
+## What this redirects
+
+The lever order has inverted:
+
+1. **Our client loop.** 86ms a frame at 1440p against the worker's 23.5ms. The
+   pipeline is strictly serial — send a frame, then wait for *that frame's* result
+   — and the client additionally does `rgba.tobytes()` and `motion.tobytes()` per
+   frame, two 14.7MB allocations and copies at 1440p, before the pipe sees
+   anything.
+2. **The transport.** Proven, ~4x, worth ~6ms a frame here.
+3. **Our own host.** Would change the ~16ms of NGX and loop, which is the smallest
+   of the three.
+
+The measured ceiling for a fixed client is the worker's own rate: **~42fps at
+1440p, against 9.1 today.**
+
+---
+
 # Round 28 — the worker is not the wall, and the first harness that said so was measuring its own cold start
 
 `20260918T192715Z`, the worker fed a byte-identical stream as fast as it will take
