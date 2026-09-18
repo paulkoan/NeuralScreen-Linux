@@ -52,6 +52,13 @@ class Prefetch:
         self._stop = threading.Event()
         self._taken = 0
         self._dropped = 0
+        # Age at the moment each frame was taken. The first version reported the
+        # age of the newest frame when stats() was CALLED, which is the age at
+        # the end of the run — it printed "1064.8ms old when used" for a frame
+        # that was used a second earlier. Recorded per take instead.
+        self._age_last = 0.0
+        self._age_max = 0.0
+        self._age_sum = 0.0
         # The split the portal reports does not apply here: the grab is a lock
         # and a reference, and the waiting has moved to the drain thread. Set to
         # None so a caller reports no split rather than a split of zeros.
@@ -102,6 +109,11 @@ class Prefetch:
             if self.error is not None:
                 raise self.error
             self._taken += 1
+            age = time.monotonic() - self._stamp
+            self._age_last = age
+            self._age_sum += age
+            if age > self._age_max:
+                self._age_max = age
             return self._latest
 
     def close(self) -> None:
@@ -112,13 +124,25 @@ class Prefetch:
     # -- what the drain saw ------------------------------------------------
 
     def stats(self) -> dict:
-        """Frames dropped, and how old the frame the loop just used was.
+        """What the drain saw: frames dropped, and how stale the frames used were.
 
-        The age is the number that matters: it is the latency the capture adds
-        to every frame, and with old frames dropped it stays near one frame time
-        instead of growing with the queue.
+        The ages are recorded when a frame is TAKEN, not when this is called.
+        Reporting the newest frame's age at call time was the first version's
+        bug: it printed "1064.8ms old when used" for a frame that had been used
+        a second earlier, which reads as a catastrophic staleness that was not
+        there.
+
+        The mean age is the latency the capture adds per frame. With old frames
+        dropped it should stay near one frame time; if it does not, the drain
+        thread is being starved — which is what happens when the worker and the
+        drain compete for memory bandwidth.
         """
         with self._ready:
-            age = (time.monotonic() - self._stamp) if self._stamp else None
-            return {"drained": self._seq, "taken": self._taken,
-                    "dropped": self._dropped, "age": age}
+            return {
+                "drained": self._seq,
+                "taken": self._taken,
+                "dropped": self._dropped,
+                "age_mean": (self._age_sum / self._taken) if self._taken else None,
+                "age_max": self._age_max if self._taken else None,
+                "age_last": self._age_last if self._taken else None,
+            }

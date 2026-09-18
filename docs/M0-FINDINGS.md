@@ -31,6 +31,84 @@ killed the port outright; it is cleared.
 
 ---
 
+# Round 18 — prefetch did not help, and the capture leg is not stable
+
+`20260918T100600Z`, six variants:
+
+```
+pass       capture   5.9ms  send  81.7ms  recv 10.2ms  display 0.6ms  ( 98.3ms, 10.2 fps)
+scaled     capture   7.7ms  send  52.4ms  recv 10.4ms  display 0.9ms  ( 71.3ms, 14.0 fps)
+baseline   capture   6.3ms  send  53.4ms  recv 10.2ms  display 0.7ms  ( 70.6ms, 14.2 fps)
+bypass     capture   5.9ms  send  48.9ms  recv  6.8ms  display 0.6ms  ( 62.2ms, 16.1 fps)
+capture    capture  14.9ms  send  87.8ms  recv 41.6ms  display 4.6ms  (148.9ms,  6.7 fps)
+capturepf  capture   0.0ms  send 132.5ms  recv 49.7ms  display 6.1ms  (188.3ms,  5.3 fps)
+```
+
+## `--prefetch` made it worse
+
+Same capture, same run: **148.9ms without, 188.3ms with.** The capture leg
+collapsed to 0.0ms as designed, and `send` rose from 87.8ms to 132.5ms — the
+drain thread and the worker are both moving 14.7MB frames and compete for memory
+bandwidth. 14.7MB at 75fps is ~1.1 GB/s sustained, and the worker needs that same
+bandwidth for its own copies.
+
+So the drain costs more than the producer round trip it saves, at least when the
+round trip is small. It stays opt-in and should not be the default.
+
+The line it printed — "newest was 1064.8ms old when used" — was **my
+instrumentation being wrong**: it reported the age of the newest frame when
+`stats()` was *called*, i.e. at the end of the run, about a frame used a second
+earlier. Ages are now recorded when a frame is taken, and report mean/max
+(`frame age mean 6.0ms max 15.5ms`), with a regression test that takes a frame,
+waits 300ms without taking another, and requires the number not to grow. That is
+the same class of mistake as round 14's split: a number that looks like a
+measurement and is not one.
+
+## Round 17's mechanism does not survive this run
+
+`capture` measured a **14.9ms** capture leg here, with the `wait 0.1ms / read
+14.8ms` split saying we are draining a stocked pipe. In round 16 the same
+variant, same code, measured **238.1ms** with `wait 225.3ms`.
+
+So the capture leg varies by ~15x between runs and I do not know why. Round 17's
+explanation — that the loop was throttling the producer — is not supported by
+this run, and the probe pair that suggested it had a changing screen in both
+runs, so it never isolated the variable either. What can be said honestly: on
+this box the capture leg has been anywhere from 14.9ms to 238ms, and the probe
+puts the portal's own rate at ~13ms per 2560x1440 frame. Retracting the
+mechanism, keeping the measurement.
+
+## What this run does establish: `send` is resolution-independent
+
+| variant | resolution | send | recv | total |
+|---|---|---|---|---|
+| pass | 1280x720 | 81.7ms | 10.2ms | 98.3ms |
+| capture | 2560x1440 | 87.8ms | 41.6ms | 148.9ms |
+
+**`send` is ~82-88ms at either resolution** — 11.1MB against 44.2MB of traffic,
+for the same time. So the worker's intake is not bytes-bound; it is per-frame
+work that happens whether the frame is large or small. `recv` does scale (10.2ms
+to 41.6ms, roughly the 4x pixel count), which is the readback and the pixels
+coming home.
+
+Two consequences, and they change the roadmap:
+
+* **The pipe-bytes arithmetic is not the binding constraint.** 44.2MB at the
+  measured 1.1 GB/s predicted a 40ms floor for the pipes alone at 1440p; the
+  whole 1440p frame is 148.9ms and its `send` is 87.8ms. The worker is the wall,
+  not the wire.
+* **Reducing resolution buys much less than it looked like.** 1440p is 1.5x the
+  720p cost (148.9ms against 98.3ms), not 4x. The "1440p is catastrophic"
+  impression came from the capture leg's variance, which is now gone from this
+  run.
+
+The floor to attack is the worker's per-frame cost: **~49ms of `send` with NGX
+skipped** (the `bypass` row at 720p), ~82ms with it running. That is inside a
+binary we cannot rebuild, which is why the pathway that remains is writing our
+own host.
+
+---
+
 # Round 17 — the portal does 75 fps; the loop was throttling it
 
 The probe, twice, 2560x1440, same pipeline, screen verifiably changing:

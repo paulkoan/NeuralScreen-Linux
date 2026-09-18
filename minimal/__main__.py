@@ -203,10 +203,16 @@ def main(argv: list[str] | None = None) -> int:
     # than growing with a queue.
     pf = summary.get("prefetch")
     if pf:
-        age = pf.get("age")
-        age_s = f"{1000 * age:.1f}ms old when used" if age else "no frame used"
+        mean = pf.get("age_mean")
+        mx = pf.get("age_max")
+        ages = (f"frame age mean {1000 * mean:.1f}ms max {1000 * mx:.1f}ms"
+                if mean is not None else "no frame used")
         print(f"prefetch: drained {pf['drained']} frames on its own thread, "
-              f"{pf['dropped']} dropped, newest was {age_s}")
+              f"{pf['dropped']} dropped, {ages}")
+        if mean is not None and mean > 0.100:
+            print(f"          ! the drain is being starved ({1000 * mean:.0f}ms "
+                  f"mean age): it competes with the worker for memory "
+                  f"bandwidth, so it may cost more than the round trip it saves")
     if args.save_before:
         print(f"  before -> {args.save_before}")
     if args.save_after:

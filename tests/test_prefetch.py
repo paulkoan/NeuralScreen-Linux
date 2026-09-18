@@ -83,14 +83,29 @@ def test_the_newest_frame_wins_and_the_skipped_ones_are_counted():
         pf.close()
 
 
-def test_the_age_reports_how_stale_the_frame_was():
-    """The age is the latency the capture adds, so it is reported, not hidden."""
+def test_the_age_is_measured_when_the_frame_is_taken():
+    """Not when stats() is called — which is the bug this shipped with.
+
+    The first version reported the newest frame's age at call time and printed
+    "1064.8ms old when used" about a frame used a second earlier, which reads as
+    a catastrophic staleness that was not there. So: take a frame, wait a long
+    time without taking one, and require the number not to have grown.
+    """
     src = FakeSource(delay=0.02)
     pf = Prefetch(src)
     try:
         pf.grab()
-        fresh = pf.stats()["age"]
-        assert 0.0 <= fresh < 0.5, f"a just-arrived frame should be young: {fresh}"
+        time.sleep(0.05)
+        pf.grab()
+        taken = pf.stats()["age_mean"]
+        assert taken is not None and taken < 0.1, f"a fresh frame: {taken}"
+
+        time.sleep(0.30)                # a long window with nothing taken
+        again = pf.stats()["age_mean"]
+        assert again == pytest.approx(taken), (
+            "the age must be recorded when the frame was taken, not read when "
+            "stats() is called")
+        assert pf.stats()["age_max"] is not None
     finally:
         pf.close()
 
