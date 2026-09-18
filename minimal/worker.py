@@ -243,6 +243,15 @@ class Worker:
         assert self.reader is not None
         return self.reader.recv(index, timeout)
 
+    def recv_any(self, timeout: float = FIRST_FRAME_TIMEOUT):
+        """The next frame reply whatever its index, for a pipelined loop.
+
+        `recv` drops replies for other indices, which loses frames as soon as
+        more than one is in flight.
+        """
+        assert self.reader is not None
+        return self.reader.recv_any(timeout)
+
     # -- teardown ----------------------------------------------------------
 
     def stop(self, timeout: float = 10.0) -> int | None:

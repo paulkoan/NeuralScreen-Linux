@@ -320,6 +320,22 @@ def _read_exact(stream, size: int) -> bytes:
     return bytes(chunks)
 
 
+def as_writable_bytes(arr) -> object:
+    """The array's bytes without copying them.
+
+    `rgba.tobytes()` allocates and copies the whole frame — 14.7MB at 1440p — on
+    top of the write into the pipe, and `motion.tobytes()` does it again. That is
+    two extra copies of a frame per iteration for no reason: the array is already
+    a contiguous buffer and a pipe accepts any bytes-like object.
+
+    A non-contiguous array still goes through tobytes(), because writing its raw
+    buffer would write the wrong bytes in the wrong order.
+    """
+    if isinstance(arr, np.ndarray) and arr.flags["C_CONTIGUOUS"]:
+        return memoryview(arr)
+    return arr.tobytes()
+
+
 def send_frame(worker: subprocess.Popen, index: int, rgba: np.ndarray,
                motion: np.ndarray, reset: bool, pts: int,
                shm: "SharedFrameBuffer | None" = None,
@@ -353,7 +369,7 @@ def send_frame(worker: subprocess.Popen, index: int, rgba: np.ndarray,
     if no_color:
         # DDA mode: motion only, no colour (SHM is not used for colour)
         worker.stdin.write(struct.pack(FRAME_FMT, FRAME_MAGIC, index, int(reset), flags, pts))
-        worker.stdin.write(motion.tobytes())
+        worker.stdin.write(as_writable_bytes(motion))
         worker.stdin.flush()
         return
     if shm is not None and shm.negotiated:
@@ -363,8 +379,8 @@ def send_frame(worker: subprocess.Popen, index: int, rgba: np.ndarray,
         worker.stdin.flush()
         return
     worker.stdin.write(struct.pack(FRAME_FMT, FRAME_MAGIC, index, int(reset), flags, pts))
-    worker.stdin.write(rgba.tobytes())
-    worker.stdin.write(motion.tobytes())
+    worker.stdin.write(as_writable_bytes(rgba))
+    worker.stdin.write(as_writable_bytes(motion))
     worker.stdin.flush()
 
 
@@ -751,6 +767,43 @@ class WorkerReader:
                     raise RuntimeError(f"RNSZ rejected by the worker: ngx=0x{ngx_result:08X}")
                 return
             # (index, frame) - a frame from before RACK - skip it
+
+    def recv_any(self, timeout: float):
+        """The next frame reply, whatever index it carries. Returns (index, pixels).
+
+        `recv` insists on one particular index and drops everything else, which is
+        right for a strictly serial client and wrong for a pipelined one: with
+        several frames in flight every reply is wanted, and dropping one loses a
+        frame and unpairs every frame behind it from its result.
+
+        The worker answers in the order it was fed — it processes one frame at a
+        time and writes that frame's reply before reading the next — so a
+        pipelined caller can pair replies to sends by order.
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(
+                    f"the worker has been silent for {timeout:.0f}s with "
+                    f"several frames in flight")
+            try:
+                got_index, payload = self._queue.get(timeout=remaining)
+            except queue.Empty:
+                continue
+            if got_index is None:
+                if isinstance(payload, Exception):
+                    raise payload
+                raise EOFError("the worker stopped")
+            if isinstance(got_index, str):
+                # An acknowledgement (mack/rack/sack/...). The pipelined loop
+                # never asks for one, so its arrival here means something else
+                # is driving the worker — say so rather than swallow it, because
+                # a swallowed ack leaves whoever asked waiting for it forever.
+                raise RuntimeError(
+                    f"a non-frame message ({got_index!r}) arrived while frames "
+                    f"were in flight; the pipelined loop does not expect one")
+            return got_index, payload
 
     def recv(self, index: int, timeout: float):
         """Wait for frame index; timeout > 0 guards against an NGX hang.

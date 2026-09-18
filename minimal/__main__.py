@@ -104,6 +104,18 @@ def build_parser() -> argparse.ArgumentParser:
                         "--param intensity=0, which may still run the network at "
                         "zero strength: this one separates the network from the "
                         "texture upload/readback when hunting the per-frame cost")
+    p.add_argument("--send-ahead", type=int, default=1, metavar="N",
+                   help="keep N frames in flight instead of sending one and "
+                        "waiting for it (default 1 = the original serial loop). "
+                        "The worker fed with no client at all runs 42.5fps at "
+                        "1440p against the pipeline's 9.1, and the serialisation "
+                        "is most of that difference")
+    p.add_argument("--frame-timeout", type=float, default=60.0, metavar="S",
+                   help="how long to wait for a reply before calling it a stall "
+                        "(default 60s). A stall stops the run and names itself "
+                        "rather than hanging: the worker answers in order, so "
+                        "after a missing reply every later reply is "
+                        "unattributable")
     p.add_argument("--motion-small", action="store_true",
                    help="send the motion field at the optical-flow size "
                         "(320x180) and let the worker upscale it. NOT USABLE in "
@@ -175,7 +187,9 @@ def main(argv: list[str] | None = None) -> int:
                         capture=source, params=params,
                         work_scale=args.work_scale,
                         motion_small=args.motion_small,
-                        bypass=args.bypass)
+                        bypass=args.bypass,
+                        send_ahead=args.send_ahead,
+                        frame_timeout=args.frame_timeout)
     except (CaptureError, DisplayError) as exc:
         print(f"startup failed: {exc}", file=sys.stderr)
         return 2

@@ -299,6 +299,17 @@ BASELINE_STATUS=$VARIANT_STATUS
 run_variant bypass synthetic "" "--bypass" control
 BYPASS_STATUS=$VARIANT_STATUS
 
+# THE CLIENT LOOP ITSELF. Fed with no client at all, the worker does 42.5fps at
+# 2560x1440 (round 29: R^2 0.9972 over 30/60/90 frames) while the pipeline does
+# 9.1 — so most of a frame's cost is the client, not the worker, the transport or
+# the network. This variant sends four frames ahead instead of sending one and
+# waiting for it, and writes the frame buffers directly instead of copying them
+# twice per frame. Compare it against `bypass14`/`pass14` for the same size.
+run_variant pipeline synthetic "" "--send-ahead 4"
+PIPELINE_STATUS=$VARIANT_STATUS
+run_variant pipeline14 synthetic "" "--size 2560x1440 --send-ahead 4"
+PIPELINE14_STATUS=$VARIANT_STATUS
+
 # 2560x1440 WITHOUT the portal, which is the whole point of --size: the matrix
 # that decomposes the expensive case costs no dialog and no capture at all.
 # capturews (2560x1440 output, network at 1280x720, through the portal) came
@@ -356,7 +367,7 @@ fi
 
 # --- copy artifacts out -----------------------------------------------------
 if [ -n "$OUT" ]; then
-    for v in pass scaled baseline bypass pass14 scaled14 bypass14 bypass128 bypass360 capture capturens; do
+    for v in pass scaled baseline bypass pipeline pipeline14 pass14 scaled14 bypass14 bypass128 bypass360 capture capturens; do
         mkdir -p "$OUT/$v"
         cp -f "$T/$v/before.png" "$OUT/$v/" 2>/dev/null || true
         cp -f "$T/$v/after.png" "$OUT/$v/" 2>/dev/null || true
@@ -447,7 +458,7 @@ echo "    nearly zero. A large intercept means an own-host build cannot pay for"
 echo "    itself, and that the ceiling is not the transport at all."
 echo ""
 echo "  per-frame cost by variant — the point of the run:"
-for v in pass scaled baseline bypass pass14 scaled14 bypass14 bypass128 bypass360 capture capturens; do
+for v in pass scaled baseline bypass pipeline pipeline14 pass14 scaled14 bypass14 bypass128 bypass360 capture capturens; do
     line=$(grep -m1 '^timing:' "$T/$v/mvp.txt" 2>/dev/null || true)
     printf '    %-9s %s\n' "$v" "${line:-<no timing recorded>}"
     # The capture leg's own split, which is the number that decides whether the

@@ -13,6 +13,7 @@ to prove the pass runs. Real optical flow is a later milestone.
 from __future__ import annotations
 
 import time
+from collections import deque
 from pathlib import Path
 
 import numpy as np
@@ -77,10 +78,28 @@ class Pipeline:
                  warmup: int = 2, worker_cmd: list[str] | None = None,
                  worker_cwd: Path | None = None, capture=None, display=None,
                  work_scale: float = 1.0, motion_small: bool = False,
-                 bypass: bool = False):
+                 bypass: bool = False, send_ahead: int = 1,
+                 frame_timeout: float = 60.0):
         self.params = dict(params or DEFAULT_PARAMS)
         self.warmup = warmup
         self.headless = headless
+        # How many frames may be in flight. 1 is the shape the MVP has always
+        # had: send a frame, then wait for that frame's result, so every frame
+        # pays the worker's whole per-frame time plus the round trip. Measured
+        # against the worker fed with no client at all (42.5fps at 1440p against
+        # the pipeline's 9.1), the serialisation is most of what the client costs.
+        self.send_ahead = max(1, int(send_ahead))
+        # How long to wait for a reply before calling it a stall. Not a hang:
+        # the run stops and says so.
+        self.frame_timeout = float(frame_timeout)
+        #: How many times the worker went silent past frame_timeout this run.
+        #:
+        #: Counted rather than recovered, deliberately. The worker answers in
+        #: order, so once a reply is missing every later reply is unattributable:
+        #: pairing them anyway would show one frame's result against another
+        #: frame's input and call it a measurement. Round 29 caught the worker
+        #: stalling for eighteen seconds mid-run, so it does happen.
+        self.stalls = 0
         # Send the motion field at the optical-flow size and let the worker
         # upscale it. Cuts the inbound bytes per frame by nearly half, at no
         # cost to what the network receives — our field is all zeros either way.
@@ -250,35 +269,21 @@ class Pipeline:
         capture_cpu0 = self._capture_cpu()
         capture_cpu_supported = self._capture_cpu_supported()
         pid0 = self._capture_cpu_pid()
-        index = 0
         # The pair kept for --save-before/--save-after must come from ONE
         # iteration. Saving the first input against the last output measures
         # whatever moved on screen in between as if it were the pass: on the
         # synthetic test card, whose only moving part is a bar, that inflated the
         # reported difference from 15.8/255 to 48.7/255 — a 3x overstatement of
-        # the thing being measured.
+        # the thing being measured. Both loops below return a matched pair.
         pair_before = None
         last_after = None
 
         try:
-            while frames == 0 or index < frames:
-                if not self.worker.is_alive():
-                    raise RuntimeError(
-                        "the worker died during the run; last stderr:\n  "
-                        + "\n  ".join(self.worker.logs[-15:] or ["(no output)"]))
-
-                if "quit" in self.display.poll_events():
-                    break
-
-                after = self.process_one(index, present=True)
-                if after is not None:
-                    # process_one keeps the input it fed for this iteration, so
-                    # the saved pair can never straddle two frames.
-                    pair_before = self.last_input
-                    last_after = after
-                    if on_frame is not None:
-                        on_frame(index, after)
-                index += 1
+            if self.send_ahead > 1:
+                pair_before, last_after, index = self._pipelined_loop(
+                    frames, on_frame, keep_inputs=bool(save_before or save_after))
+            else:
+                pair_before, last_after, index = self._serial_loop(frames, on_frame)
         finally:
             # Sample the capture's CPU before close(): close() drops the
             # pipeline handle, and taking the end reading after it reported
@@ -300,6 +305,10 @@ class Pipeline:
             "frames_attempted": index,
             "frames_done": self.frames_done,
             "frames_skipped": self.frames_skipped,
+            # How many frames were allowed in flight, so a summary says which
+            # loop produced it, and how many times the worker went silent.
+            "send_ahead": self.send_ahead,
+            "stalls": self.stalls,
             "seconds": round(elapsed, 3),
             "fps": round(self.frames_done / elapsed, 2) if elapsed > 0 else 0.0,
             "worker_exit": self.worker.proc.returncode if self.worker.proc else None,
@@ -315,6 +324,130 @@ class Pipeline:
                 capture_cpu0, capture_cpu1, elapsed,
                 supported=capture_cpu_supported, pid=pid0),
         }
+
+    # -- the two loops -----------------------------------------------------
+
+    def _check_alive(self) -> None:
+        if not self.worker.is_alive():
+            raise RuntimeError(
+                "the worker died during the run; last stderr:\n  "
+                + "\n  ".join(self.worker.logs[-15:] or ["(no output)"]))
+
+    def _serial_loop(self, frames: int, on_frame):
+        """One frame in flight: send it, then wait for that frame's result.
+
+        The shape the MVP has always had, and the reason every frame carries the
+        worker's whole per-frame time plus a round trip.
+        """
+        index = 0
+        pair_before = last_after = None
+        while frames == 0 or index < frames:
+            self._check_alive()
+            if "quit" in self.display.poll_events():
+                break
+            after = self.process_one(index, present=True)
+            if after is not None:
+                # process_one keeps the input it fed for this iteration, so the
+                # saved pair can never straddle two frames.
+                pair_before = self.last_input
+                last_after = after
+                if on_frame is not None:
+                    on_frame(index, after)
+            index += 1
+        return pair_before, last_after, index
+
+    def _take_oldest(self, window):
+        """Wait for the oldest in-flight frame's result, check it, show it.
+
+        Returns (sent_index, input_frame, after); `after` is None when the worker
+        skipped the frame and `input_frame` is None unless the caller is keeping
+        inputs for a saved pair.
+        """
+        sent_index, input_frame = window.popleft()
+        try:
+            got_index, after = self._timed("recv", self.worker.recv_any,
+                                           self.frame_timeout)
+        except TimeoutError as exc:
+            self.stalls += 1
+            raise RuntimeError(
+                f"the worker stalled: no reply in {self.frame_timeout:.0f}s for "
+                f"frame {sent_index}, with {len(window) + 1} frame(s) in flight "
+                f"({self.stalls} stall(s) this run). Stopping rather than "
+                f"continuing: the worker answers in order, so every reply after a "
+                f"missing one is unattributable, and showing one frame's result "
+                f"against another frame's input is worse than stopping.") from exc
+
+        if got_index != sent_index:
+            raise RuntimeError(
+                f"the worker answered frame {got_index} while frame {sent_index} "
+                f"was the oldest in flight — replies come in order, so the run "
+                f"has lost its pairing and nothing after this would be a "
+                f"measurement")
+        if after is None:
+            return sent_index, input_frame, None
+        if self.display is not None:
+            self._timed("display", self.display.show, after)
+        return sent_index, input_frame, after
+
+    def _consume(self, window, pair: list, on_frame) -> None:
+        """Take one result and keep the counters, the pair and the callback in step.
+
+        One implementation for the window path and the drain path: two copies of
+        this is how the counters and the pair got out of step before.
+        """
+        sent_index, input_frame, after = self._take_oldest(window)
+        if after is None:
+            self.frames_skipped += 1
+            return
+        self.frames_done += 1
+        if input_frame is not None:
+            pair[0], pair[1] = input_frame, after
+        if on_frame is not None:
+            on_frame(sent_index, after)
+
+    def _pipelined_loop(self, frames: int, on_frame, keep_inputs: bool):
+        """Keep `send_ahead` frames in flight instead of one.
+
+        The worker answers in order — it finishes writing a frame's reply before
+        reading the next frame — so a reply pairs with the oldest send, and a
+        deque of what was sent is the entire bookkeeping. One wait per frame once
+        the window is full, instead of one wait inside every frame.
+
+        keep_inputs retains each in-flight input so a saved before/after pair
+        still comes from a single iteration. At 1440p that is 14.7MB per frame in
+        flight, so it stays off unless something is going to save a pair.
+        """
+        index = 0
+        window: deque = deque()
+        pair: list = [None, None]
+        while frames == 0 or index < frames:
+            self._check_alive()
+            if "quit" in self.display.poll_events():
+                break
+
+            frame = self._timed("capture", self.capture.grab)
+            if getattr(self.capture, "last_wait", None) is not None:
+                self.capture_split["wait"].append(self.capture.last_wait)
+                self.capture_split["read"].append(self.capture.last_read)
+            if frame.shape[:2] != (self.height, self.width):
+                raise RuntimeError(
+                    f"capture returned {frame.shape[:2]}, expected "
+                    f"{(self.height, self.width)} — the screen changed size")
+            self.last_input = frame
+
+            self._timed("send", self.worker.send, index, frame, self.zero_motion,
+                        index == 0, pts=index)
+            window.append((index, frame if keep_inputs else None))
+            index += 1
+
+            while len(window) >= self.send_ahead:
+                self._consume(window, pair, on_frame)
+
+        # Drain what is still in flight: frames_done should count every frame the
+        # worker answered, not only the ones the window happened to wait for.
+        while window:
+            self._consume(window, pair, on_frame)
+        return pair[0], pair[1], index
 
     def close(self) -> None:
         try:
