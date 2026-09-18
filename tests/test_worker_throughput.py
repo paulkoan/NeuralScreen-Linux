@@ -104,3 +104,41 @@ def test_the_runner_is_valid_bash_and_uses_the_shared_tail():
 def test_the_runner_is_executable():
     assert (THROUGHPUT / "run.sh").stat().st_mode & 0o111
     assert (THROUGHPUT / "feed.py").stat().st_mode & 0o111
+
+
+# --- the fit the verdict rests on -------------------------------------------
+
+sys.path.insert(0, str(THROUGHPUT))
+import feed  # noqa: E402
+
+
+def test_the_fit_recovers_a_known_slope():
+    points = [(25, 2.0 + 0.05 * 25), (50, 2.0 + 0.05 * 50), (75, 2.0 + 0.05 * 75)]
+    slope_ms, startup_s, r2 = feed.fit(points)
+    assert abs(slope_ms - 50.0) < 1e-6, f"expected 50 ms/frame, got {slope_ms}"
+    assert abs(startup_s - 2.0) < 1e-6, f"expected a 2s startup, got {startup_s}"
+    assert r2 > 0.999
+
+
+def test_the_fit_refuses_a_line_that_is_not_one():
+    """The guard that matters, and the reason there are three points.
+
+    The first version derived its number from two points, and the cold wineserver
+    start landed on one of them: 60 frames came in faster than 30. With two points
+    that is a perfect line and R^2 cannot catch it — with a third, the same shape
+    collapses."""
+    points = [(30, 2.485), (60, 3.009), (90, 1.700)]     # the shape the box produced
+    slope_ms, _startup, r2 = feed.fit(points)
+    assert r2 < 0.98, f"this shape must fail the guard; R^2 came out {r2:.3f}"
+    assert slope_ms < 0, (
+        "and the slope is negative here — which is why the fit is checked before "
+        "the slope is turned into a frame rate")
+
+
+def test_the_guard_is_checked_before_the_verdict():
+    """A negative slope would divide into a negative frame rate and a nonsense
+    verdict. The R^2 check has to come first."""
+    src = (THROUGHPUT / "feed.py").read_text()
+    r2_check = src.index("r2 > 0.98")
+    verdict = src.index("AT THE PIPE'S RATE")
+    assert r2_check < verdict, "the fit quality must be checked before the verdict"

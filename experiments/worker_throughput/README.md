@@ -34,12 +34,29 @@ channels) and **4 bytes per pixel back**, so the pipe's own floor — at the
 720p is where a slow worker shows up on its own; 1440p is where the pipe starts to
 hide it.
 
-## Why it runs each size twice
+## Why three runs per size, after a warm-up
 
-NGX init and shutdown cost a second or two, and that is not what is being
-measured. Each size is run with N frames and with 2N, and the per-frame cost is
-the difference over N — the startup and the exit cancel exactly. The tool derives
-that itself rather than leaving the arithmetic to whoever reads the report.
+NGX init and shutdown cost a second or two and are not what is being measured, and
+**the first `wine` invocation also pays the cold prefix and wineserver start.** The
+first version of this ran each size twice and took the difference of N and 2N,
+assuming the startup cancelled. It did not: 60 frames came in 0.65s *faster* than
+30, which is impossible, so the derived figure was smaller than the noise behind
+it. The tool refused to report — which is what that guard is for — but it meant no
+usable number.
+
+So now: a discarded warm-up pass first, then **N, 2N and 3N frames**, and the
+per-frame cost is the slope of a least-squares fit through the three. The intercept
+is the startup, the residuals and R² are printed, and **R² ≤ 0.98 is refused
+rather than quoted**. Three points because a line through two points fits anything
+— the lesson the size sweep already taught.
+
+## Why the floor is measured here too
+
+The verdict turns on how the worker compares to the pipe it is fed through, so
+that rate is measured on the same machine in the same run, by writing 200 MB to a
+`cat > /dev/null` that does nothing else. The 1.1 GB/s this project has been
+quoting came from a Python-side copy on a different box and does not belong in a
+verdict about this one.
 
 ## Why the stream is built with the client's own code
 

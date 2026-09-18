@@ -31,6 +31,59 @@ killed the port outright; it is cleared.
 
 ---
 
+# Round 28 — the worker is not the wall, and the first harness that said so was measuring its own cold start
+
+`20260918T192715Z`, the worker fed a byte-identical stream as fast as it will take
+one, results discarded:
+
+```
+1280x720    30 frames: 2.350s
+            60 frames: 1.700s      <-- double the frames in less time
+2560x1440   30 frames: 2.485s
+            60 frames: 3.009s      -> the tool derived 17.46ms/frame, 0.43x its floor
+```
+
+The 720p pair is the important one, and it is not a result: **a longer run cannot
+be faster.** The first version derived the per-frame cost from the difference
+between the N and 2N runs on the assumption that the startup cancels. It does not
+cancel, because the first `wine` invocation pays the cold prefix and wineserver
+start — seconds of it — and in the 720p case it landed on a measured pass. The
+guard caught it and refused to report, which is what it was for, but it also means
+the 1440p figure of 17.46ms is smaller than the noise that produced it. **That
+number is withdrawn.**
+
+## What the run still bounds
+
+The absolute times need no assumption. Charging the worker its *entire* startup
+against the frames it processed:
+
+- **1440p, NGX on: 60 frames in 3.009s** → at least **20fps**
+- **720p, NGX on: 60 frames in 1.700s** → at least **35fps**
+
+against the pipeline's own numbers for the same work — `pass14` 110.2ms = **9.1fps**
+and `pass` 122.2ms = **8.2fps** in the last gate run. Those are lower bounds; the
+true rate is higher, since the startup is in them.
+
+So the worker is at least **2x the pipeline at both sizes while nothing else is in
+the process**, and the pipeline's cost is the client's strictly serial loop: send a
+frame, then wait for that frame. That is the first time anything has pointed at our
+own loop rather than at the worker, the transport or the network.
+
+## The fix
+
+`feed.py` now runs a discarded warm-up pass, then **N, 2N and 3N frames**, and takes
+the per-frame cost as the slope of a least-squares fit through the three — the
+intercept being the startup. Residuals and R² are printed, and **R² ≤ 0.98 is
+refused rather than quoted**. Three points rather than two because a line through
+two points fits anything: the size sweep in round 27 taught that, and this harness
+walked into it anyway.
+
+The pipe floor it compares against is now measured in the same run (write 200 MB to
+a `cat > /dev/null`), rather than the 1.1 GB/s this project had been quoting from a
+Python-side copy on a different box.
+
+---
+
 # Round 27 — the size sweep does not fit, the 1440p path drifts by 2x, and the probe that could still settle it
 
 ## What the sweep said

@@ -79,21 +79,23 @@ VERDICT="$(grep -h -m1 'RESULT:' "$OUT"/raw/feed_*.log | head -1 | sed 's/^ *//'
     echo "the client's strictly serial loop — send a frame, wait for that frame —"
     echo "which is what this removes."
     echo
-    echo "Each size runs twice, with N frames and 2N, and the per-frame cost is"
-    echo "the difference: NGX init and shutdown are a second or two and cancel"
-    echo "exactly. The stream is built with the client's own \`stream_header\` and"
-    echo "\`protocol.send_frame\`, so it cannot be rejected for being a second"
-    echo "implementation of the protocol."
+    echo "Each size runs a discarded warm-up pass first, then N, 2N and 3N frames."
+    echo "The per-frame cost is the slope of a least-squares fit through those three"
+    echo "points; the intercept is the startup. Three points rather than two because"
+    echo "a line through two points fits anything — and because the first version of"
+    echo "this used two, and the cold wineserver start landed on one of them: 60"
+    echo "frames came in faster than 30, which is impossible. The fit's R^2 and"
+    echo "residuals are printed, and a poor fit is refused rather than quoted."
     echo
-    echo "The pipe floor is 8 bytes per pixel in (RGBA8 colour + two float16 motion"
-    echo "channels) plus 4 bytes per pixel back, at the ~1.1 GB/s measured here."
-    echo "That is ~10ms a frame at 720p and ~40ms at 1440p."
+    echo "The pipe floor is measured on this box in the same run, not assumed: 8"
+    echo "bytes per pixel in (RGBA8 colour plus two float16 motion channels) and 4"
+    echo "bytes per pixel back."
     echo
     for size in "${SIZES[@]}"; do
         echo "## ${size}"
         echo
         echo '```'
-        grep -E 'size:|bytes per frame|frames:|derived per frame|pipe alone|floor|RESULT' \
+        grep -E 'size:|bytes per frame|pipe rate|warm-up|frames:|fit over|off by|bytes alone|this is|RESULT' \
             "$OUT/raw/feed_${size}.log" || true
         echo '```'
         echo
