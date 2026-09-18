@@ -31,6 +31,76 @@ killed the port outright; it is cleared.
 
 ---
 
+# Round 21 — the network is not the cost at 1440p, and the capture chain steals from the worker
+
+`20260918T120102Z`, all nine, and the first run where the 1440p matrix cost no
+dialog:
+
+```
+720p   pass       93.6ms  send  77.5ms  recv  9.5ms
+720p   bypass     69.2ms  send  51.4ms  recv  8.7ms
+1440p  pass14    129.3ms  send  67.3ms  recv 29.8ms
+1440p  scaled14  122.8ms  send  60.1ms  recv 26.1ms
+1440p  bypass14  123.9ms  send  66.2ms  recv 23.9ms
+1440p  capture   174.2ms  send 114.2ms  recv 41.0ms
+1440p  capturebp 164.7ms  send 111.9ms  recv 32.7ms
+```
+
+## The fork resolved to "small"
+
+```
+pass14 - bypass14    = 5.4ms      the network's price at 1440p, no portal
+capture - capturebp  = 9.5ms      the same on a real screen
+```
+
+**The network costs 5-10ms at 2560x1440.** So the 129-174ms is the frame's own
+journey — upload, readback, copy across the Wine boundary — and round 19's
+per-pixel model was not just wrong in magnitude but wrong about the sign of what
+matters at this size. The thing to attack is what crosses the boundary, which is
+what writing our own host addresses.
+
+`capturebp` is byte-identical again (`mean abs diff 0.0000`), so the control
+holds at 1440p as well as at 720p.
+
+## The inversion worth noticing
+
+| | no-NGX | network cost |
+|---|---|---|
+| 1280x720 | 69.2ms | **24.4ms** |
+| 2560x1440 | 123.9ms | **5.4ms** |
+
+The network costs four times as much at a quarter of the pixels. No arithmetic
+model produces that. The readings consistent with it: at 720p there is not much
+copying, so the network's GPU time is exposed; at 1440p the same GPU time hides
+behind four times the copying, and only 5.4ms of it shows.
+
+That also disposes of the work-scale question for good. `scaled14` is within 6ms
+of `bypass14` — with the network hidden behind the copies, there is nothing for
+`nr_small` to save, which is why `capturews` bought nothing either.
+
+## The capture chain steals from the worker
+
+The largest new number in the run is a comparison, not a variant: the same
+2560x1440 frame at the same settings costs `send` **114.2ms** arriving through
+the portal and **67.3ms** produced synthetically. **70% more, and none of it
+appears in the capture leg** (14.4ms against 29.2ms — the capture leg is *cheaper*
+in the portal case).
+
+So the live capture chain — PipeWire delivery, `videoconvert`, `videoscale`, the
+pipe — costs the frame ~47ms somewhere other than the grab. The obvious reading
+is CPU and memory-bandwidth contention with the worker, since the chain copies
+and converts 14.7MB per frame in software while the worker is doing its own
+copies.
+
+`wayland_probe.py` now reports the chain's own CPU share
+(`/proc/<pid>/stat`, verified: 100% of a core for a busy process, correct for an
+executable whose name contains a space, 0 for a sleeper, None for a missing pid).
+If that line comes back near a full core at 2560x1440, the contention is real and
+the next work is trimming the capture chain rather than anything to do with the
+pass.
+
+---
+
 # Round 20 — the per-pixel model is falsified, and the 1440p matrix moves off the portal
 
 `20260918T113304Z` tested the prediction directly:

@@ -41,6 +41,24 @@ sys.path.insert(0, str(REPO))
 PASS, FAIL, WARN, INFO = "  \033[32m✓\033[0m", "  \033[31m✗\033[0m", "  \033[33m!\033[0m", "  ·"
 
 
+def _cpu_seconds(pid: int) -> float | None:
+    """CPU time a process has used, in seconds (utime + stime). None if gone.
+
+    Field 2 of /proc/<pid>/stat is the command name in parentheses and may
+    itself contain spaces, so the fields after it are counted from the last ')'
+    rather than from a whitespace split of the whole line. utime/stime are
+    fields 14 and 15, i.e. indices 11 and 12 once state (field 3) leads.
+    """
+    try:
+        with open(f"/proc/{pid}/stat", "rb") as fh:
+            raw = fh.read()
+        rest = raw[raw.rfind(b")") + 2:].split()
+        utime, stime = int(rest[11]), int(rest[12])
+        return (utime + stime) / os.sysconf("SC_CLK_TCK")
+    except Exception:
+        return None
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="wayland_probe", description=__doc__.split("\n")[0])
     ap.add_argument("--frames", type=int, default=12,
@@ -190,6 +208,12 @@ def main(argv: list[str] | None = None) -> int:
         cap = _Attached(sc, log=info)
         frames = []
         grabs: list[float] = []
+        # What the capture chain costs in CPU, which is not visible in the grab
+        # time: the pipeline's own copies and conversions run while the worker
+        # waits, and they compete with it.
+        drain_pid = cap._proc.pid if cap._proc is not None else None
+        cpu0 = _cpu_seconds(drain_pid) if drain_pid else None
+        wall0 = time.monotonic()
         for i in range(max(1, args.frames)):
             t0 = time.monotonic()
             frame = cap.grab()
@@ -201,6 +225,21 @@ def main(argv: list[str] | None = None) -> int:
                   f"per-channel std {[round(float(rgb[..., c].std()), 1) for c in range(3)]}  "
                   f"grab {1000 * grabs[-1]:6.1f}ms")
         ok(f"read {len(frames)} frame(s)")
+
+        wall = time.monotonic() - wall0
+        cpu1 = _cpu_seconds(drain_pid) if drain_pid else None
+        if cpu0 is not None and cpu1 is not None and wall > 0:
+            used = cpu1 - cpu0
+            share = used / wall
+            info(f"the capture pipeline used {used:.2f}s of CPU over "
+                 f"{wall:.2f}s = {100 * share:.0f}% of one core")
+            if share > 0.5:
+                bad(f"the capture chain is eating {100 * share:.0f}% of a core. "
+                    f"None of that shows in the grab time, and it competes with "
+                    f"the worker: in the MVP the same 2560x1440 frame cost "
+                    f"send 114.2ms arriving through the portal against 67.3ms "
+                    f"produced synthetically at the same size and settings.")
+                problems += 1
 
         # Whether the screen was actually changing, which decides how to read
         # the rate below. A compositor renders on damage: on a still desktop it
