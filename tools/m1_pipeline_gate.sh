@@ -299,36 +299,31 @@ BASELINE_STATUS=$VARIANT_STATUS
 run_variant bypass synthetic "" "--bypass" control
 BYPASS_STATUS=$VARIANT_STATUS
 
+# 2560x1440 WITHOUT the portal, which is the whole point of --size: the matrix
+# that decomposes the expensive case costs no dialog and no capture at all.
+# capturews (2560x1440 output, network at 1280x720, through the portal) came
+# back at 148.0ms against capture's 139.7 — so halving the network's resolution
+# did not help, and the per-pixel model that predicted ~85ms is wrong. These
+# three isolate the worker from the capture at the size that matters, which is
+# the only way to find out what the 139.7ms is actually made of.
+run_variant pass14 synthetic "" "--size 2560x1440"
+P14_STATUS=$VARIANT_STATUS
+run_variant scaled14 synthetic "" "--size 2560x1440 --work-scale 0.5"
+S14_STATUS=$VARIANT_STATUS
+run_variant bypass14 synthetic "" "--size 2560x1440 --bypass" control
+B14_STATUS=$VARIANT_STATUS
+
 # "auto" is what the product does: the portal on a Wayland session, the X11 grab
 # otherwise. Naming it explicitly here means the gate tests the same decision the
 # user's own runs go through.
 run_variant capture auto
 CAPTURE_STATUS=$VARIANT_STATUS
 
-# NOT capturepf here any more. Keeping the producer unthrottled lost twice
-# (188.3 against 148.9, 160.2 against 153.1): the drain thread and the worker
-# both move 14.7MB frames and compete for memory bandwidth, so it costs more
-# than the round trip it saves. It stays available as --prefetch.
-#
-# What the three runs since have isolated is where the time actually goes at
-# 2560x1440. On `send`, from the two runs that agree with each other:
-#
-#     bypass                     48.4ms    no NGX at all
-#     scaled (net 640x360)       49.8ms    +1.4
-#     baseline (net 1280x720, 0) 51.6ms    +3.2
-#     pass (net 1280x720, full)  79.6ms    +31.2
-#
-# So the network at full strength costs ~31ms on 0.92 Mpixel, where the upstream
-# figure on a 5070 Ti is 2.9ms — about 11x per pixel. Extrapolated to 3.69
-# Mpixel that is ~125ms of a ~150ms frame, which is what the capture variants
-# measure. At 1440p the pass is the cost, not the plumbing.
-#
-# That makes the network's own resolution the one large lever, so this variant
-# is the fullscreen case the target actually wants: 2560x1440 output with the
-# network working at 1280x720. If the model holds, its total should land near
-# 85-90ms against `capture`'s ~150ms.
-run_variant capturews auto "" "--work-scale 0.5"
-CAPTUREWS_STATUS=$VARIANT_STATUS
+# The real-screen no-NGX control at 2560x1440: what the whole frame costs with
+# the network out of it, capture included. `capture` minus this is the pass's
+# price on a real desktop, measured rather than modelled.
+run_variant capturebp auto "" "--bypass" control
+CAPTUREBP_STATUS=$VARIANT_STATUS
 
 # --- environment ------------------------------------------------------------
 echo ""
@@ -345,7 +340,7 @@ fi
 
 # --- copy artifacts out -----------------------------------------------------
 if [ -n "$OUT" ]; then
-    for v in pass scaled baseline bypass capture capturews; do
+    for v in pass scaled baseline bypass pass14 scaled14 bypass14 capture capturebp; do
         mkdir -p "$OUT/$v"
         cp -f "$T/$v/before.png" "$OUT/$v/" 2>/dev/null || true
         cp -f "$T/$v/after.png" "$OUT/$v/" 2>/dev/null || true
@@ -363,7 +358,7 @@ if [ -n "$OUT" ]; then
         echo "driver:            $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>&1 | head -1)"
     } > "$OUT/m1_environment.txt" 2>&1
     echo ""
-    echo "  artifacts -> $OUT/{pass,scaled,baseline,bypass,capture,capturews}/"
+    echo "  artifacts -> $OUT/{pass,scaled,baseline,bypass,pass14,scaled14,bypass14,capture,capturebp}/"
 fi
 
 # --- summary ----------------------------------------------------------------
@@ -401,18 +396,22 @@ if [ "$CAPTURE_STATUS" = "0" ]; then
 else
     echo "  capture  FAIL — no usable screen frame (see the variant output)."
 fi
-if [ "$CAPTUREWS_STATUS" = "0" ]; then
-    echo "  capturews measured — 2560x1440 output, network working at 1280x720."
-    echo "            This is the fullscreen case. The model puts it near 85-90ms"
-    echo "            against capture's ~150ms; if it does not move, the network's"
-    echo "            cost is not per-pixel and the model above is wrong."
+if [ "$CAPTUREBP_STATUS" = "0" ]; then
+    echo "  capturebp measured — the same real screen with NGX skipped."
+    echo "            capture minus this is the pass's price at 2560x1440,"
+    echo "            measured instead of modelled. pass14 minus bypass14 is the"
+    echo "            same number without the portal in it."
 else
-    echo "  capturews FAIL — the scaled-work capture did not complete."
+    echo "  capturebp FAIL — the no-NGX capture did not complete."
+    STATUS=1
+fi
+if [ "$P14_STATUS" != "0" ] || [ "$S14_STATUS" != "0" ] || [ "$B14_STATUS" != "0" ]; then
+    echo "  the 2560x1440 synthetic trio did not all complete."
     STATUS=1
 fi
 echo ""
 echo "  per-frame cost by variant — the point of the run:"
-for v in pass scaled baseline bypass capture capturews; do
+for v in pass scaled baseline bypass pass14 scaled14 bypass14 capture capturebp; do
     line=$(grep -m1 '^timing:' "$T/$v/mvp.txt" 2>/dev/null || true)
     printf '    %-9s %s\n' "$v" "${line:-<no timing recorded>}"
     # The capture leg's own split, which is the number that decides whether the

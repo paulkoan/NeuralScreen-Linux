@@ -31,6 +31,54 @@ killed the port outright; it is cleared.
 
 ---
 
+# Round 20 — the per-pixel model is falsified, and the 1440p matrix moves off the portal
+
+`20260918T113304Z` tested the prediction directly:
+
+```
+capture    work 2560x1440  capture 14.3ms  send 82.0ms  recv 38.7ms  (139.7ms, 7.2 fps)
+capturews  work 1280x720   capture 14.4ms  send 99.3ms  recv 30.0ms  (148.0ms, 6.8 fps)
+```
+
+The model said ~85-90ms. It came back at 148.0, against 139.7 for full work
+resolution. **Halving the network's own resolution at 1440p bought nothing** —
+the 8ms difference is inside the spread the NGX rows show between runs, so the
+honest reading is "no win", not "worse".
+
+So at 2560x1440 the cost is not the network's arithmetic, and round 19's model is
+wrong. What was wrong with it: `scaled` at 720p shrinks **two** things (the
+network's resolution and the motion field), and the +31ms I attributed to the
+network came from `pass` against `bypass` — which is a *strength* effect, not a
+resolution one. Turning one 0.92-megapixel data point into a per-pixel rate and
+extrapolating it to 3.69 megapixels was not justified, and `nr_small` also adds
+two scaling passes inside the worker (colour down into `nr_in`, `nr_out` back up
+into `output`) which appear to cost more than the arithmetic they save.
+
+One thing the run does establish: the effect's magnitude barely depends on the
+work scale. `capture` 4.7460/255 at full work resolution, `capturews`
+4.5626/255 at half (PSNR 28.5 against 30.7). So the work scale is close to free
+in quality — it simply does not buy speed either, so there is no reason to use it.
+
+## The method was the problem
+
+Every 2560x1440 data point so far has cost a compositor dialog and a whole run
+for two numbers, which is how the 1440p cost stayed unmodelled for four rounds
+and why each guess about it was wrong.
+
+`--size WxH` removes that: the synthetic source can now render any size, so the
+full pass/scaled/baseline/bypass matrix runs at 2560x1440 with **no portal, no
+dialog and no capture**. The gate gains `pass14`, `scaled14` and `bypass14` for
+exactly that, plus `capturebp` — the same real screen as `capture` with NGX
+skipped — so the pass's price at 1440p is measured on both paths.
+
+`pass14 - bypass14` is the number. If it is small, the 139.7ms is the frame's
+own journey (upload, readback, copy) rather than the network, and the thing to
+attack is what crosses the boundary — which is the own-host pathway. If it is
+large, the network is expensive at 1440p for some reason none of the current
+variants explain, and the next step is to find it rather than to build around it.
+
+---
+
 # Round 19 — three runs, a stable floor, and a per-pixel cost model
 
 Three consecutive runs of the same six variants, which is the first time there is

@@ -145,3 +145,51 @@ def test_a_work_scale_outside_the_range_is_rejected(bad):
     assert proc.returncode == 2, f"--work-scale {bad} gave {proc.returncode}"
     assert "bad --work-scale" in proc.stderr
     assert "not in (0, 1]" in proc.stderr
+
+
+# --- --size ----------------------------------------------------------------
+
+def test_help_documents_the_size_flag():
+    proc = subprocess.run([sys.executable, "-m", "minimal", "--help"],
+                          cwd=REPO, capture_output=True, text=True, timeout=120)
+    assert proc.returncode == 0, proc.stderr
+    assert "--size" in proc.stdout
+
+
+def test_synthetic_honours_a_forced_size():
+    """The point of it: the 2560x1440 matrix without a portal and without a dialog.
+
+    Every 1440p measurement so far cost a compositor dialog and a whole run for
+    two data points, which is how the 1440p cost stayed unmodelled for several
+    rounds.
+    """
+    from minimal.capture import open_capture
+
+    cap = open_capture("synthetic", width=2560, height=1440)
+    assert cap.resolution == (2560, 1440)
+    assert cap.grab().shape[:2] == (1440, 2560)
+
+
+def test_the_size_flag_reaches_the_source():
+    """--size 2560x1440 must be what the source actually produces."""
+    proc = subprocess.run(
+        [sys.executable, "-c",
+         "from minimal.__main__ import build_parser;"
+         "from minimal.capture import open_capture;"
+         "a = build_parser().parse_args(['--size', '2560x1440', '--source', "
+         "'synthetic']);"
+         "w, h = (int(x) for x in a.size.lower().split('x'));"
+         "c = open_capture(a.source, width=w, height=h);"
+         "print(c.resolution)"],
+        cwd=REPO, capture_output=True, text=True, timeout=120)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "(2560, 1440)"
+
+
+@pytest.mark.parametrize("bad", ["nope", "2560", "2560x", "x1440", "10x10", "0x0"])
+def test_a_bad_size_is_rejected_before_a_screen_opens(bad):
+    proc = subprocess.run([sys.executable, "-m", "minimal", "--source", "synthetic",
+                           "--size", bad, "--frames", "1", "--headless"],
+                          cwd=REPO, capture_output=True, text=True, timeout=120)
+    assert proc.returncode == 2, f"--size {bad} gave {proc.returncode}"
+    assert "bad --size" in proc.stderr

@@ -64,6 +64,11 @@ def build_parser() -> argparse.ArgumentParser:
                         "asks for ONE window instead of a screen — cheaper, and "
                         "what a game stream wants), a generated test card, or a "
                         "still image")
+    p.add_argument("--size", metavar="WxH",
+                   help="force the frame size for sources that can make one "
+                        "(synthetic). Lets the 2560x1440 matrix be measured "
+                        "without the portal and so without a dialog — which is "
+                        "how the 1440p cost gets decomposed instead of guessed")
     p.add_argument("--input-image", metavar="PATH",
                    help="the frame to replay with --source image")
     p.add_argument("--param", action="append", metavar="NAME=VALUE",
@@ -135,9 +140,24 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr)
         return 2
 
+    force_w = force_h = None
+    if args.size:
+        try:
+            w_s, h_s = args.size.lower().split("x")
+            force_w, force_h = int(w_s), int(h_s)
+        except ValueError:
+            print(f"bad --size: {args.size!r} is not WxH (e.g. 2560x1440)",
+                  file=sys.stderr)
+            return 2
+        if force_w < 64 or force_h < 64:
+            print(f"bad --size: {args.size} is smaller than 64x64",
+                  file=sys.stderr)
+            return 2
+
     try:
         source = open_capture(args.source, monitor=args.monitor,
-                              input_image=args.input_image)
+                              input_image=args.input_image,
+                              width=force_w, height=force_h)
         if args.prefetch:
             # Wrap before the Pipeline sees it: the loop then reads a frame that
             # is already waiting instead of one the producer makes on demand.
