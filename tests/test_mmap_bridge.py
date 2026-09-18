@@ -121,6 +121,23 @@ def test_flushing_is_opt_in_on_both_sides():
     )
 
 
+def test_the_runner_is_valid_bash():
+    r = subprocess.run(["bash", "-n", str(BRIDGE / "run.sh")],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+
+
+def test_a_selftest_report_cannot_be_mistaken_for_a_box_result():
+    """--push writes into test-results/, where a stand-in run would otherwise sit
+    looking exactly like a result from the box that has Wine."""
+    s = (BRIDGE / "run.sh").read_text()
+    assert "-mmap-bridge-selftest" in s, "the selftest needs its own suffix"
+    assert "Not a box result" in s, "and the report has to say so too"
+    assert "--push" in s and "NS_GIT_ASKPASS" in s, (
+        "the push must use the same auth convention as tools/run_tests.sh"
+    )
+
+
 def test_the_runner_is_executable():
     run = BRIDGE / "run.sh"
     assert run.is_file()

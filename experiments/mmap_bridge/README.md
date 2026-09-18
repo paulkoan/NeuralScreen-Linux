@@ -19,16 +19,26 @@ building. If it works, the frame can stop travelling through pipes.
 ```bash
 sudo pacman -S mingw-w64-gcc      # Arch; Debian: gcc-mingw-w64-x86-64
 cd experiments/mmap_bridge
-./run.sh                          # builds and runs against real Wine
+./run.sh --push                   # builds, runs, and reports into test-results/
 ```
 
 The first run will open a Wine prefix. Fifteen seconds or so is normal.
+
+`--push` writes the run to `test-results/<UTC>-mmap-bridge/` (report plus the raw
+log) and pushes it, the same way `tools/run_tests.sh --push` reports. It matters
+here because the answer decides whether a host gets built, and a pasted terminal
+is not a record. Auth follows the same convention as the gate: `GIT_ASKPASS` if
+exported, else `NS_GIT_ASKPASS`, else `~/.neuralscreen/github-askpass.sh` — there
+is no terminal for git to prompt on, so a prompting credential helper fails as
+"wrong credentials". If the push fails the script says so and leaves the commit
+local rather than pretending it landed.
 
 `./run.sh --selftest` runs the identical handshake with `fake_windows.py` standing
 in for the Windows side. That covers the layout and the protocol and says
 **nothing** about page sharing — it is there so that a failure under Wine is
 about Wine rather than about the handshake, and so CI can cover the protocol with
-no Wine installed at all.
+no Wine installed at all. With `--push` its report is clearly marked: the
+directory is `…-mmap-bridge-selftest` and the report says **not a box result**.
 
 ## Why this should pass, from Wine's own source
 
