@@ -31,6 +31,73 @@ killed the port outright; it is cleared.
 
 ---
 
+# Round 19 — three runs, a stable floor, and a per-pixel cost model
+
+Three consecutive runs of the same six variants, which is the first time there is
+enough to separate signal from drift:
+
+| variant | `083240Z` | `100600Z` | `102028Z` | spread |
+|---|---|---|---|---|
+| bypass | 60.5ms | 62.2ms | 60.7ms | **1.03x** |
+| baseline | 74.5ms | 70.6ms | 71.2ms | 1.06x |
+| scaled | 69.6ms | 71.3ms | 61.3ms | 1.16x |
+| pass | 134.5ms | 98.3ms | 95.6ms | 1.41x |
+| capture | 364.8ms | 148.9ms | 153.1ms | 2.45x |
+
+The no-NGX floor is essentially exact across all three (60.5, 62.2, 60.7). What
+varies is what runs the network: `pass` 1.41x and `capture` 2.45x. So the spread
+lives in the **GPU path**, not the plumbing — `bypass` was unmoved while `pass`
+and `capture` inflated together in the first run.
+
+That also disposes of two of my readings. Round 16's 238ms capture leg came from
+the anomalous run: the same variant measured 14.9ms and 15.5ms in the two runs
+that agree with each other. So "the capture is the ceiling" (round 13) and "the
+loop is throttling the producer" (round 17) were both readings of one bad run,
+and round 18's "only within-run comparisons are safe" overcorrected — the plate
+below is what actually holds:
+
+* the CPU-side floor is reproducible to a few percent
+* anything running NGX varies by up to 2.5x with GPU state, so *those* rows need
+  repeats before being believed
+* and the two runs that agree are consistent to within a few percent throughout,
+  so cross-run comparison is fine when the runs agree and useless when they don't
+
+## The cost model, from the two runs that agree
+
+Isolating on `send`, which is the dominant leg and the one that carries the
+worker's intake:
+
+| variant | network | `send` | over no-NGX |
+|---|---|---|---|
+| bypass | — | 48.4ms | — |
+| scaled | 640x360, full strength | 49.8ms | +1.4ms |
+| baseline | 1280x720, zero strength | 51.6ms | +3.2ms |
+| pass | 1280x720, full strength | 79.6ms | **+31.2ms** |
+
+Zeroed strengths are nearly free and a quarter-size network is nearly free, but
+full strength at 1280x720 costs 31ms on 0.92 megapixel. The upstream figure on a
+5070 Ti is `1.5ms + 1.51ms/Mpixel` = 2.9ms at the same size, so this stack costs
+**~11x per pixel**. Extrapolated to 3.69 megapixel that is ~125ms of the ~150ms
+frame — which is what `capture` measures at 1440p.
+
+So at 2560x1440 **the pass is the cost, not the plumbing** — the opposite of the
+conclusion the 720p rows supported, and the reason `send` looked
+resolution-independent: at 720p the plumbing and the pass are comparable in size,
+and at 1440p one of them triples.
+
+## Which makes the network's own resolution the lever
+
+`capturews` runs 2560x1440 output with the network working at 1280x720. The model
+predicts ~85-90ms against `capture`'s ~150ms. If it lands there, 1440p fullscreen
+roughly doubles — not to 60 fps, but from 6.5 to something in the low teens — and
+the trade is the effect's own resolution, which for a subtle effect on a
+compressed stream may be no trade at all.
+
+If it does *not* land there, the per-pixel model above is wrong and the 31ms is
+something other than the network's arithmetic, which is worth knowing either way.
+
+---
+
 # Round 18 — prefetch did not help, and the capture leg is not stable
 
 `20260918T100600Z`, six variants:

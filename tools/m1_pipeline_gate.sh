@@ -305,14 +305,30 @@ BYPASS_STATUS=$VARIANT_STATUS
 run_variant capture auto
 CAPTURE_STATUS=$VARIANT_STATUS
 
-# The same capture with the producer kept unthrottled. This is the A/B that
-# matters at 2560x1440: the portal hands over a frame every ~13ms (75-78 fps,
-# measured with nothing else in the loop), while inside the loop the same grab
-# measured 238ms — because a screencast whose client stops consuming stops
-# producing. If that is the whole story, this variant's capture leg collapses
-# and its total falls with it.
-run_variant capturepf auto "" "--prefetch"
-CAPTUREPF_STATUS=$VARIANT_STATUS
+# NOT capturepf here any more. Keeping the producer unthrottled lost twice
+# (188.3 against 148.9, 160.2 against 153.1): the drain thread and the worker
+# both move 14.7MB frames and compete for memory bandwidth, so it costs more
+# than the round trip it saves. It stays available as --prefetch.
+#
+# What the three runs since have isolated is where the time actually goes at
+# 2560x1440. On `send`, from the two runs that agree with each other:
+#
+#     bypass                     48.4ms    no NGX at all
+#     scaled (net 640x360)       49.8ms    +1.4
+#     baseline (net 1280x720, 0) 51.6ms    +3.2
+#     pass (net 1280x720, full)  79.6ms    +31.2
+#
+# So the network at full strength costs ~31ms on 0.92 Mpixel, where the upstream
+# figure on a 5070 Ti is 2.9ms — about 11x per pixel. Extrapolated to 3.69
+# Mpixel that is ~125ms of a ~150ms frame, which is what the capture variants
+# measure. At 1440p the pass is the cost, not the plumbing.
+#
+# That makes the network's own resolution the one large lever, so this variant
+# is the fullscreen case the target actually wants: 2560x1440 output with the
+# network working at 1280x720. If the model holds, its total should land near
+# 85-90ms against `capture`'s ~150ms.
+run_variant capturews auto "" "--work-scale 0.5"
+CAPTUREWS_STATUS=$VARIANT_STATUS
 
 # --- environment ------------------------------------------------------------
 echo ""
@@ -329,7 +345,7 @@ fi
 
 # --- copy artifacts out -----------------------------------------------------
 if [ -n "$OUT" ]; then
-    for v in pass scaled baseline bypass capture capturepf; do
+    for v in pass scaled baseline bypass capture capturews; do
         mkdir -p "$OUT/$v"
         cp -f "$T/$v/before.png" "$OUT/$v/" 2>/dev/null || true
         cp -f "$T/$v/after.png" "$OUT/$v/" 2>/dev/null || true
@@ -347,7 +363,7 @@ if [ -n "$OUT" ]; then
         echo "driver:            $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>&1 | head -1)"
     } > "$OUT/m1_environment.txt" 2>&1
     echo ""
-    echo "  artifacts -> $OUT/{pass,scaled,baseline,bypass,capture,capturepf}/"
+    echo "  artifacts -> $OUT/{pass,scaled,baseline,bypass,capture,capturews}/"
 fi
 
 # --- summary ----------------------------------------------------------------
@@ -385,19 +401,18 @@ if [ "$CAPTURE_STATUS" = "0" ]; then
 else
     echo "  capture  FAIL — no usable screen frame (see the variant output)."
 fi
-if [ "$CAPTUREPF_STATUS" = "0" ]; then
-    echo "  capturepf measured — same capture, producer kept unthrottled."
-    echo "            Compare its capture leg with 'capture': the difference is"
-    echo "            the producer round trip the loop was paying every frame,"
-    echo "            not a compositor limit. Measured off the loop, the same"
-    echo "            portal hands over 2560x1440 every ~13ms (75-78 fps)."
+if [ "$CAPTUREWS_STATUS" = "0" ]; then
+    echo "  capturews measured — 2560x1440 output, network working at 1280x720."
+    echo "            This is the fullscreen case. The model puts it near 85-90ms"
+    echo "            against capture's ~150ms; if it does not move, the network's"
+    echo "            cost is not per-pixel and the model above is wrong."
 else
-    echo "  capturepf FAIL — the prefetching capture did not complete."
+    echo "  capturews FAIL — the scaled-work capture did not complete."
     STATUS=1
 fi
 echo ""
 echo "  per-frame cost by variant — the point of the run:"
-for v in pass scaled baseline bypass capture capturepf; do
+for v in pass scaled baseline bypass capture capturews; do
     line=$(grep -m1 '^timing:' "$T/$v/mvp.txt" 2>/dev/null || true)
     printf '    %-9s %s\n' "$v" "${line:-<no timing recorded>}"
     # The capture leg's own split, which is the number that decides whether the
