@@ -251,6 +251,13 @@ class Pipeline:
                 out[f"{name}_min"] = ordered[0]
                 out[f"{name}_median"] = ordered[len(ordered) // 2]
                 out[f"{name}_max"] = ordered[-1]
+                # WHICH frame carried the maximum, because it decides what the
+                # maximum means. Every variant shows one ~1.16s block in `send`;
+                # if that block is frame 0 it is the worker's own D3D12/NGX
+                # startup (about 1.05s), during which it is not reading its pipe
+                # yet and our first write simply waits — a one-off at launch, not
+                # a per-frame cost. If it lands anywhere else it is a real stall.
+                out[f"{name}_max_at"] = values.index(ordered[-1])
         # A breakdown OF the capture leg, so deliberately excluded from the
         # total above: adding them would count the grab twice.
         if self.capture_split["wait"]:

@@ -372,6 +372,22 @@ WRITEV_STATUS=$VARIANT_STATUS
 run_variant writev14 synthetic "" "--size 2560x1440 --bypass --writev" control
 WRITEV14_STATUS=$VARIANT_STATUS
 
+# A LONG RUN, because every number this project has reported came from a 30-frame
+# run and every one of those contains a single ~1.16s block in `send`: the
+# worker's own D3D12/NGX startup, during which it is not reading its pipe yet and
+# our first write waits. 1160ms over 30 frames is 39ms a frame, which is where
+# "send costs a fixed ~45ms" came from — a mean smeared over one one-off.
+#
+# With that block removed, our client's per-frame cost equals the worker's own
+# clock at every size: 8.5ms against 7.97ms at 720p, 35.9ms against 34.55ms at
+# 1440p. So there is no fixed cost to find, our loop is at parity with the worker,
+# and the worker is the ceiling. These variants measure the steady rate over a
+# run long enough that the startup block cannot dominate it.
+run_variant long synthetic "" "--size 1280x720 --bypass --frames 240" control
+LONG_STATUS=$VARIANT_STATUS
+run_variant long14 synthetic "" "--size 2560x1440 --bypass --frames 240" control
+LONG14_STATUS=$VARIANT_STATUS
+
 # A SIZE SWEEP, to split the frame's cost into the part that scales with bytes
 # and the part that does not. Only the first part is something a different
 # transport can remove; the second is the worker's own per-frame work and would
@@ -415,7 +431,7 @@ fi
 
 # --- copy artifacts out -----------------------------------------------------
 if [ -n "$OUT" ]; then
-    for v in pass scaled baseline bypass pipeline pipeline14 pass14 scaled14 bypass14 headless headless14 writev writev14 bypass128 bypass360 capture capturens; do
+    for v in pass scaled baseline bypass pipeline pipeline14 pass14 scaled14 bypass14 headless headless14 writev writev14 long long14 bypass128 bypass360 capture capturens; do
         mkdir -p "$OUT/$v"
         cp -f "$T/$v/before.png" "$OUT/$v/" 2>/dev/null || true
         cp -f "$T/$v/after.png" "$OUT/$v/" 2>/dev/null || true
@@ -506,7 +522,7 @@ echo "    nearly zero. A large intercept means an own-host build cannot pay for"
 echo "    itself, and that the ceiling is not the transport at all."
 echo ""
 echo "  per-frame cost by variant — the point of the run:"
-for v in pass scaled baseline bypass pipeline pipeline14 pass14 scaled14 bypass14 headless headless14 writev writev14 bypass128 bypass360 capture capturens; do
+for v in pass scaled baseline bypass pipeline pipeline14 pass14 scaled14 bypass14 headless headless14 writev writev14 long long14 bypass128 bypass360 capture capturens; do
     line=$(grep -m1 '^timing:' "$T/$v/mvp.txt" 2>/dev/null || true)
     printf '    %-9s %s\n' "$v" "${line:-<no timing recorded>}"
     # Both clocks for the same run, plus the spread. The worker's timestamps know

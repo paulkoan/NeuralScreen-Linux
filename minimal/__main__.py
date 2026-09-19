@@ -255,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
         shape = ("steady — a fixed interval, not contention"
                  if hi < 2 * lo else "spiky — we are being descheduled")
         print(f"send spread: min {lo:.1f}  median {mid:.1f}  max {hi:.1f} ms "
-              f"over {t.get('count', 0)} frames   ({shape})")
+              f"at frame {t.get('send_max_at', -1)} of {t.get('count', 0)}   ({shape})")
     if wc.get("ms_per_frame"):
         print(f"worker clock: {wc['frames']} frames in {wc['span_s']}s = "
               f"{wc['ms_per_frame']} ms/frame "
