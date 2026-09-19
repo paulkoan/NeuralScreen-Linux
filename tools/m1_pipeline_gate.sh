@@ -509,6 +509,16 @@ echo "  per-frame cost by variant — the point of the run:"
 for v in pass scaled baseline bypass pipeline pipeline14 pass14 scaled14 bypass14 headless headless14 writev writev14 bypass128 bypass360 capture capturens; do
     line=$(grep -m1 '^timing:' "$T/$v/mvp.txt" 2>/dev/null || true)
     printf '    %-9s %s\n' "$v" "${line:-<no timing recorded>}"
+    # Both clocks for the same run, plus the spread. The worker's timestamps know
+    # nothing of our timing, so a disagreement between the two lines is what says
+    # the timing line is wrong — and a steady send against a spiky one means
+    # something completely different.
+    clock=$(grep -m1 '^worker clock:' "$T/$v/mvp.txt" 2>/dev/null || true)
+    [ -n "$clock" ] && printf '    %-9s %s\n' "" "$clock"
+    spread=$(grep -m1 '^send spread:' "$T/$v/mvp.txt" 2>/dev/null || true)
+    [ -n "$spread" ] && printf '    %-9s %s\n' "" "$spread"
+    wstall=$(grep -m1 '^worker stall:' "$T/$v/mvp.txt" 2>/dev/null || true)
+    [ -n "$wstall" ] && printf '    %-9s %s\n' "" "$wstall"
     # The capture leg's own split, which is the number that decides whether the
     # portal is the ceiling or we are.
     split=$(grep -m1 '^capture split:' "$T/$v/mvp.txt" 2>/dev/null || true)

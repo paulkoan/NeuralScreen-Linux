@@ -244,6 +244,18 @@ def main(argv: list[str] | None = None) -> int:
     # timing line on purpose: if these two disagree about the same run, the
     # timing line is what is wrong.
     wc = summary.get("worker_clock") or {}
+    # The spread rather than the mean. send is a fixed ~40ms a frame at every
+    # frame size, which no per-frame work in this process explains: the worker's
+    # own clock says it delivered the same frame in 0.17ms. Steady send means
+    # something is pacing us at a fixed interval; spiky send means we are being
+    # descheduled, and only the first of those is a pacing bug.
+    if t.get("send_max") is not None:
+        lo, mid, hi = (1000 * t["send_min"], 1000 * t["send_median"],
+                       1000 * t["send_max"])
+        shape = ("steady — a fixed interval, not contention"
+                 if hi < 2 * lo else "spiky — we are being descheduled")
+        print(f"send spread: min {lo:.1f}  median {mid:.1f}  max {hi:.1f} ms "
+              f"over {t.get('count', 0)} frames   ({shape})")
     if wc.get("ms_per_frame"):
         print(f"worker clock: {wc['frames']} frames in {wc['span_s']}s = "
               f"{wc['ms_per_frame']} ms/frame "

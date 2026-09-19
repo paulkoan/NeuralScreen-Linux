@@ -223,6 +223,31 @@ def test_the_gap_is_plumbed_and_subtracted():
     assert "feed_gap${gap}.log" in runner
 
 
+def test_the_spread_is_reported_beside_the_mean():
+    """The mean hides the thing that decides the fix.
+
+    A steady 40ms a frame is something pacing us at a fixed interval; the same
+    40ms arriving as a few huge blocks is our process being descheduled. Those
+    need opposite fixes, and the mean cannot tell them apart.
+    """
+    from minimal.loop import Pipeline
+
+    class Fake:
+        timings = {"send": [0.001, 0.001, 0.001, 0.001, 0.040],
+                   "recv": [0.002] * 5}
+        capture_split = {"wait": [], "read": []}
+
+    out = Pipeline.timing_summary(Fake())
+    assert out["send"] == (0.001 * 4 + 0.040) / 5, "the mean must still be there"
+    assert out["send_min"] == 0.001
+    assert out["send_median"] == 0.001
+    assert out["send_max"] == 0.040, "the maximum is the whole point"
+    assert "send_min" not in Pipeline.timing_summary(type("F", (), {
+        "timings": {"send": [0.001] * 4, "recv": [0.002] * 4},
+        "capture_split": {"wait": [], "read": []}})()), (
+        "with fewer than five frames there is no spread worth reporting")
+
+
 def test_the_pipeline_reports_the_workers_own_clock():
     """Both clocks, one run.
 

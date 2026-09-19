@@ -238,6 +238,19 @@ class Pipeline:
         out = {**stamps, "total": total,
                "fps": (1.0 / total) if total > 0 else 0.0,
                "count": len(self.timings["recv"])}
+        # The spread, which the mean hides. A stage that costs the same on every
+        # frame is structural — something is pacing at a fixed interval. A stage
+        # that is small most frames and huge occasionally is our process being
+        # descheduled, and those two need opposite fixes. `send` is the one to
+        # look at first: it is 38-50ms a frame at EVERY frame size (38.4ms for a
+        # 128KB frame) while the worker's own timestamps say it delivered that
+        # same frame in 0.17ms.
+        for name, values in self.timings.items():
+            if len(values) >= 5:
+                ordered = sorted(values)
+                out[f"{name}_min"] = ordered[0]
+                out[f"{name}_median"] = ordered[len(ordered) // 2]
+                out[f"{name}_max"] = ordered[-1]
         # A breakdown OF the capture leg, so deliberately excluded from the
         # total above: adding them would count the grab twice.
         if self.capture_split["wait"]:
