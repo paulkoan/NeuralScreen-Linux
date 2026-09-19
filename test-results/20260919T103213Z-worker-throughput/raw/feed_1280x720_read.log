@@ -1,0 +1,27 @@
+  size: 1280x720   bypass: False   results: read like the client
+  bytes per frame across the pipe: 11.1 MB (8/pixel in, 4/pixel back)
+  pipe rate on this box: 6180 MB/s  ->  floor 1.8 ms/frame  (558.8 fps)
+
+  warm-up pass (its time is the cold start and is not measured):
+    5 frames:   1.508s   (worker exit 0)
+    30 frames:   1.704s   (worker exit 0)
+      worker's own log: 29 frames in 0.345s = 11.9 ms/frame
+      our clock 1.704s minus the worker's frame window 0.345s = 1.359s of startup and teardown
+    60 frames:   1.898s   (worker exit 0)
+      worker's own log: 59 frames in 0.570s = 9.7 ms/frame
+      our clock 1.898s minus the worker's frame window 0.570s = 1.328s of startup and teardown
+    90 frames:   2.017s   (worker exit 0)
+      worker's own log: 89 frames in 0.755s = 8.5 ms/frame
+      our clock 2.017s minus the worker's frame window 0.755s = 1.262s of startup and teardown
+
+  fit over 3 points: 5.22 ms/frame  =  191.4 fps   (startup 1.56s, R^2 0.9813)
+      30 frames: actual   1.704s  fit says   1.716s  off by -0.013s
+      60 frames: actual   1.898s  fit says   1.873s  off by +0.025s
+      90 frames: actual   2.017s  fit says   2.030s  off by -0.013s
+  the bytes alone, at this box's pipe rate: 1.8 ms/frame
+  this is 2.92x that
+
+  RESULT: THE WORKER IS THE WALL (2.9x the pipe). It took
+  longer than the bytes need with nothing else in the process, so it is not the
+  handshake, not the transport and not the client. A shared-memory
+  transport saves the pipe's own share and no more.
