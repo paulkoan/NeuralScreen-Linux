@@ -2156,3 +2156,45 @@ match ours line for line:
 - The GPU box's pytest run produced only `No module named pytest`; that venv has
   no pytest. `tools/run_tests.sh` now installs it (or explains how) instead of
   writing an empty report.
+## Round 31 — the fixed ~45ms a frame was a startup block divided by thirty frames
+
+For roughly ten rounds this project reported that `send` cost a fixed ~45ms a
+frame *independent of frame size*, and built hypotheses on top of it: that our
+four separate writes per frame were blocking on a full pipe (`--writev`, one
+scatter-gather write instead of four — **no effect at all**: 39.9 → 40.8ms at
+720p, 49.8 → 48.6ms at 1440p); that the worker's poll loop was charging us a timer
+tick per wake (falsified with a deliberate `--gap-ms`: gap 0 gives 9.4 and 10.8ms
+a frame, gap 20 gives 22.5ms — the 20ms we injected plus 2.5ms of worker, so there
+is no wake penalty); and that our client loop was therefore the wall.
+
+All of it came from the mean of a 30-frame run. **`send`'s median is 2.5ms at
+720p, 0.0ms at 128x128 and 12.2ms at 1440p, and every variant contains exactly one
+block of about 1.16s** — and that block is **frame 0** in every variant
+(`send_max_at`): 1157.0ms at frame 0 of 30, 1125.3 at frame 0, 1175.9 at frame 0
+of 240. It is the worker's own D3D12/NGX startup: for its first ~1.05s it is not
+reading its pipe, so our first write waits. 1160ms over a 30-frame run is 39ms a
+frame. That is the entire "fixed ~45ms".
+
+What the numbers are with it removed, over 240-frame runs where a one-off cannot
+dominate:
+
+| | end to end | worker's own clock | client's own share |
+|---|---|---|---|
+| **2560x1440** | **24.7fps** (39.2ms) | 34.47ms (29fps) | ~5ms (capture 2.9 + display 2.0) |
+| **1280x720** | **77.5fps** (11.9ms) | 7.01ms (143fps) | ~5ms |
+
+Our client's per-frame cost matches the worker's own clock at every size — 8.5ms
+against 7.97ms at 720p, 35.9 against 34.55 at 1440p, 42.7 against 41.07 for
+`pass14`, 39.1 against 37.38 for `pipeline14`. **The client is at parity with the
+worker. The worker is the ceiling.** `--work-scale 0.5` at 1440p moves the worker
+only 34.5 → 27.5ms, so the pass's cost is not per-pixel at the work size and the
+earlier "work_scale buys nothing" reading stands.
+
+Two lessons, both about the instrument rather than the code:
+
+- **A mean over a run containing a one-off is not a measurement.** The distribution
+  (`min`/`median`/`max` and *which frame carried the max*) was one line of code and
+  would have saved ten rounds. Print it before theorising.
+- **The worker's own clock settles arguments our clock cannot.** Its timestamps
+  know nothing of our timing, and every time the two disagreed the disagreement
+  was the finding. It is now printed beside the timing line in every run.
