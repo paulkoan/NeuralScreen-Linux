@@ -226,7 +226,7 @@ class Worker:
                  cwd: Path | None = None,
                  full_w: int = 0, full_h: int = 0,
                  nr_small: bool = False, motion_small: bool = False,
-                 bypass: bool = False):
+                 bypass: bool = False, writev: bool = False):
         self.width, self.height = int(width), int(height)
         self.work_w, self.work_h = int(work_w), int(work_h)
         self.params = params
@@ -241,6 +241,12 @@ class Worker:
         # the same as zeroed strengths — those still run the network, so this is
         # the control that separates the network from the texture path.
         self.bypass = bool(bypass)
+        # Hand the frame to the kernel in one scatter-gather write instead of
+        # four separate ones. Each separate write can block on a full pipe while
+        # the worker polls with a Sleep(8) between attempts, and the loop pays a
+        # fixed ~45ms a frame in `send` at every frame size — measured — while
+        # the worker's own timestamps say it delivers a 64KB frame in 0.21ms.
+        self.writev = bool(writev)
         self.warmup = int(warmup)
         self.cmd = cmd or default_launcher()
         self.cwd = cwd or NATIVE_DIR
@@ -311,7 +317,8 @@ class Worker:
         assert self.proc is not None and self.proc.stdin is not None
         try:
             send_frame(self.proc, index, rgba, motion, reset, pts, None,
-                       motion_small=self.motion_small, bypass=self.bypass)
+                       motion_small=self.motion_small, bypass=self.bypass,
+                       writev=self.writev)
         except (BrokenPipeError, OSError) as exc:
             raise RuntimeError(
                 f"the worker died while sending frame {index} ({exc}). "

@@ -79,7 +79,7 @@ class Pipeline:
                  worker_cwd: Path | None = None, capture=None, display=None,
                  work_scale: float = 1.0, motion_small: bool = False,
                  bypass: bool = False, send_ahead: int = 1,
-                 frame_timeout: float = 60.0):
+                 frame_timeout: float = 60.0, writev: bool = False):
         self.params = dict(params or DEFAULT_PARAMS)
         self.warmup = warmup
         self.headless = headless
@@ -100,6 +100,8 @@ class Pipeline:
         #: frame's input and call it a measurement. Round 29 caught the worker
         #: stalling for eighteen seconds mid-run, so it does happen.
         self.stalls = 0
+        # One scatter-gather write per frame instead of four. See Worker.writev.
+        self.writev = bool(writev)
         # Send the motion field at the optical-flow size and let the worker
         # upscale it. Cuts the inbound bytes per frame by nearly half, at no
         # cost to what the network receives — our field is all zeros either way.
@@ -133,7 +135,8 @@ class Pipeline:
             full_h=self.height if self.nr_small else 0,
             nr_small=self.nr_small,
             motion_small=self.motion_small,
-            bypass=self.bypass)
+            bypass=self.bypass,
+            writev=self.writev)
 
         if display is not None:
             self.display = display

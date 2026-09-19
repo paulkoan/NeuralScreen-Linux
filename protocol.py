@@ -320,6 +320,39 @@ def _read_exact(stream, size: int) -> bytes:
     return bytes(chunks)
 
 
+def _writev_all(stream, parts: list) -> None:
+    """Hand the kernel every part of a frame in one call.
+
+    Four separate writes (header, colour, motion, flush) can each block on a full
+    pipe waiting for the worker to drain it, and the worker polls its pipe with a
+    Sleep(8) between attempts — under Wine's timer granularity that is up to
+    ~16ms per poll. Measured on the box: our loop pays a fixed ~45ms a frame in
+    `send` at *every* size, while the worker's own timestamps say it delivers a
+    64KB frame in 0.21ms. One writev hands the kernel all the parts at once and
+    can block at most once.
+
+    writev writes what it can, so a short write is resumed from where it stopped.
+    The cursor walks the parts in order rather than assuming any of it is atomic.
+    """
+    stream.flush()
+    fd = stream.fileno()
+    bufs = [p if isinstance(p, memoryview) else memoryview(p) for p in parts]
+    i, off = 0, 0
+    while i < len(bufs):
+        vec = [bufs[i] if off == 0 else bufs[i][off:]]
+        vec.extend(bufs[i + 1:])
+        written = os.writev(fd, vec)
+        if written <= 0:
+            raise BrokenPipeError("the worker stopped reading (writev returned 0)")
+        while written > 0 and i < len(bufs):
+            take = min(written, len(bufs[i]) - off)
+            off += take
+            written -= take
+            if off == len(bufs[i]):
+                i += 1
+                off = 0
+
+
 def as_writable_bytes(arr) -> object:
     """The array's bytes without copying them.
 
@@ -341,7 +374,7 @@ def send_frame(worker: subprocess.Popen, index: int, rgba: np.ndarray,
                shm: "SharedFrameBuffer | None" = None,
                want_pixels: bool = False, motion_small: bool = False,
                no_color: bool = False, bypass: bool = False,
-               split: float = 0.0) -> None:
+               split: float = 0.0, writev: bool = False) -> None:
     """Send a frame to the worker.
 
     With shared memory agreed, only the 24-byte header with the
@@ -378,9 +411,13 @@ def send_frame(worker: subprocess.Popen, index: int, rgba: np.ndarray,
                                        FRAME_FLAG_SHM | flags, pts))
         worker.stdin.flush()
         return
-    worker.stdin.write(struct.pack(FRAME_FMT, FRAME_MAGIC, index, int(reset), flags, pts))
-    worker.stdin.write(as_writable_bytes(rgba))
-    worker.stdin.write(as_writable_bytes(motion))
+    parts = [struct.pack(FRAME_FMT, FRAME_MAGIC, index, int(reset), flags, pts),
+             as_writable_bytes(rgba), as_writable_bytes(motion)]
+    if writev:
+        _writev_all(worker.stdin, parts)
+        return
+    for part in parts:
+        worker.stdin.write(part)
     worker.stdin.flush()
 
 

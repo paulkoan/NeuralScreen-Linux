@@ -117,6 +117,46 @@ def test_removing_the_per_frame_copy_does_not_change_a_byte():
         "the frame written to the pipe changed — this is the worker's input")
 
 
+def test_the_frame_written_with_writev_is_identical():
+    """One scatter-gather write instead of four must put the same bytes on the
+    wire: the worker parses them either way, and a difference would be silently
+    misparsed pixels rather than an error."""
+    import io
+    import os
+    import struct
+
+    import protocol
+    from protocol import _writev_all, send_frame
+
+    class Sink:
+        def __init__(self, buf):
+            self.stdin = buf
+
+    rgba = np.arange(W * H * 4, dtype=np.uint8).reshape(H, W, 4)
+    motion = np.arange(W * H * 2, dtype=np.float16).reshape(H, W, 2)
+
+    plain = io.BytesIO()
+    send_frame(Sink(plain), 3, rgba, motion, reset=False, pts=3)
+
+    # A real file descriptor, because writev needs one; a BytesIO does not have
+    # fileno(), and faking it would test the fake rather than the writer.
+    r, w = os.pipe()
+    try:
+        with os.fdopen(w, "wb") as stream:
+            _writev_all(stream, [
+                struct.pack(protocol.FRAME_FMT, protocol.FRAME_MAGIC, 3, 0, 0, 3),
+                memoryview(rgba), memoryview(motion)])
+        got = b""
+        while len(got) < len(plain.getvalue()):
+            chunk = os.read(r, 1 << 20)
+            if not chunk:
+                break
+            got += chunk
+    finally:
+        os.close(r)
+    assert got == plain.getvalue()
+
+
 def test_the_pipelined_loop_finishes_every_frame(fake_display, mock_worker_cmd):
     """With four frames in flight, every frame still gets sent and answered."""
     capture = IndexedCapture()

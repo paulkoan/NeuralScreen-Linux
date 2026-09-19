@@ -348,6 +348,30 @@ HEADLESS_STATUS=$VARIANT_STATUS
 run_variant headless14 synthetic "" "--size 2560x1440 --bypass --headless" control
 HEADLESS14_STATUS=$VARIANT_STATUS
 
+# ONE WRITE PER FRAME INSTEAD OF FOUR.
+#
+# With both clocks now printed, the shape is unmistakable: our loop pays a fixed
+# ~45ms a frame in `send` at EVERY size, while the worker's own timestamps say it
+# delivers a 64KB frame in 0.21ms. bypass128 is 46.7ms a frame against a worker
+# that is 4762fps; bypass is 55.2ms against 78fps; bypass14 is 89.6ms against
+# 23fps. Same ~45ms every time, and it is not the bytes, the reader, the display,
+# the capture or the worker's frames.
+#
+# What is left is our own send path blocking. It issues four writes per frame
+# (header, colour, motion, flush) and each can block on a full pipe waiting for
+# the worker to drain it — and the worker polls its pipe with Sleep(8) between
+# attempts, which under Wine's timer granularity can be ~16ms a poll. A few of
+# those per frame is 45ms.
+#
+# These variants hand the kernel every part of a frame in ONE writev. If `send`
+# collapses toward the worker's own number, the per-write blocking was the cost
+# and the fix is ours. If it does not move, the cost is the worker's poll latency
+# and only a host that blocks on its read instead of polling can remove it.
+run_variant writev synthetic "" "--bypass --writev" control
+WRITEV_STATUS=$VARIANT_STATUS
+run_variant writev14 synthetic "" "--size 2560x1440 --bypass --writev" control
+WRITEV14_STATUS=$VARIANT_STATUS
+
 # A SIZE SWEEP, to split the frame's cost into the part that scales with bytes
 # and the part that does not. Only the first part is something a different
 # transport can remove; the second is the worker's own per-frame work and would
@@ -391,7 +415,7 @@ fi
 
 # --- copy artifacts out -----------------------------------------------------
 if [ -n "$OUT" ]; then
-    for v in pass scaled baseline bypass pipeline pipeline14 pass14 scaled14 bypass14 headless headless14 bypass128 bypass360 capture capturens; do
+    for v in pass scaled baseline bypass pipeline pipeline14 pass14 scaled14 bypass14 headless headless14 writev writev14 bypass128 bypass360 capture capturens; do
         mkdir -p "$OUT/$v"
         cp -f "$T/$v/before.png" "$OUT/$v/" 2>/dev/null || true
         cp -f "$T/$v/after.png" "$OUT/$v/" 2>/dev/null || true
@@ -482,7 +506,7 @@ echo "    nearly zero. A large intercept means an own-host build cannot pay for"
 echo "    itself, and that the ceiling is not the transport at all."
 echo ""
 echo "  per-frame cost by variant — the point of the run:"
-for v in pass scaled baseline bypass pipeline pipeline14 pass14 scaled14 bypass14 headless headless14 bypass128 bypass360 capture capturens; do
+for v in pass scaled baseline bypass pipeline pipeline14 pass14 scaled14 bypass14 headless headless14 writev writev14 bypass128 bypass360 capture capturens; do
     line=$(grep -m1 '^timing:' "$T/$v/mvp.txt" 2>/dev/null || true)
     printf '    %-9s %s\n' "$v" "${line:-<no timing recorded>}"
     # The capture leg's own split, which is the number that decides whether the
