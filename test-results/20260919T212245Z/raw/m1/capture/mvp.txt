@@ -1,0 +1,20 @@
+  CreateSession
+  session /org/freedesktop/portal/desktop/session/1_6521458/nsl_port
+  SelectSources
+  Start  (the compositor will ask you to choose a screen)
+  stream node=183 serial=None 2560x1440
+  OpenPipeWireRemote
+  pipeline pid 3851455: gst-launch-1.0 -q pipewiresrc fd=5 path=183 ! videoconvert ! videoscale ! video/x-raw,format=RGBA,width=2560,height=1440,pixel-aspect-ratio=1/1 ! queue max-size-buffers=1 leaky=downstream ! fdsink fd=1
+source auto  capture 2560x1440  ->  work 2560x1440 (work scale 1.00, NGX ceiling 2560x1440)
+params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+worker: bash /home/paul/dev/NeuralScreen-Linux/native/run_worker.sh
+pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+frames: 30 done, 0 skipped, 6.616s (4.53 fps), worker exit 0
+timing: capture 115.3ms  send 57.8ms  recv 32.9ms  display 3.3ms   (total 209.3ms/frame, 4.8 fps)
+send spread: min 8.3  median 13.0  max 1348.1 ms at frame 0 of 30   (spiky — we are being descheduled)
+worker clock: 29 frames in 4.85s = 167.24 ms/frame (6 fps, from the worker's own timestamps)
+capture split: wait 106.1ms  read 9.2ms   (read ~19ms at 2560x1440 means we are draining a stocked pipe; read far above that means the compositor was dribbling)
+capture cpu: the pipeline used 0.88s over 6.62s = 13% of one core
+  before -> /tmp/tmp.htZIfKo8Zn/capture/before.png
+  after  -> /tmp/tmp.htZIfKo8Zn/capture/after.png
