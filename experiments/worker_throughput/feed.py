@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -162,6 +163,66 @@ def run_once(frames: int, w: int, h: int, bypass: bool, log: Path,
     return elapsed, rc
 
 
+STAMPED = re.compile(r"^(\d{2}):(\d{2}):(\d{2})\.(\d{3})\s\s+(.*)$")
+
+
+def _stamp_seconds(line: str) -> float | None:
+    m = STAMPED.match(line)
+    if not m:
+        return None
+    h, mi, s, ms, _text = m.groups()
+    return int(h) * 3600 + int(mi) * 60 + int(s) + int(ms) / 1000.0
+
+
+def worker_timeline(log: Path) -> dict:
+    """What the worker's own log says, on the worker's own clock.
+
+    The host stamps a line when it has delivered a frame, so the gap between the
+    first and last of those is the worker's rate with none of our timing in it —
+    an independent check on the fit above, and the thing that shows a stall for
+    what it is. A 30-frame run taking 12.5s while 60 and 90 take under 2s is not
+    the worker being slow; it delivered those 30 frames in under a second.
+
+    Returns the frame window, the startup, and the biggest gap anywhere in the
+    log, named by the two lines on either side of it.
+    """
+    try:
+        text = log.read_text(errors="replace")
+    except OSError:
+        return {}
+
+    lines: list[tuple[float, str]] = []
+    for raw in text.splitlines():
+        t = _stamp_seconds(raw)
+        if t is not None:
+            lines.append((t, raw.split("  ", 1)[-1].strip()))
+    if not lines:
+        return {}
+
+    delivered = [(t, txt) for t, txt in lines if "delivered frame" in txt]
+    out: dict = {"startup_s": lines[0][0]}
+    if len(delivered) >= 2:
+        (t0, s0), (t1, s1) = delivered[0], delivered[-1]
+
+        def index_of(text: str) -> int:
+            digits = re.search(r"delivered frame (\d+)", text)
+            return int(digits.group(1)) if digits else 0
+
+        n0, n1 = index_of(s0), index_of(s1)
+        span = t1 - t0
+        out["frames"] = n1 - n0
+        out["span_s"] = span
+        if n1 > n0 and span > 0:
+            out["ms_per_frame"] = 1000.0 * span / (n1 - n0)
+
+    gap, between = 0.0, None
+    for (t0, s0), (t1, s1) in zip(lines, lines[1:]):
+        if t1 - t0 > gap:
+            gap, between = t1 - t0, (s0[:70], s1[:70])
+    out["gap_s"], out["gap_between"] = gap, between
+    return out
+
+
 def fit(points: list[tuple[int, float]]):
     """Least squares of seconds against frames. Returns (ms/frame, startup s, r2)."""
     xs = [p[0] for p in points]
@@ -217,17 +278,48 @@ def main(argv: list[str]) -> int:
     print(f"  pipe rate on this box: {rate:.0f} MB/s  ->  floor "
           f"{floor_ms:.1f} ms/frame  ({1000 / floor_ms:.1f} fps)", flush=True)
 
+    def per_run_log(frames: int) -> Path:
+        """One log per run.
+
+        A single shared path meant every run overwrote the last one, which is how
+        a stall in the 30-frame run went unnamed twice: by the time it was looked
+        for, the run after it had erased the evidence.
+        """
+        return log.with_name(f"{log.stem}.{frames}f{log.suffix}")
+
+    def report_worker(frames: int, elapsed: float) -> None:
+        tl = worker_timeline(per_run_log(frames))
+        if not tl:
+            print(f"      worker's own log: nothing stamped for {frames} frames")
+            return
+        parts = []
+        if "ms_per_frame" in tl:
+            parts.append(f"{tl['frames']} frames in {tl['span_s']:.3f}s = "
+                         f"{tl['ms_per_frame']:.1f} ms/frame")
+        if tl.get("gap_s", 0.0) > 1.0 and tl.get("gap_between"):
+            a, b = tl["gap_between"]
+            parts.append(f"GAP {tl['gap_s']:.1f}s between {a!r} and {b!r}")
+        print("      worker's own log: " + "; ".join(parts))
+        if "span_s" in tl:
+            print(f"      our clock {elapsed:.3f}s minus the worker's frame window "
+                  f"{tl['span_s']:.3f}s = {elapsed - tl['span_s']:.3f}s of startup "
+                  f"and teardown")
+
     print("\n  warm-up pass (its time is the cold start and is not measured):",
           flush=True)
-    t_warm, rc_warm = run_once(5, w, h, args.bypass, log, args.read_results)
+    t_warm, rc_warm = run_once(5, w, h, args.bypass, per_run_log(5),
+                               args.read_results)
     print(f"    5 frames: {t_warm:7.3f}s   (worker exit {rc_warm})", flush=True)
 
     points = []
     for frames in runs:
-        elapsed, rc = run_once(frames, w, h, args.bypass, log, args.read_results)
+        elapsed, rc = run_once(frames, w, h, args.bypass, per_run_log(frames),
+                               args.read_results)
         print(f"  {frames:4d} frames: {elapsed:7.3f}s   (worker exit {rc})", flush=True)
+        report_worker(frames, elapsed)
         if rc != 0:
-            print(f"    the worker exited {rc}; its stderr is {log}", file=sys.stderr)
+            print(f"    the worker exited {rc}; its stderr is "
+                  f"{per_run_log(frames)}", file=sys.stderr)
         points.append((frames, elapsed))
 
     slope_ms, startup_s, r2 = fit(points)

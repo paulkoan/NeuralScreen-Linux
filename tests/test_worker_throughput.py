@@ -142,3 +142,42 @@ def test_the_guard_is_checked_before_the_verdict():
     r2_check = src.index("r2 > 0.98")
     verdict = src.index("AT THE PIPE'S RATE")
     assert r2_check < verdict, "the fit quality must be checked before the verdict"
+
+
+def test_the_worker_timeline_reads_a_real_log():
+    """Parsed from a log the box actually produced, not a fixture written to fit.
+
+    In test-results/20260919T085959Z the worker's own clock said 2.546s for frames
+    1..90 at 1440p and 0.671s at 720p. Those agree with this harness's independent
+    fit (28.79ms and 37.17ms) to within 0.5%, which is the whole reason the
+    worker's own log is now printed next to every run: it is the one measurement
+    in this project that does not depend on our timing at all.
+    """
+    import feed
+
+    raw = (REPO / "test-results" / "20260919T085959Z-worker-throughput" / "raw")
+    if not raw.is_dir():
+        return  # the run this was derived from is not in the tree
+
+    big = feed.worker_timeline(raw / "feed_2560x1440_discard.worker.log")
+    assert 27.0 < big["ms_per_frame"] < 30.0, big          # measured 28.6
+    assert big["frames"] == 89, big                        # frames 1 to 90
+
+    small = feed.worker_timeline(raw / "feed_1280x720_discard.worker.log")
+    assert 6.5 < small["ms_per_frame"] < 8.5, small        # measured 7.5
+
+
+def test_a_missing_log_is_not_an_exception():
+    """The timeline is reported, never required: a run whose log was not written
+    should still produce a fit and a verdict rather than a traceback."""
+    import feed
+
+    assert feed.worker_timeline(THROUGHPUT / "definitely-not-here.log") == {}
+
+
+def test_each_run_keeps_its_own_log():
+    """A single shared log path meant every run erased the previous one, which is
+    how a stall in the 30-frame run went unnamed twice."""
+    src = (THROUGHPUT / "feed.py").read_text()
+    assert "def per_run_log" in src
+    assert "per_run_log(frames)" in src

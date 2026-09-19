@@ -108,7 +108,7 @@ VERDICT="$(grep -h -m1 'RESULT:' "$OUT"/raw/feed_*.log | head -1 | sed 's/^ *//'
             echo "## ${size} — ${label}"
             echo
             echo '```'
-            grep -E 'size:|bytes per frame|pipe rate|warm-up|frames:|fit over|off by|bytes alone|this is|RESULT' \
+            grep -E 'size:|bytes per frame|pipe rate|warm-up|frames:|worker.s own log|our clock|fit over|off by|bytes alone|this is|RESULT' \
                 "$OUT/raw/feed_${size}_${pass}.log" || true
             echo '```'
             echo
