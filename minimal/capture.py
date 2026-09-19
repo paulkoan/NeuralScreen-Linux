@@ -120,14 +120,19 @@ class SyntheticCapture:
         self.width = int(width)
         self.height = int(height)
         self._n = 0
+        # The static part is built once. It used to be rebuilt on every grab —
+        # two linspaces, np.empty, three full-frame float32 operations each
+        # converted with astype, and an np.sin over the whole frame — which at
+        # 2560x1440 allocates and frees roughly 100MB of temporaries per frame.
+        # Measured at 1440p that made the *fixture* 43-70ms of the capture stage,
+        # larger than the real portal capture it stands in for, and so inflated
+        # every synthetic 1440p number in this project: bypass14, pass14,
+        # scaled14 and the whole size sweep. A fixture that costs more than the
+        # thing it replaces is not a fixture.
+        self._base = self._build()
 
-    @property
-    def resolution(self) -> tuple[int, int]:
-        return self.width, self.height
-
-    def grab(self) -> np.ndarray:
-        w, h, n = self.width, self.height, self._n
-        self._n += 1
+    def _build(self) -> np.ndarray:
+        w, h = self.width, self.height
         x = np.linspace(0.0, 1.0, w, dtype=np.float32)[None, :]
         y = np.linspace(0.0, 1.0, h, dtype=np.float32)[:, None]
         frame = np.empty((h, w, 4), dtype=np.uint8)
@@ -135,6 +140,16 @@ class SyntheticCapture:
         frame[..., 1] = (255.0 * y).astype(np.uint8)
         frame[..., 2] = (255.0 * (0.5 + 0.5 * np.sin(6.0 * (x + y)))).astype(np.uint8)
         frame[..., 3] = 255
+        return frame
+
+    @property
+    def resolution(self) -> tuple[int, int]:
+        return self.width, self.height
+
+    def grab(self) -> np.ndarray:
+        w, n = self.width, self._n
+        self._n += 1
+        frame = self._base.copy()
         bar = int((n * 7) % max(1, w - w // 8))
         frame[:, bar:bar + max(1, w // 8), :3] = 255
         return frame

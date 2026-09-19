@@ -171,3 +171,58 @@ def test_the_old_channel_reversal_is_not_equivalent(tmp_path):
     assert cv2.imread(str(bad), cv2.IMREAD_UNCHANGED).shape[2] == 4, (
         "the buggy form also drags an alpha channel along, which is the half "
         "that made the captured desktop render as a white sheet")
+
+
+def _synthetic_reference(w: int, h: int, n: int) -> np.ndarray:
+    """The test card as it was drawn BEFORE the cache, kept as the reference.
+
+    Two linspaces, three full-frame float32 operations each converted with
+    astype, and an np.sin over the whole frame — per grab.
+    """
+    x = np.linspace(0.0, 1.0, w, dtype=np.float32)[None, :]
+    y = np.linspace(0.0, 1.0, h, dtype=np.float32)[:, None]
+    frame = np.empty((h, w, 4), dtype=np.uint8)
+    frame[..., 0] = (255.0 * x).astype(np.uint8)
+    frame[..., 1] = (255.0 * y).astype(np.uint8)
+    frame[..., 2] = (255.0 * (0.5 + 0.5 * np.sin(6.0 * (x + y)))).astype(np.uint8)
+    frame[..., 3] = 255
+    bar = int((n * 7) % max(1, w - w // 8))
+    frame[:, bar:bar + max(1, w // 8), :3] = 255
+    return frame
+
+
+def test_the_test_card_is_cached_without_changing_a_pixel():
+    """The fixture rebuilt its whole frame per grab: measured here at 2560x1440
+    that was 42.7ms and ~100MB of float32 temporaries, against the real portal
+    capture it stands in for at 14-27ms. So it was the most expensive thing in
+    every synthetic 1440p measurement this project has — bypass14, pass14,
+    scaled14 and the whole size sweep — and its cost moved with machine load,
+    which is a good part of why those numbers drifted by 2x between runs.
+
+    Caching it is only safe if the pixels are identical: a fixture that measures
+    differently because it *draws* differently would be worse than a slow one.
+    """
+    from minimal.capture import SyntheticCapture
+
+    cap = SyntheticCapture(64, 32)
+    for n in range(4):
+        assert np.array_equal(cap.grab(), _synthetic_reference(64, 32, n)), (
+            f"grab {n} no longer matches the card that was drawn before caching")
+
+
+def test_a_grab_hands_out_its_own_frame():
+    """The static part is shared, so every grab must return a copy.
+
+    The pipeline writes the array it is given — it hands it to the worker and can
+    save it as the 'before' of a pair — so a shared base would let one frame's
+    output contaminate every frame after it.
+    """
+    from minimal.capture import SyntheticCapture
+
+    cap = SyntheticCapture(64, 32)
+    first = cap.grab()
+    first[:] = 0
+    second = cap.grab()
+    assert second[:, :, 3].min() == 255, "alpha was overwritten through a grab"
+    assert np.array_equal(second, _synthetic_reference(64, 32, 1)), (
+        "a grab returned the shared base instead of a copy of it")

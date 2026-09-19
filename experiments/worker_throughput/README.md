@@ -78,6 +78,24 @@ The tool prints its own verdict, and the ratio to the pipe floor decides it:
   pipe needs for the same bytes with nothing else in the process, so no client
   change and no faster transport moves it. Only a host we write would.
 
+## The client's own write path, measured without a GPU
+
+`experiments/worker_throughput/client_write.py` runs anywhere — no Wine, no GPU,
+no worker — and answers "is our frame write slow, or is the reader?" by writing
+frames through the real `send_frame` into the fastest reader there is:
+
+```
+reader              frame       ms/frame      MB/s
+cat>/dev/null       1280x720        5.65      1305
+cat>/dev/null       2560x1440      14.14      2086
+```
+
+At 1440p a frame is 29.5MB (8 bytes/pixel: RGBA8 plus two float16 motion
+channels, half of it the all-zero motion field this MVP sends because it has no
+real vectors). **14ms is the client's floor for handing a frame over**, so the
+88–112ms the gate reports for `send` is not our write — it is the worker or the
+back-pressure waiting for it.
+
 ## What it does not measure
 
 The feeder's own writes go through the same pipe the real client uses, so a
