@@ -181,3 +181,43 @@ def test_each_run_keeps_its_own_log():
     src = (THROUGHPUT / "feed.py").read_text()
     assert "def per_run_log" in src
     assert "per_run_log(frames)" in src
+
+
+def test_the_gap_finder_ignores_the_reporting_interval():
+    """Two 'delivered frame' lines 30 frames apart are 30 frames of work, not a
+    stall.
+
+    The host reports every 30th frame, so at 1440p that interval is over a second
+    on a perfectly healthy run — and the first version flagged it as GAP on every
+    single one.
+    """
+    from minimal.worker import worker_timeline
+
+    lines = [
+        "10:00:00.000  [video] delivered frame 1 (live)",
+        "10:00:01.000  [video] delivered frame 30 (live)",     # 33ms a frame
+        "10:00:02.000  [video] delivered frame 60 (live)",
+        "10:00:03.000  [video] input stream closed after 60 frames",
+    ]
+    tl = worker_timeline(lines)
+    assert tl["ms_per_frame"] == 33.9, tl
+    # The 1.0s intervals between frame reports are NOT the reported gap.
+    assert "input stream closed" in tl["gap_between"][1], tl["gap_between"]
+
+
+def test_the_pipeline_reports_the_workers_own_clock():
+    """Both clocks, one run.
+
+    The worker's timestamps know nothing of ours, so printing them beside the
+    timing line is what makes a disagreement between them visible — and it is the
+    only way a stall inside the worker stops looking like a slow client.
+    """
+    loop = (REPO / "minimal" / "loop.py").read_text()
+    assert '"worker_clock"' in loop
+    assert "worker_timeline(self.worker.logs)" in loop, (
+        "the pipeline must parse the worker's own lines, not read a file the "
+        "worker may not have written")
+
+    cli = (REPO / "minimal" / "__main__.py").read_text()
+    assert "worker clock:" in cli, "the CLI has to print it, or the gate never sees it"
+    assert "worker stall:" in cli

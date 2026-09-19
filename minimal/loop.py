@@ -20,7 +20,7 @@ import numpy as np
 
 from minimal.capture import Capture
 from minimal.display import Display
-from minimal.worker import FLOW_H, FLOW_W, Worker, work_size
+from minimal.worker import FLOW_H, FLOW_W, Worker, work_size, worker_timeline
 
 # The profile the MVP runs with, from settings_io.PROFILES["Natural"].
 # Duplicated rather than imported so the MVP does not pull in the whole
@@ -315,6 +315,14 @@ class Pipeline:
             "before": pair_before,
             "after": last_after,
             "timing": self.timing_summary(),
+            # The worker's OWN clock, parsed from the lines it stamps as it
+            # delivers frames. It is the one number in a run that does not depend
+            # on our timing at all, so it is reported next to ours: if the two
+            # disagree, everything else in the summary is suspect. It also names
+            # a stall — the 30-frame runs that took 12.5s while the 60 and 90
+            # frame runs took under 2s were the worker stalling in NGX init, not
+            # processing slowly.
+            "worker_clock": worker_timeline(self.worker.logs),
             # Only a prefetching source has anything to say here.
             "prefetch": _prefetch_stats(self.capture),
             # The capture chain's own CPU over the run. Not part of the frame

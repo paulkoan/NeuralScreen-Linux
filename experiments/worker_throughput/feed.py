@@ -46,7 +46,8 @@ if str(REPO) not in sys.path:
 
 from minimal.loop import DEFAULT_PARAMS  # noqa: E402
 from minimal.worker import (default_launcher, stream_header, work_size,  # noqa: E402
-                            worker_env)
+                            worker_env,
+                            worker_timeline as timeline_from_lines)
 from protocol import WorkerReader, send_frame  # noqa: E402
 
 NATIVE = REPO / "native"
@@ -163,64 +164,18 @@ def run_once(frames: int, w: int, h: int, bypass: bool, log: Path,
     return elapsed, rc
 
 
-STAMPED = re.compile(r"^(\d{2}):(\d{2}):(\d{2})\.(\d{3})\s\s+(.*)$")
-
-
-def _stamp_seconds(line: str) -> float | None:
-    m = STAMPED.match(line)
-    if not m:
-        return None
-    h, mi, s, ms, _text = m.groups()
-    return int(h) * 3600 + int(mi) * 60 + int(s) + int(ms) / 1000.0
-
-
 def worker_timeline(log: Path) -> dict:
     """What the worker's own log says, on the worker's own clock.
 
-    The host stamps a line when it has delivered a frame, so the gap between the
-    first and last of those is the worker's rate with none of our timing in it —
-    an independent check on the fit above, and the thing that shows a stall for
-    what it is. A 30-frame run taking 12.5s while 60 and 90 take under 2s is not
-    the worker being slow; it delivered those 30 frames in under a second.
-
-    Returns the frame window, the startup, and the biggest gap anywhere in the
-    log, named by the two lines on either side of it.
+    Reads the file and hands the lines to the one parser, in minimal/worker.py,
+    which the pipeline also uses on the lines it collects from stderr. Two
+    parsers of the same log would drift.
     """
     try:
         text = log.read_text(errors="replace")
     except OSError:
         return {}
-
-    lines: list[tuple[float, str]] = []
-    for raw in text.splitlines():
-        t = _stamp_seconds(raw)
-        if t is not None:
-            lines.append((t, raw.split("  ", 1)[-1].strip()))
-    if not lines:
-        return {}
-
-    delivered = [(t, txt) for t, txt in lines if "delivered frame" in txt]
-    out: dict = {"startup_s": lines[0][0]}
-    if len(delivered) >= 2:
-        (t0, s0), (t1, s1) = delivered[0], delivered[-1]
-
-        def index_of(text: str) -> int:
-            digits = re.search(r"delivered frame (\d+)", text)
-            return int(digits.group(1)) if digits else 0
-
-        n0, n1 = index_of(s0), index_of(s1)
-        span = t1 - t0
-        out["frames"] = n1 - n0
-        out["span_s"] = span
-        if n1 > n0 and span > 0:
-            out["ms_per_frame"] = 1000.0 * span / (n1 - n0)
-
-    gap, between = 0.0, None
-    for (t0, s0), (t1, s1) in zip(lines, lines[1:]):
-        if t1 - t0 > gap:
-            gap, between = t1 - t0, (s0[:70], s1[:70])
-    out["gap_s"], out["gap_between"] = gap, between
-    return out
+    return timeline_from_lines(text.splitlines())
 
 
 def fit(points: list[tuple[int, float]]):

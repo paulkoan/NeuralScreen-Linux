@@ -232,6 +232,22 @@ def main(argv: list[str] | None = None) -> int:
                  for k in ("capture", "send", "recv", "display") if k in t]
         print(f"timing: {'  '.join(parts)}   "
               f"(total {1000 * t['total']:.1f}ms/frame, {t['fps']:.1f} fps)")
+    # The worker's own timestamps, which know nothing of ours. Printed beside the
+    # timing line on purpose: if these two disagree about the same run, the
+    # timing line is what is wrong.
+    wc = summary.get("worker_clock") or {}
+    if wc.get("ms_per_frame"):
+        print(f"worker clock: {wc['frames']} frames in {wc['span_s']}s = "
+              f"{wc['ms_per_frame']} ms/frame "
+              f"({1000 / wc['ms_per_frame']:.0f} fps, from the worker's own "
+              f"timestamps)")
+    if wc.get("gap_s", 0) > 1.0 and wc.get("gap_between"):
+        a, b = wc["gap_between"]
+        print(f"worker stall: {wc['gap_s']:.1f}s between {a!r} and {b!r}")
+    worst = wc.get("worst_ms_per_frame")
+    if worst and wc.get("ms_per_frame") and worst > 2 * wc["ms_per_frame"]:
+        print(f"worker stall: its slowest stretch between frame reports ran at "
+              f"{worst:.0f} ms/frame against {wc['ms_per_frame']:.1f} overall")
     # Only the portal can split its own grab, and the split decides everything:
     # a slow grab is the compositor if the wait dominates, and us if the read
     # does.

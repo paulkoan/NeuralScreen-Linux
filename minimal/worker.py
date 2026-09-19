@@ -15,6 +15,7 @@ named-mapping namespace is not POSIX shm — the pipe is the path that works.
 from __future__ import annotations
 
 import os
+import re
 import struct
 import subprocess
 import threading
@@ -135,6 +136,85 @@ def stream_header(work_w: int, work_h: int, warmup: int, params: dict,
         params["local_structure"], params["skin_structure"],
         full_w, full_h,
     )
+
+
+def worker_timeline(lines: list[str]) -> dict:
+    """The worker's own story, from the stamped lines it prints.
+
+    The host stamps every line it writes — "10:00:16.572  [host] adapter 0: ..." —
+    including one per frame it delivers ("[video] delivered frame 30 (live)"). So
+    the gap between the first and last of those is the worker's frame rate on the
+    worker's own clock, with none of our timing in it, and the biggest gap
+    anywhere in the list is a stall named by the two lines either side of it.
+
+    That distinction matters: a 30-frame run that takes 12.5s while the 60 and 90
+    frame runs take under 2s looks like a slow worker and is not one. In the
+    logs on this box it has been an 11.1s stall inside NGX init, a 4.5s stall
+    between the NR init and the stream start, and a 10.9s stall in the middle of
+    frame delivery — all in the worker's process, none of them in the client.
+
+    One parser for both the harness (which reads one log file per run) and the
+    pipeline (which collects the same lines on stderr), because two would drift.
+    """
+    stamped: list[tuple[float, str]] = []
+
+    for raw in lines:
+        line = raw.strip()
+        head, sep, rest = line.partition("  ")
+        if not sep:
+            continue
+        with_ms, sep2, _rest2 = head.partition(".")
+        if not sep2 or len(with_ms) != 8 or with_ms[2] != ":" or with_ms[5] != ":":
+            continue
+        try:
+            ms = int((_rest2 or "0").strip()[:3] or 0)
+            h, mi, s = (int(v) for v in with_ms.split(":"))
+        except ValueError:
+            continue
+        stamped.append((h * 3600 + mi * 60 + s + ms / 1000.0, rest.strip()))
+
+    if not stamped:
+        return {}
+
+    delivered = [(t, txt) for t, txt in stamped if "delivered frame" in txt]
+
+    def frame_number(text: str) -> int:
+        digits = re.search(r"delivered frame (\d+)", text)
+        return int(digits.group(1)) if digits else 0
+
+    out: dict = {"lines": len(stamped)}
+    if len(delivered) >= 2:
+        (t0, s0), (t1, s1) = delivered[0], delivered[-1]
+        n0, n1 = frame_number(s0), frame_number(s1)
+        span = t1 - t0
+        out["frames"] = n1 - n0
+        out["span_s"] = round(span, 3)
+        if n1 > n0 and span > 0:
+            out["ms_per_frame"] = round(1000.0 * span / (n1 - n0), 2)
+
+    # The biggest gap that is NOT simply the host's reporting interval. Two
+    # consecutive "delivered frame" lines 30 frames apart are 30 frames of work,
+    # which is the rate above and not a stall — at 1440p that interval is over a
+    # second and flagging it said "GAP" on every run.
+    gap, between = 0.0, None
+    for (t0, s0), (t1, s1) in zip(stamped, stamped[1:]):
+        if "delivered frame" in s0 and "delivered frame" in s1:
+            continue
+        if t1 - t0 > gap:
+            gap, between = t1 - t0, (s0[:70], s1[:70])
+    out["gap_s"] = round(gap, 3)
+    out["gap_between"] = between
+
+    # The slowest stretch between two frame reports, which catches a stall DURING
+    # delivery that the startup gaps above cannot see.
+    worst = 0.0
+    for (t0, s0), (t1, s1) in zip(delivered, delivered[1:]):
+        n = frame_number(s1) - frame_number(s0)
+        if n > 0 and (t1 - t0) / n > worst:
+            worst = (t1 - t0) / n
+    if worst:
+        out["worst_ms_per_frame"] = round(1000.0 * worst, 2)
+    return out
 
 
 class Worker:
