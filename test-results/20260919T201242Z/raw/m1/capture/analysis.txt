@@ -1,0 +1,8 @@
+size              2560x1440
+mean abs diff     2.4384  (0 = byte-identical)
+p99 abs diff      15.00
+PSNR              35.82666182894225
+before is blank   False
+after is blank    False
+after == before   False
+VERDICT the pass changed the frame (mean abs diff 2.4384/255)
