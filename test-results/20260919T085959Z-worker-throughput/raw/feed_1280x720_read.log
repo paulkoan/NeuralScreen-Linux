@@ -1,0 +1,20 @@
+  size: 1280x720   bypass: False   results: read like the client
+  bytes per frame across the pipe: 11.1 MB (8/pixel in, 4/pixel back)
+  pipe rate on this box: 4771 MB/s  ->  floor 2.3 ms/frame  (431.4 fps)
+
+  warm-up pass (its time is the cold start and is not measured):
+    5 frames:   1.530s   (worker exit 0)
+    30 frames:  21.232s   (worker exit 0)
+    60 frames:   2.062s   (worker exit 0)
+    90 frames:   2.380s   (worker exit 0)
+
+  fit over 3 points: -314.21 ms/frame  =  nan fps   (startup 27.41s, R^2 0.7374)
+      30 frames: actual  21.232s  fit says  17.985s  off by +3.248s
+      60 frames: actual   2.062s  fit says   8.558s  off by -6.496s
+      90 frames: actual   2.380s  fit says  -0.868s  off by +3.248s
+  the bytes alone, at this box's pipe rate: 2.3 ms/frame
+  this is -135.55x that
+
+  RESULT: NO USABLE FIT (R^2 0.737). The points do not lie on a line, so the
+  slope is not a per-frame cost — the startup is not constant, or something else
+  changed between runs. Nothing here should be quoted; re-run it.
