@@ -1,0 +1,26 @@
+  size: 1280x720   bypass: False   results: discarded
+  bytes per frame across the pipe: 11.1 MB (8/pixel in, 4/pixel back)
+  pipe rate on this box: 5476 MB/s  ->  floor 2.0 ms/frame  (495.2 fps)
+
+  warm-up pass (its time is the cold start and is not measured):
+    5 frames:   2.386s   (worker exit 0)
+    30 frames:   1.970s   (worker exit 0)
+      worker's own log: 29 frames in 0.232s = 8.0 ms/frame
+      our clock 1.970s minus the worker's frame window 0.232s = 1.738s of startup and teardown
+    60 frames:   2.131s   (worker exit 0)
+      worker's own log: 59 frames in 0.578s = 9.8 ms/frame
+      our clock 2.131s minus the worker's frame window 0.578s = 1.553s of startup and teardown
+    90 frames:   8.599s   (worker exit 0)
+      worker's own log: 89 frames in 2.024s = 22.7 ms/frame; GAP 4.5s between '[pure] direct DLSSNR Init_Ext -> 0x00000001 (Success)' and '[video] stream 1280x720, LIVE (unbounded), warmup=2'
+      our clock 8.599s minus the worker's frame window 2.024s = 6.575s of startup and teardown
+
+  fit over 3 points: 110.49 ms/frame  =  9.1 fps   (startup -2.40s, R^2 0.7682)
+      30 frames: actual   1.970s  fit says   0.919s  off by +1.051s
+      60 frames: actual   2.131s  fit says   4.233s  off by -2.102s
+      90 frames: actual   8.599s  fit says   7.548s  off by +1.051s
+  the bytes alone, at this box's pipe rate: 2.0 ms/frame
+  this is 54.71x that
+
+  RESULT: NO USABLE FIT (R^2 0.768). The points do not lie on a line, so the
+  slope is not a per-frame cost — the startup is not constant, or something else
+  changed between runs. Nothing here should be quoted; re-run it.

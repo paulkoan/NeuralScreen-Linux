@@ -1,0 +1,26 @@
+  size: 1280x720   bypass: False   results: read like the client
+  bytes per frame across the pipe: 11.1 MB (8/pixel in, 4/pixel back)
+  pipe rate on this box: 3652 MB/s  ->  floor 3.0 ms/frame  (330.2 fps)
+
+  warm-up pass (its time is the cold start and is not measured):
+    5 frames:  10.977s   (worker exit 0)
+    30 frames:   1.969s   (worker exit 0)
+      worker's own log: 29 frames in 0.346s = 11.9 ms/frame
+      our clock 1.969s minus the worker's frame window 0.346s = 1.623s of startup and teardown
+    60 frames:  13.396s   (worker exit 0)
+      worker's own log: 59 frames in 0.808s = 13.7 ms/frame; GAP 11.1s between '[pure] standalone D3D12 device ready; no swapchain or carrier modules' and '[host] NVSDK_NGX_D3D12_Init -> 0x00000001 (Success)'
+      our clock 13.396s minus the worker's frame window 0.808s = 12.588s of startup and teardown
+    90 frames:   2.687s   (worker exit 0)
+      worker's own log: 89 frames in 1.095s = 12.3 ms/frame
+      our clock 2.687s minus the worker's frame window 1.095s = 1.592s of startup and teardown
+
+  fit over 3 points: 11.97 ms/frame  =  83.5 fps   (startup 5.30s, R^2 0.0031)
+      30 frames: actual   1.969s  fit says   5.658s  off by -3.689s
+      60 frames: actual  13.396s  fit says   6.017s  off by +7.379s
+      90 frames: actual   2.687s  fit says   6.377s  off by -3.689s
+  the bytes alone, at this box's pipe rate: 3.0 ms/frame
+  this is 3.95x that
+
+  RESULT: NO USABLE FIT (R^2 0.003). The points do not lie on a line, so the
+  slope is not a per-frame cost — the startup is not constant, or something else
+  changed between runs. Nothing here should be quoted; re-run it.
