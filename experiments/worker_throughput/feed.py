@@ -30,8 +30,10 @@ Three things this had to learn the hard way:
 from __future__ import annotations
 
 import argparse
+import queue
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -44,7 +46,7 @@ if str(REPO) not in sys.path:
 from minimal.loop import DEFAULT_PARAMS  # noqa: E402
 from minimal.worker import (default_launcher, stream_header, work_size,  # noqa: E402
                             worker_env)
-from protocol import send_frame  # noqa: E402
+from protocol import WorkerReader, send_frame  # noqa: E402
 
 NATIVE = REPO / "native"
 
@@ -86,17 +88,56 @@ def pipe_rate_mbs(mb: int = 200) -> float:
     return mb / elapsed if elapsed > 0 else float("nan")
 
 
-def run_once(frames: int, w: int, h: int, bypass: bool, log: Path):
+def run_once(frames: int, w: int, h: int, bypass: bool, log: Path,
+             read_results: bool = False):
+    """Feed `frames` frames and return (elapsed seconds, worker exit code).
+
+    read_results is the difference between this harness and the real client. By
+    default the worker's stdout goes to /dev/null, so its results are taken as
+    fast as the kernel can take them and the worker never waits to be heard. The
+    pipeline instead reads every result in a Python thread (the protocol's
+    WorkerReader), which is what may or may not pace the worker — the pipeline's
+    `send` is ~45ms a frame while this harness says the same worker does 23.5ms
+    at 1440p, and reading the results is the one thing the pipeline does per
+    frame that the harness does not.
+    """
     ww, wh = work_size(w, h, 1.0)
+    reader = None
+    stop = threading.Event()
+    drainer = None
+
+    def discard_results(proc):
+        """Take every result the way the pipeline does, then drop it.
+
+        The pipeline's own reader, on the pipeline's own thread, using its public
+        API in index order — the worker answers every frame in order, so
+        recv(0), recv(1), ... is exactly the sequence the pipeline consumes. Only
+        the display is skipped.
+        """
+        nonlocal reader
+        reader = WorkerReader(proc, w, h, None)
+        i = 0
+        while not stop.is_set():
+            try:
+                reader.recv(i, 5.0)
+            except Exception:
+                return
+            i += 1
+
     with open(log, "wb") as errlog:
         proc = subprocess.Popen(
             default_launcher(),
             cwd=str(NATIVE),
             stdin=subprocess.PIPE,
-            stdout=subprocess.DEVNULL,   # nobody is reading results: that is the point
+            stdout=subprocess.PIPE if read_results else subprocess.DEVNULL,
             stderr=errlog,
             env=worker_env(),
         )
+        if read_results:
+            drainer = threading.Thread(target=discard_results, args=(proc,),
+                                       daemon=True, name="drain-results")
+            drainer.start()
+
         assert proc.stdin is not None
         proc.stdin.write(stream_header(ww, wh, WARMUP, DEFAULT_PARAMS))
         proc.stdin.flush()
@@ -115,6 +156,9 @@ def run_once(frames: int, w: int, h: int, bypass: bool, log: Path):
             proc.kill()
             rc = -9
         elapsed = time.monotonic() - started
+        stop.set()
+        if drainer is not None:
+            drainer.join(timeout=5)
     return elapsed, rc
 
 
@@ -142,6 +186,13 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--frames", type=int, default=25,
                     help="the short run; the others get 2x and 3x this")
     ap.add_argument("--bypass", action="store_true", help="NR off: skip NGX entirely")
+    ap.add_argument("--read-results", action="store_true",
+                    help="consume the worker's results the way the client does "
+                         "(its own reader, on a thread) instead of discarding "
+                         "them with /dev/null. The pipeline pays ~45ms a frame in "
+                         "`send` while this harness says the same worker does "
+                         "23.5ms at 1440p, and reading the results is the one "
+                         "thing the pipeline does that the harness does not")
     ap.add_argument("--log", default="/tmp/nsb_feed_worker.log")
     args = ap.parse_args(argv)
 
@@ -156,7 +207,8 @@ def main(argv: list[str]) -> int:
     n = args.frames
     runs = [n, 2 * n, 3 * n]
 
-    print(f"  size: {w}x{h}   bypass: {args.bypass}")
+    print(f"  size: {w}x{h}   bypass: {args.bypass}   "
+          f"results: {'read like the client' if args.read_results else 'discarded'}")
     print(f"  bytes per frame across the pipe: {bpf / 1e6:.1f} MB "
           f"(8/pixel in, 4/pixel back)", flush=True)
 
@@ -167,12 +219,12 @@ def main(argv: list[str]) -> int:
 
     print("\n  warm-up pass (its time is the cold start and is not measured):",
           flush=True)
-    t_warm, rc_warm = run_once(5, w, h, args.bypass, log)
+    t_warm, rc_warm = run_once(5, w, h, args.bypass, log, args.read_results)
     print(f"    5 frames: {t_warm:7.3f}s   (worker exit {rc_warm})", flush=True)
 
     points = []
     for frames in runs:
-        elapsed, rc = run_once(frames, w, h, args.bypass, log)
+        elapsed, rc = run_once(frames, w, h, args.bypass, log, args.read_results)
         print(f"  {frames:4d} frames: {elapsed:7.3f}s   (worker exit {rc})", flush=True)
         if rc != 0:
             print(f"    the worker exited {rc}; its stderr is {log}", file=sys.stderr)

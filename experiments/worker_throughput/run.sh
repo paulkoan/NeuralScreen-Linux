@@ -37,16 +37,20 @@ FRAMES=30
 
 run_size() {
     local size="$1" log="$2"
+    shift 2
     "$PY" "$HERE/feed.py" --size "$size" --frames "$FRAMES" \
-          --log "${log%.log}.worker.log" ${ARGS[@]+"${ARGS[@]}"} 2>&1 | tee "$log"
+          --log "${log%.log}.worker.log" "$@" ${ARGS[@]+"${ARGS[@]}"} 2>&1 | tee "$log"
     return "${PIPESTATUS[0]}"
 }
 
 if [ -z "$PUSH" ]; then
     status=0
     for size in "${SIZES[@]}"; do
-        echo "=== $size ==="
-        run_size "$size" "/tmp/nsb_feed_${size}.log" || status=1
+        echo "=== $size, results discarded ==="
+        run_size "$size" "/tmp/nsb_feed_${size}_discard.log" || status=1
+        echo
+        echo "=== $size, results read the way the client reads them ==="
+        run_size "$size" "/tmp/nsb_feed_${size}_read.log" --read-results || status=1
         echo
     done
     exit "$status"
@@ -58,8 +62,11 @@ mkdir -p "$OUT/raw"
 
 status=0
 for size in "${SIZES[@]}"; do
-    echo "=== $size ==="
-    run_size "$size" "$OUT/raw/feed_${size}.log" || status=1
+    echo "=== $size, results discarded ==="
+    run_size "$size" "$OUT/raw/feed_${size}_discard.log" || status=1
+    echo
+    echo "=== $size, results read the way the client reads them ==="
+    run_size "$size" "$OUT/raw/feed_${size}_read.log" --read-results || status=1
     echo
 done
 
@@ -92,14 +99,34 @@ VERDICT="$(grep -h -m1 'RESULT:' "$OUT"/raw/feed_*.log | head -1 | sed 's/^ *//'
     echo "bytes per pixel back."
     echo
     for size in "${SIZES[@]}"; do
-        echo "## ${size}"
-        echo
-        echo '```'
-        grep -E 'size:|bytes per frame|pipe rate|warm-up|frames:|fit over|off by|bytes alone|this is|RESULT' \
-            "$OUT/raw/feed_${size}.log" || true
-        echo '```'
-        echo
+        for pass in discard read; do
+            if [ "$pass" = "read" ]; then
+                label="results READ like the client reads them"
+            else
+                label="results DISCARDED (/dev/null)"
+            fi
+            echo "## ${size} — ${label}"
+            echo
+            echo '```'
+            grep -E 'size:|bytes per frame|pipe rate|warm-up|frames:|fit over|off by|bytes alone|this is|RESULT' \
+                "$OUT/raw/feed_${size}_${pass}.log" || true
+            echo '```'
+            echo
+        done
     done
+    echo "## The comparison this run exists for"
+    echo
+    echo "Each size runs twice: once with the worker's results discarded, once with"
+    echo "them read the way the pipeline reads them — its own \`WorkerReader\` on its"
+    echo "own thread, in index order, display skipped. Everything else is identical:"
+    echo "the same stream, the same sizes, the same three-point fit."
+    echo
+    echo "The pipeline reports ~45ms a frame in \`send\` while this harness — with"
+    echo "results discarded — says the same worker does 23.5ms at 1440p and under"
+    echo "4ms at 720p. Reading the results is the one thing the pipeline does per"
+    echo "frame that the harness did not do, so if the READ pass is far slower than"
+    echo "the DISCARD pass, the pacing is in our own result path."
+    echo
     echo "## How to read it"
     echo
     echo "- **At the pipe's rate** → the worker keeps up with its own pipe once"
