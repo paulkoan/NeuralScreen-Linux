@@ -205,6 +205,24 @@ def test_the_gap_finder_ignores_the_reporting_interval():
     assert "input stream closed" in tl["gap_between"][1], tl["gap_between"]
 
 
+def test_the_gap_is_plumbed_and_subtracted():
+    """A gap we injected is not the worker's cost.
+
+    The fit's slope necessarily contains the deliberate gap, so reporting it as
+    the worker's own number would answer the question backwards. The harness
+    prints the remainder, and the remainder is the point of the run.
+    """
+    src = (THROUGHPUT / "feed.py").read_text()
+    assert '"--gap-ms"' in src
+    assert "args.gap_ms" in src
+    assert "own = slope_ms - args.gap_ms" in src, (
+        "the slope contains the gap we injected; the remainder is what decides it")
+
+    runner = (THROUGHPUT / "run.sh").read_text()
+    assert "--gap-ms" in runner, "the gap test has to actually run"
+    assert "feed_gap${gap}.log" in runner
+
+
 def test_the_pipeline_reports_the_workers_own_clock():
     """Both clocks, one run.
 

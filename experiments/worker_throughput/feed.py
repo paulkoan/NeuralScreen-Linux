@@ -91,7 +91,7 @@ def pipe_rate_mbs(mb: int = 200) -> float:
 
 
 def run_once(frames: int, w: int, h: int, bypass: bool, log: Path,
-             read_results: bool = False):
+             read_results: bool = False, gap_ms: float = 0.0):
     """Feed `frames` frames and return (elapsed seconds, worker exit code).
 
     read_results is the difference between this harness and the real client. By
@@ -151,6 +151,14 @@ def run_once(frames: int, w: int, h: int, bypass: bool, log: Path,
         started = time.monotonic()
         for i in range(frames):
             send_frame(sink, i, rgba, motion, reset=(i == 0), pts=0, bypass=bypass)
+            # A deliberate gap between frames, standing in for the work a real
+            # client does between them. At zero the worker is never idle; with a
+            # gap it drops into its poll loop, and if the poll is what costs us
+            # its own clock absorbs the gap AND the wake latency. That is the
+            # hypothesis to test: our loop pays a fixed ~40ms a frame at every
+            # size, while this same binary fed without gaps does 119-203fps.
+            if gap_ms:
+                time.sleep(gap_ms / 1000.0)
         proc.stdin.close()
         try:
             rc = proc.wait(timeout=300)
@@ -201,6 +209,13 @@ def main(argv: list[str]) -> int:
                     help="WxH, the frame the worker is handed")
     ap.add_argument("--frames", type=int, default=25,
                     help="the short run; the others get 2x and 3x this")
+    ap.add_argument("--gap-ms", type=float, default=0.0,
+                    help="sleep this long after every frame, so the worker goes "
+                         "idle between them. The pipeline always leaves a gap "
+                         "(capture, display, its own bookkeeping) and pays a fixed "
+                         "~40ms a frame in send at every frame size, while this "
+                         "harness fed without gaps gets 119-203fps out of the same "
+                         "binary. This isolates whether the gap is the cost")
     ap.add_argument("--bypass", action="store_true", help="NR off: skip NGX entirely")
     ap.add_argument("--read-results", action="store_true",
                     help="consume the worker's results the way the client does "
@@ -262,6 +277,12 @@ def main(argv: list[str]) -> int:
 
     print("\n  warm-up pass (its time is the cold start and is not measured):",
           flush=True)
+    if args.gap_ms:
+        print(f"  every measured frame is followed by a deliberate "
+              f"{args.gap_ms:.0f}ms gap, so the worker goes idle between frames — "
+              f"which is what the pipeline leaves behind every frame. If the "
+              f"worker's own clock absorbs the gap and then some, the poll it drops "
+              f"into while idle is the fixed cost our loop pays.", flush=True)
     t_warm, rc_warm = run_once(5, w, h, args.bypass, per_run_log(5),
                                args.read_results)
     print(f"    5 frames: {t_warm:7.3f}s   (worker exit {rc_warm})", flush=True)
@@ -269,7 +290,7 @@ def main(argv: list[str]) -> int:
     points = []
     for frames in runs:
         elapsed, rc = run_once(frames, w, h, args.bypass, per_run_log(frames),
-                               args.read_results)
+                               args.read_results, args.gap_ms)
         print(f"  {frames:4d} frames: {elapsed:7.3f}s   (worker exit {rc})", flush=True)
         report_worker(frames, elapsed)
         if rc != 0:
@@ -282,6 +303,19 @@ def main(argv: list[str]) -> int:
     print()
     print(f"  fit over {len(points)} points: {slope_ms:.2f} ms/frame  =  "
           f"{fps:.1f} fps   (startup {startup_s:.2f}s, R^2 {r2:.4f})")
+    if args.gap_ms:
+        # The slope necessarily contains the gap we put there, so subtract it: the
+        # remainder is what the worker costs when it is idle between frames. If it
+        # is the poll it drops into, the remainder jumps toward 40ms; if the poll
+        # is harmless, the remainder stays near the no-gap number.
+        own = slope_ms - args.gap_ms
+        print(f"  of which {args.gap_ms:.0f}ms is the deliberate gap, so the "
+              f"worker's own share is {own:.2f} ms/frame "
+              f"({1000.0 / own:.1f} fps)  <- this is the number that decides it"
+              if own > 0 else
+              f"  the fit is negative once the {args.gap_ms:.0f}ms gap is "
+              f"subtracted ({own:.2f} ms/frame) — the gap absorbed everything, so "
+              f"the worker costs nothing extra when idle")
     for frames, elapsed in points:
         predicted = startup_s + (slope_ms / 1000.0) * frames
         print(f"    {frames:4d} frames: actual {elapsed:7.3f}s  fit says "

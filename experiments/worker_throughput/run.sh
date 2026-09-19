@@ -70,6 +70,41 @@ for size in "${SIZES[@]}"; do
     echo
 done
 
+# --- the gap test ------------------------------------------------------------
+#
+# THE ONE THING THIS HARNESS HAS NEVER DONE: leave a gap between frames.
+#
+# The pipeline now prints the worker's own clock next to its own timing line, and
+# the shape it shows is a fixed ~40ms a frame in `send` at EVERY frame size:
+# bypass128 is 38.4ms for a 128KB frame while the worker's own timestamps say it
+# delivered in 0.17ms, and `writev` — one scatter-gather write instead of four —
+# changed nothing (39.9 -> 40.8ms at 720p). So it is not our syscall shape.
+#
+# This harness pays none of it, because it feeds frames back to back and the
+# worker is never idle. The pipeline always leaves a gap: capture, display and
+# its own bookkeeping happen between frames. So the candidate is the gap itself —
+# the worker drops into its poll loop, and under Wine a Sleep(8) can cost a whole
+# timer tick.
+#
+# 720p, results read (as close to the client as this gets), gap 0 and gap 20ms.
+# The fit necessarily contains the gap we put there; feed.py prints the
+# remainder, and the remainder is what decides it. If the worker's own share
+# jumps toward 40ms when it is given a gap, the poll is our fixed cost and only a
+# host that blocks on its read removes it. If the remainder barely moves from the
+# no-gap number, the poll is harmless and the fixed cost is somewhere in the
+# client still.
+echo
+echo "=== the gap test: 720p, results read ==="
+for gap in 0 20; do
+    echo "--- ${gap}ms gap after every frame"
+    "$PY" "$HERE/feed.py" --size 1280x720 --frames 25 --read-results \
+        --gap-ms "$gap" --log "$OUT/raw/feed_gap${gap}.worker.log" \
+        > "$OUT/raw/feed_gap${gap}.log" 2>&1 || true
+    grep -E 'fit over|own share|worker.s own log|our clock|RESULT' \
+        "$OUT/raw/feed_gap${gap}.log" || true
+    echo
+done
+
 VERDICT="$(grep -h -m1 'RESULT:' "$OUT"/raw/feed_*.log | head -1 | sed 's/^ *//' || true)"
 [ -n "$VERDICT" ] || VERDICT="RESULT: none — the feeder did not reach a verdict"
 
@@ -114,6 +149,25 @@ VERDICT="$(grep -h -m1 'RESULT:' "$OUT"/raw/feed_*.log | head -1 | sed 's/^ *//'
             echo
         done
     done
+    echo "## The gap test"
+    echo
+    echo '```'
+    for gap in 0 20; do
+        echo "--- ${gap}ms gap after every frame"
+        grep -E 'fit over|own share|worker.s own log|RESULT' \
+            "$OUT/raw/feed_gap${gap}.log" || true
+        echo
+    done
+    echo '```'
+    echo
+    echo "One thing this harness has never done is leave a gap between frames, and"
+    echo "the pipeline always leaves one. Feed frames back to back and the worker is"
+    echo "never idle; give it 20ms and it drops into its poll loop between frames,"
+    echo "which under Wine can cost a whole timer tick per attempt. The fit contains"
+    echo "the gap we put there, so \`feed.py\` prints the remainder — the worker's own"
+    echo "share — and that remainder is what decides whether the fixed ~40ms our loop"
+    echo "pays is the worker's poll or something in us."
+    echo
     echo "## The comparison this run exists for"
     echo
     echo "Each size runs twice: once with the worker's results discarded, once with"
