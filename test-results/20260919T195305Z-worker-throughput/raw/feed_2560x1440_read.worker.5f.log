@@ -1,0 +1,84 @@
+[run_worker] Starting: wine /home/paul/dev/NeuralScreen-Linux/native/nvngx.dll --live
+0260:fixme:winediag:loader_init wine-staging 11.17 is a testing version containing experimental patches.
+0260:fixme:winediag:loader_init Please mention your exact version when filing bug reports on winehq.org.
+20:53:57.943  dlss5-feed-host64 (built Sep 11 2026 17:26:14)
+info:  Game: nvngx.dll
+info:  DXVK: v3.1.1
+info:  Build: x86_64 gcc 16.2.0
+info:  Vulkan: Found vkGetInstanceProcAddr in winevulkan.dll @ 0x6ffff79679c0
+info:  Extension providers:
+info:    Platform WSI
+info:    OpenVR
+info:  OpenVR: could not open registry key, status 2
+info:  OpenVR: Failed to locate module
+info:    OpenXR
+info:  Enabled instance extensions:
+info:    VK_KHR_get_surface_capabilities2
+info:    VK_KHR_surface
+info:    VK_KHR_surface_maintenance1
+info:    VK_KHR_win32_surface
+info:  Found device: NVIDIA GeForce RTX 4080 SUPER (NVIDIA 615.71.9)
+info:  Found device: Intel(R) UHD Graphics 770 (ADL-S GT1) (Intel open-source Mesa driver 26.2.2)
+info:  Found device: llvmpipe (LLVM 22.1.8, 256 bits) (llvmpipe 26.2.2)
+info:    Skipping: Software driver
+20:53:58.001  [host] adapter 0: NVIDIA GeForce RTX 4080 SUPER vendor=0x10DE
+20:53:58.001  [host] adapter 1: Intel(R) UHD Graphics 770 (ADL-S GT1) vendor=0x8086
+warn:  DxgiAdapter::QueryInterface: Unknown interface query
+warn:  f0db4c7f-fe5a-42a2-bd62-f2a6cf6fc83e
+445520.592:025c:0260:info:vkd3d-proton:vkd3d_instance_apply_application_workarounds: Program name: "nvngx.dll" (hash: 506733f4bfc12916)
+445520.592:025c:0260:info:vkd3d-proton:vkd3d_instance_deduce_config_flags_from_environment: shader_cache is used, global_pipeline_cache is enforced.
+445520.592:025c:0260:info:vkd3d-proton:vkd3d_config_flags_init_once: VKD3D_CONFIG=''.
+445520.596:025c:0260:info:vkd3d-proton:vkd3d_get_vk_version: vkd3d-proton - applicationVersion: 3.0.1.
+445520.596:025c:0260:info:vkd3d-proton:vkd3d_instance_init: vkd3d-proton - build: 3b10bd7a7ec6a73.
+445520.629:025c:0260:info:vkd3d-proton:vkd3d_physical_device_info_init_maint9: Implementation supports eliding QFOT for non-compressed optimal images.
+445520.629:025c:0260:info:vkd3d-proton:vkd3d_physical_device_info_init_maint10: Implementation can copy depth aspect on compute queue.
+445520.629:025c:0260:info:vkd3d-proton:vkd3d_physical_device_info_init_maint10: Implementation can copy depth aspect on transfer queue.
+445520.629:025c:0260:info:vkd3d-proton:vkd3d_physical_device_info_init_maint10: Implementation can copy stencil aspect on compute queue.
+445520.941:025c:0260:info:vkd3d-proton:vkd3d_memory_info_decide_hvv_usage: Topology: Device heaps are split. Assuming small BAR situation.
+445520.941:025c:0260:info:vkd3d-proton:vkd3d_memory_info_upload_hvv_memory_properties: Topology: HVV usage is not allowed, using HOST_COHERENT for UPLOAD.
+445520.941:025c:0260:info:vkd3d-proton:vkd3d_bindless_state_get_bindless_flags: Enabling fast paths for advanced ExecuteIndirect() graphics and compute (EXT_dgc).
+445520.941:025c:0260:info:vkd3d-proton:vkd3d_bindless_state_get_bindless_flags: Device supports VK_EXT_mutable_descriptor_type.
+445520.941:025c:0260:info:vkd3d-proton:vkd3d_bindless_state_add_binding: Device supports VK_EXT_descriptor_buffer!
+445520.941:025c:0260:info:vkd3d-proton:vkd3d_bindless_state_add_binding: Device supports VK_EXT_descriptor_buffer!
+445520.941:025c:0260:info:vkd3d-proton:vkd3d_bindless_state_add_binding: Device supports VK_EXT_descriptor_buffer!
+445520.943:025c:0260:info:vkd3d-proton:d3d12_device_caps_init_shader_model: Enabling support for SM 6.6.
+445520.943:025c:0260:info:vkd3d-proton:d3d12_device_caps_init_shader_model: Enabling support for SM 6.7.
+445520.943:025c:0260:info:vkd3d-proton:d3d12_device_caps_init_shader_model: Enabling support for SM 6.8.
+445520.943:025c:0260:fixme:vkd3d-proton:d3d12_device_caps_init_feature_options1: TotalLaneCount = 7680, may be inaccurate.
+445520.943:025c:0260:info:vkd3d-proton:d3d12_device_determine_ray_tracing_tier: DXR support enabled.
+445520.943:025c:0260:info:vkd3d-proton:d3d12_device_determine_ray_tracing_tier: DXR 1.1 support enabled.
+445520.943:025c:0260:info:vkd3d-proton:d3d12_device_caps_init_feature_level: DX Ultimate supported!
+445520.943:025c:0260:info:vkd3d-proton:vkd3d_pipeline_library_init_disk_cache: Remapping VKD3D_SHADER_CACHE to: vkd3d-proton.cache.
+445520.943:025c:0260:info:vkd3d-proton:vkd3d_pipeline_library_init_disk_cache: Attempting to load disk cache from: vkd3d-proton.cache.
+20:53:58.353  [host] DRED settings unavailable (settings1=0x80004002, settings=0x80004002)
+20:53:58.353  [pure] standalone D3D12 device ready; no swapchain or carrier modules
+445520.944:025c:0268:info:vkd3d-proton:vkd3d_pipeline_library_disk_thread_main: Performing async setup of stream archive ...
+445520.944:025c:0268:info:vkd3d-proton:vkd3d_pipeline_library_disk_cache_merge: No write cache exists. No need to merge any disk caches.
+445520.944:025c:0268:info:vkd3d-proton:vkd3d_pipeline_library_disk_cache_initial_setup: Merging pipeline libraries took 0.113 ms.
+445520.944:025c:0268:info:vkd3d-proton:vkd3d_pipeline_library_disk_cache_initial_setup: Mapping read-only cache took 0.245 ms.
+445520.944:025c:0268:info:vkd3d-proton:vkd3d_pipeline_library_disk_cache_initial_setup: Parsing stream archive took 0.006 ms.
+445520.944:025c:0268:info:vkd3d-proton:vkd3d_pipeline_library_disk_thread_main: Done performing async setup of stream archive.
+0260:fixme:d3dkmt:NtGdiDdDDIQueryAdapterInfo type 48 not handled.
+0260:fixme:d3dkmt:NtGdiDdDDIQueryAdapterInfo type 48 not handled.
+0260:fixme:cryptasn:CryptDecodeObjectEx Unsupported decoder for lpszStructType 1.3.6.1.4.1.311.2.1.4
+0260:fixme:cryptasn:CryptDecodeObjectEx Unsupported decoder for lpszStructType 1.3.6.1.4.1.311.2.1.4
+err:   readMonitorEdidFromKey: Failed to get EDID reg key size
+err:   DXGI: Failed to parse display metadata + colorimetry info, using blank.
+err:   readMonitorEdidFromKey: Failed to get EDID reg key size
+err:   DXGI: Failed to parse display metadata + colorimetry info, using blank.
+0260:fixme:d3dkmt:NtGdiDdDDIQueryAdapterInfo type 48 not handled.
+0260:fixme:cryptasn:CryptDecodeObjectEx Unsupported decoder for lpszStructType 1.3.6.1.4.1.311.2.1.4
+0260:fixme:cryptasn:CryptDecodeObjectEx Unsupported decoder for lpszStructType 1.3.6.1.4.1.311.2.1.4
+20:53:58.548  [host] NVSDK_NGX_D3D12_Init -> 0x00000001 (Success)
+20:53:58.548  [arch] patch installed: 1 cards cached, architecture 0x190 (spoofed to the DLL's accepted value)
+20:53:58.585  [pure] direct DLSSNR Init_Ext -> 0x00000001 (Success)
+20:53:58.585  [video] stream 2560x1440, LIVE (unbounded), warmup=2
+20:53:58.967  [pure] direct feature 18 ready: 2560x1440 preset=0 result=0x00000001
+445521.582:025c:0260:fixme:vkd3d-proton:vkd3d_texture_view_desc_fixup: Remapping 2D to 2D_ARRAY. Needs Vulkan spec tightening to match D3D12 properly.
+20:53:59.008  [pure] direct feature 18 confirmed after 2 discarded warmup frames
+20:53:59.026  [video] delivered frame 1 (live)
+20:53:59.059  [video] delivered frame 2 (live)
+20:53:59.096  [video] delivered frame 3 (live)
+20:53:59.169  [live] input stream closed after 5 frames; 7 direct evaluations
+20:53:59.169  [video] feature released
+20:53:59.169  [video] NGX shutdown

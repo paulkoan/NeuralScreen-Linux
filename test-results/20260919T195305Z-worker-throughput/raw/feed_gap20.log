@@ -1,0 +1,28 @@
+  size: 1280x720   bypass: False   results: read like the client
+  bytes per frame across the pipe: 11.1 MB (8/pixel in, 4/pixel back)
+  pipe rate on this box: 4275 MB/s  ->  floor 2.6 ms/frame  (386.5 fps)
+
+  warm-up pass (its time is the cold start and is not measured):
+  every measured frame is followed by a deliberate 20ms gap, so the worker goes idle between frames — which is what the pipeline leaves behind every frame. If the worker's own clock absorbs the gap and then some, the poll it drops into while idle is the fixed cost our loop pays.
+    5 frames:   1.560s   (worker exit 0)
+    25 frames:   1.841s   (worker exit 0)
+      worker's own log: 2 frames in 0.037s = 18.5 ms/frame
+      our clock 1.841s minus the worker's frame window 0.037s = 1.804s of startup and teardown
+    50 frames:   5.521s   (worker exit 0)
+      worker's own log: 29 frames in 2.105s = 72.6 ms/frame; GAP 1.4s between '[pure] direct DLSSNR Init_Ext -> 0x00000001 (Success)' and '[video] stream 1280x720, LIVE (unbounded), warmup=2'
+      our clock 5.521s minus the worker's frame window 2.105s = 3.416s of startup and teardown
+    75 frames:   3.061s   (worker exit 0)
+      worker's own log: 59 frames in 1.328s = 22.5 ms/frame
+      our clock 3.061s minus the worker's frame window 1.328s = 1.733s of startup and teardown
+
+  fit over 3 points: 24.40 ms/frame  =  41.0 fps   (startup 2.25s, R^2 0.1059)
+  of which 20ms is the deliberate gap, so the worker's own share is 4.40 ms/frame (227.1 fps)  <- this is the number that decides it
+      25 frames: actual   1.841s  fit says   2.864s  off by -1.023s
+      50 frames: actual   5.521s  fit says   3.474s  off by +2.046s
+      75 frames: actual   3.061s  fit says   4.084s  off by -1.023s
+  the bytes alone, at this box's pipe rate: 2.6 ms/frame
+  this is 9.43x that
+
+  RESULT: NO USABLE FIT (R^2 0.106). The points do not lie on a line, so the
+  slope is not a per-frame cost — the startup is not constant, or something else
+  changed between runs. Nothing here should be quoted; re-run it.

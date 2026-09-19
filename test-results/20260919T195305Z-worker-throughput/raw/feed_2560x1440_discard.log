@@ -1,0 +1,26 @@
+  size: 2560x1440   bypass: False   results: discarded
+  bytes per frame across the pipe: 44.2 MB (8/pixel in, 4/pixel back)
+  pipe rate on this box: 6066 MB/s  ->  floor 7.3 ms/frame  (137.1 fps)
+
+  warm-up pass (its time is the cold start and is not measured):
+    5 frames:   1.868s   (worker exit 0)
+    30 frames:   2.188s   (worker exit 0)
+      worker's own log: 29 frames in 0.760s = 26.2 ms/frame
+      our clock 2.188s minus the worker's frame window 0.760s = 1.428s of startup and teardown
+    60 frames:   2.972s   (worker exit 0)
+      worker's own log: 59 frames in 1.585s = 26.9 ms/frame
+      our clock 2.972s minus the worker's frame window 1.585s = 1.387s of startup and teardown
+    90 frames:  27.389s   (worker exit 0)
+      worker's own log: 89 frames in 25.992s = 292.0 ms/frame
+      our clock 27.389s minus the worker's frame window 25.992s = 1.397s of startup and teardown
+
+  fit over 3 points: 420.02 ms/frame  =  2.4 fps   (startup -14.35s, R^2 0.7733)
+      30 frames: actual   2.188s  fit says  -1.751s  off by +3.939s
+      60 frames: actual   2.972s  fit says  10.849s  off by -7.878s
+      90 frames: actual  27.389s  fit says  23.450s  off by +3.939s
+  the bytes alone, at this box's pipe rate: 7.3 ms/frame
+  this is 57.60x that
+
+  RESULT: NO USABLE FIT (R^2 0.773). The points do not lie on a line, so the
+  slope is not a per-frame cost — the startup is not constant, or something else
+  changed between runs. Nothing here should be quoted; re-run it.
