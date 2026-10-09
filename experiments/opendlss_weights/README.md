@@ -60,25 +60,41 @@ characters like `block10.layer0.layerh`.
   begins — for all 152 consecutive pairs, not a sample.
 - The payload total, 140.84 MiB, against the documented 141 MiB.
 
-**Not verified, and it matters:**
+**Resolved since the first pass.** The field split is **40 + 16**, and it is not a
+choice: each record's u64 at +0 and its u64 at +8 both equal its payload length plus
+40, in **153 of 153** records. `--fields` still takes any of the four, because all four
+fit every offset; the data prefers one, and the tool now defaults to it.
 
-- **The payload's start is ambiguous within 24 bytes.** The 56 bytes of per-record
-  metadata can be split four ways (32+24, 40+16, 48+8, 56+0) and every one of them
-  reproduces all 153 next-record offsets, because they all sum to 56 and the payload's
-  *end* is what is pinned. The declared length is unambiguous; which 21,696 bytes of a
-  21,752-byte region are the payload is not. `extract.py` reports this rather than
-  picking one silently.
-- Whether the payload's internal ordering is the fused layout OpenDLSS-NR documents
-  (`docs/weights.md`: expand, contract, padding, ffnCosSkip, padding, qkv, relative,
-  scale, projection, attnCosSkip, then 16 bytes or a transition matrix) and the MMA
-  fragment packing `packedWeightIndex(k, n, N)`.
+**The lengths are OpenDLSS-NR's own layout.** `docs/weights.md` gives a record's byte
+length as a sum of shapes and says reproducing every `byteLength` exactly "is the check
+that the layout is right". Against our 153 lengths that check passes with **delta 0 for
+every block**, variants included:
 
-Both open questions are the same job: compute the documented layout's byte length for a
-known block and compare it against the length this tool reads. Block 0 is the useful
-case — 32 channels, dense, no experts, and OpenDLSS-NR documents its variant separately
-(`preFusedLayout`, an extra `16 -> 32` f16 adapter). A length match there fixes the
-field split *and* confirms the internal order in one step. The numbers to check against
-are 21,696 (block 0), 20,672 (block 1), 197,184 (blocks 10-13 and 9) and 69,936 (block 8).
+- **block 0** — `preFusedLayout`: base + the `16 -> 32` f16 adapter. Predicted 20,672 +
+  16x32x2 = **21,696**, measured 21,696.
+- **blocks 1, 2, 3** — base, 32 channels: 20,672. **4** — `2C -> C` upsample: 22,720.
+- **5-7** — base, 64 channels: 61,760. **8** — transition: 69,936.
+- **9-13** — base, 128 channels: 197,184. **14** — transition: 229,936.
+- **15-21** — base, 256 channels: 689,232. **22** — transition: 820,288.
+- **23-30** — four records: 524,288 / 263,168 / 917,568 / 263,168, and block 30's
+  layer4 is the `512 -> 1024` matrix at 524,304.
+- **31-38** — five records, the ViT: 4,194,320 / 4,196,352 / 3,145,856 / 2 / 1,050,624.
+- **39 layer0** — the `1024 -> 512` matrix plus its skip scale: 525,312.
+- **48, 56, 62, 66** — the decoder-stage-first blocks. Each measures 2C² + 2C − 32 over
+  base for C ≥ 64 (48: 820,784; 56: 230,176; 62: 70,048) — exactly the `2C -> C` matrix
+  plus the second skip scale, less two 16-byte pads. At C = 32 (block 66, 22,784) the
+  same reading is 32 bytes short, which is not explained.
+
+**Still open:**
+
+- The documented 16-byte zero pads are not zero in these native bytes, at any of the
+  three predicted offsets. So the native form is the MMA *fragment* packing the host
+  walks, not the plain-matrix form it writes — which is what `weights.md` describes —
+  but a byte-identical round trip is not shown.
+- The fourth u64 of each record is not crc32, adler32, or a plain sum of its payload.
+- **block 70** measures 21,808, which is 1,136 over base, where the two blend scales
+  and the `32 -> 4` f16 head account for 384. It also carries a separate 2-byte
+  `blend_scale` record. Unexplained.
 
 ## Running it
 

@@ -74,6 +74,26 @@ def test_a_name_is_ended_by_its_length_not_by_a_letter():
     assert not any(n.endswith("h") for n in names)
 
 
+def test_each_record_states_where_its_payload_starts():
+    """The four field splits all fit every offset, so offsets cannot choose.
+
+    The records can. The u64 at +0 and the u64 at +8 both equal the payload length
+    plus 40 — in all 153 of the real ones — which is what makes 40 bytes of fields
+    the reading rather than the best fit. This is the test that would catch a
+    container whose fields meant something else.
+    """
+    blob = build(SAMPLES)
+    recs = extract.parse_records(blob, 40)
+    assert recs
+    for r in recs:
+        a, b, c = struct.unpack_from("<QQQ", blob, r["payload_offset"] - 40)
+        assert a == b == c + 40 == r["byteLength"] + 40, r["name"]
+
+    src = (ROOT / "experiments" / "opendlss_weights" / "extract.py").read_text()
+    assert '"--fields", type=int, default=40' in src, (
+        "the default has to be the split the records state, not one of the four")
+
+
 def test_every_split_fits_and_that_is_the_ambiguity():
     """All four field splits reproduce every offset, because they all total 56 and
     it is the payload's END that the next name pins."""

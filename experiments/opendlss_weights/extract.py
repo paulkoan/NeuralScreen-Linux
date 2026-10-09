@@ -16,13 +16,30 @@ So the weights are not to be reverse-engineered out of a binary: they are indexe
 by name, with their lengths stated. What this tool does is walk that table and
 print or emit it.
 
-WHAT IS NOT SETTLED, and why this tool says so out loud: a record's 56 bytes of
-per-record metadata (32 header + 24 trailer, or 40 + 16, or 48 + 8, or 56 + 0 —
-all four fit every one of the 153 records) leaves the payload's exact start
-ambiguous within a 24-byte window. The payload *end* is pinned. Resolving it needs
-the documented fused-layout arithmetic in OpenDLSS-NR's `docs/weights.md` checked
-against these lengths, which is the next step, so `--check` reports the ambiguity
-rather than hiding it.
+WHAT WAS OPEN, AND WHAT SETTLED IT. A record's 56 bytes of metadata can split four
+ways (32+24, 40+16, 48+8, 56+0) and all four reproduce every one of the 152
+consecutive next-record offsets, so the payload's END is pinned and its start is
+not — the four candidates sit 8 bytes apart. The records settle it themselves:
+the u64 at +0 and the u64 at +8 both equal the payload length plus 40, in **153 of
+153 records**, so 40 bytes of fields precede the payload and 16 bytes of trailer
+follow it. `--fields 40` is therefore the reading the data states, not the best fit.
+
+And the payload sizes are OpenDLSS-NR's own layout. Its docs/weights.md gives the
+byte length of a record as a sum of shapes and says "the sum reproduces every
+tensor's byteLength exactly, which is the check that the layout is right". Against
+our 153 declared lengths that check passes with a delta of 0 for every block,
+including every variant it documents: block 0 = base + 1,024 (its `16 -> 32` f16
+adapter, 16x32x2 bytes), block 4 = the `2C -> C` upsample variant, blocks 8, 14 and
+22 = transition matrices, the 512-channel and ViT blocks = their four- and
+five-record splits, block 30 layer4 = the `512 -> 1024` matrix, block 39 layer0 =
+the `1024 -> 512` matrix plus its skip scale.
+
+What is still not verified: the 16-byte zero pads the layout documents are not zero
+in these native bytes at 3 of 3 predicted offsets, so the native form is the MMA
+fragment packing its host *walks* rather than the plain-matrix form it *writes* —
+consistent with weights.md, which describes the host walking fragments and writing
+matrices, but it means a byte-identical round trip is not yet shown. The fourth
+u64 of each record is not crc32, adler32 or a plain sum of the payload.
 """
 from __future__ import annotations
 
@@ -175,7 +192,7 @@ def check(blob: bytes) -> dict:
         ok = all(
             records_agree(blob, recs, f, i) for i in range(len(recs) - 1))
         fits[f] = (len(recs), ok)
-    recs = parse_records(blob, 32)
+    recs = parse_records(blob, 40)          # the split the records themselves state
     total = sum(r["byteLength"] for r in recs)
     return {
         "blob_bytes": len(blob),
@@ -257,10 +274,10 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="extract.py", description=(__doc__ or "").split("\n")[0])
     ap.add_argument("--dll", default="/opt/data/neuralscreen-linux/native/nvngx_dlssnr.dll")
     ap.add_argument("--out", help="write a model directory here (manifest.json + model/)")
-    ap.add_argument("--fields", type=int, default=32, choices=FIELD_SPLITS,
-                    help="bytes of per-record fields before the payload. The payload "
-                         "END is pinned for every value; the START is not, which is "
-                         "the ambiguity --check reports")
+    ap.add_argument("--fields", type=int, default=40, choices=FIELD_SPLITS,
+                    help="bytes of per-record fields before the payload. 40 is the "
+                         "reading the records state: the u64 at +0 and the u64 at +8 "
+                         "both equal the payload length plus 40, in all 153 of them")
     ap.add_argument("--stages", type=int, default=11)
     args = ap.parse_args(argv)
 
