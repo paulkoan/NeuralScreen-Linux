@@ -47,6 +47,34 @@ SAMPLES = [("block0.layer0.layer", b"\x1f\x17\x20\x81" * 64),
            ("block70.layer0.blend_scale", b"\x80" * 32)]
 
 
+def test_the_dll_default_comes_from_the_script_not_a_machine():
+    """It shipped with one box's absolute path, so it failed on the box that has the
+    GPU — the only machine where it was ever going to be run.
+
+    The path has to be derived from where this file is, so the test compares it to
+    the derived path rather than to any literal: a literal would pass here and fail
+    on any clone that is not this one.
+    """
+    derived = Path(extract.__file__).resolve().parents[2] / "native" / "nvngx_dlssnr.dll"
+    assert extract.DEFAULT_DLL == derived
+    assert extract.REPO == derived.parents[1]
+
+    # The constant is half of it: the parser has to actually default to it, or the
+    # fix lives only in a variable nobody reads.
+    src = (ROOT / "experiments" / "opendlss_weights" / "extract.py").read_text()
+    assert "default=str(DEFAULT_DLL)" in src
+
+
+def test_a_missing_dll_is_a_sentence_not_a_traceback(capsys):
+    """What the box saw was a FileNotFoundError and a stack trace, which says the
+    file is missing and nothing about why a clone would not have it."""
+    rc = extract.main(["--dll", "/definitely/not/here.dll"])
+    assert rc == 2, "a missing DLL is a usage error, not a crash"
+    err = capsys.readouterr().err
+    assert "no such file" in err
+    assert "gitignored" in err, "it has to say why a clone does not have the file"
+
+
 def test_records_are_found_with_their_declared_lengths():
     blob = build(SAMPLES)
     recs = extract.parse_records(blob, 40)

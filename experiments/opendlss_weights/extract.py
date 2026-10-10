@@ -52,6 +52,12 @@ import sys
 from pathlib import Path
 
 MAGIC = 0x08CDA732
+# The DLL is 159 MiB and NVIDIA's, so it is gitignored and lives in whatever clone
+# has it: native/nvngx_dlssnr.dll at this file's repository root. Resolved from
+# __file__ rather than written out, which is how this shipped with one machine's
+# absolute path and failed on the machine that actually has the GPU.
+REPO = Path(__file__).resolve().parents[2]
+DEFAULT_DLL = REPO / "native" / "nvngx_dlssnr.dll"
 RT_RCDATA = 10
 NAME_RE = re.compile(rb"block\d+\.layer\d+\.[A-Za-z0-9_]+")
 NAME_RE_STR = re.compile(r"block\d+\.layer\d+\.[A-Za-z0-9_]+")
@@ -272,7 +278,9 @@ def emit(blob: bytes, records: list[dict], fields: int, out: Path,
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="extract.py", description=(__doc__ or "").split("\n")[0])
-    ap.add_argument("--dll", default="/opt/data/neuralscreen-linux/native/nvngx_dlssnr.dll")
+    ap.add_argument("--dll", default=str(DEFAULT_DLL),
+                    help=f"the DLSS-NR runtime carrying the weights "
+                         f"(default: {DEFAULT_DLL})")
     ap.add_argument("--out", help="write a model directory here (manifest.json + model/)")
     ap.add_argument("--fields", type=int, default=40, choices=FIELD_SPLITS,
                     help="bytes of per-record fields before the payload. 40 is the "
@@ -281,7 +289,19 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--stages", type=int, default=11)
     args = ap.parse_args(argv)
 
-    data = Path(args.dll).read_bytes()
+    dll = Path(args.dll)
+    if not dll.is_file():
+        # A missing DLL is the common case on a fresh clone and it deserves a
+        # sentence, not a traceback: the file is not in git, so nothing else here
+        # tells you where it was supposed to come from.
+        print(f"no such file: {dll}\n"
+              f"native/nvngx_dlssnr.dll is gitignored (159 MiB, and NVIDIA's), so a "
+              f"clone does not have it. Download it from the release and put it at\n"
+              f"  {DEFAULT_DLL}\n"
+              f"or point --dll at wherever it is.", file=sys.stderr)
+        return 2
+
+    data = dll.read_bytes()
     off, size = find_weight_blob(data)
     blob = data[off:off + size]
     print(f"dll      : {args.dll}  ({len(data):,} bytes)")
