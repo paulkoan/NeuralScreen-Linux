@@ -39,6 +39,27 @@ def test_the_beta_define_reaches_volk():
         "cuda-kernel-launch globals are never defined")
 
 
+def test_the_script_fetches_the_pinned_deps_itself():
+    """The failure this was written for, on the real box:
+
+        cc1: fatal error: tools/volk/volk.c: No such file or directory
+
+    which names the missing file and not the reason. fetch_tools.ps1 does that job on
+    Windows, so a Linux build that assumes it has been run fails on a clean clone. The
+    script has to fetch both deps at the same pins and say so when it cannot.
+    """
+    text = SCRIPT.read_text()
+    assert "fetch_dep" in text, "it must fetch tools/ rather than depend on the docs"
+    assert "v1.4.363" in text and "vulkan-sdk-1.4.357.0" in text, (
+        "the tags must match fetch_tools.ps1, or the Linux build compiles against "
+        "different Vulkan headers than the Windows one")
+    assert "could not fetch" in text, "it must fail loudly, not reach the compiler"
+
+    fetch_at = text.index("fetch_dep zeux/volk")
+    compile_at = text.index("-c tools/volk/volk.c")
+    assert fetch_at < compile_at, "fetching has to happen before the compile that needs it"
+
+
 def test_the_shader_invocation_matches_upstreams():
     """Same flags as scripts/build_shaders.ps1, or the SPIR-V is not the same
     artifact the project tests against."""

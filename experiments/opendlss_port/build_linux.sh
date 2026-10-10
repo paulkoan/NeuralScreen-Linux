@@ -19,6 +19,24 @@ CXX="${CXX:-g++}"
 CC="${CC:-gcc}"
 GLSLANG="${GLSLANG:-$(command -v glslang || command -v glslangValidator || true)}"
 
+# --- toolchain ---------------------------------------------------------------
+# fetch_tools.ps1 downloads Vulkan-Headers and volk into tools/ (glslang too, as
+# a Windows release zip). On Linux they are two shallow clones at the same pinned
+# tags, and glslang is expected from the system. Fetching them here rather than
+# only documenting it is the difference between "go build it" and a cc1 error
+# about tools/volk/volk.c that says nothing about why it is missing.
+VULKAN_HEADERS_TAG="${VULKAN_HEADERS_TAG:-v1.4.363}"
+VOLK_TAG="${VOLK_TAG:-vulkan-sdk-1.4.357.0}"
+fetch_dep() {   # repo, tag, directory, file that proves it is there
+  [ -e "$3/$4" ] && return 0
+  echo "fetching $1 at $2 -> $3"
+  git clone --depth 1 --branch "$2" -q "https://github.com/$1.git" "$3" \
+    || { echo "could not fetch $1 (no network?): tools/ is required" >&2; exit 1; }
+  [ -e "$3/$4" ] || { echo "$1 fetched but $3/$4 is absent" >&2; exit 1; }
+}
+fetch_dep KhronosGroup/Vulkan-Headers "$VULKAN_HEADERS_TAG" tools/Vulkan-Headers include/vulkan/vulkan.h
+fetch_dep zeux/volk                   "$VOLK_TAG"            tools/volk            volk.c
+
 inc=(-I"$root/tools/Vulkan-Headers/include" -I"$root/tools/volk" -I"$root/src")
 flags=(-std=c++20 -O2 -DVK_ENABLE_BETA_EXTENSIONS -pthread)
 

@@ -39,8 +39,12 @@ it.
    PowerShell build compiles `volk.c` in the same `cl` invocation as everything else, so
    the define applies to it too. Separating the compile (which a Makefile or a script
    will do) drops it, and then `volk.h` never declares the
-   `VK_NV_cuda_kernel_launch` entry points: five undefined references at link. This was
-   the port's only non-obvious trap.
+   `VK_NV_cuda_kernel_launch` entry points: five undefined references at link.
+5. **`scripts/build_linux.sh` again — it has to fetch `tools/` itself.** `fetch_tools.ps1`
+   does that on Windows; the first version of this script assumed it had been done and
+   died with `cc1: fatal error: tools/volk/volk.c: No such file or directory`, which names
+   the file but not the reason. It now clones the same two pinned tags itself, and refuses
+   loudly if it cannot.
 
 Nothing in `src/` needed a behavioural change. The patch is `linux-port.patch`.
 
@@ -50,11 +54,13 @@ Nothing in `src/` needed a behavioural change. The patch is `linux-port.patch`.
 git clone https://github.com/maanHimself/OpenDLSS-NR
 cd OpenDLSS-NR
 git apply /path/to/linux-port.patch
-bash scripts/build_linux.sh                     # shaders, PTX, host
-GLSLANG=$(command -v glslang) bash scripts/build_linux.sh
+bash scripts/build_linux.sh                     # fetches tools/, then shaders + PTX + host
 ```
 
-`build_linux.sh` takes `GLSLANG=` if the distro's glslang is not on PATH. **The glslang
+Nothing else to fetch: the script clones `Vulkan-Headers v1.4.363` and
+`volk vulkan-sdk-1.4.357.0` into `tools/` — the same tags `fetch_tools.ps1` pins — if
+they are not already there. It takes `GLSLANG=` if the distro's glslang is not on PATH,
+`JOBS=` for the parallel compile, `CXX=`/`CC=` for a different toolchain. **The glslang
 version matters**: the shaders require `GL_EXT_float_e4m3` (9 uses) and
 `GL_NV_cooperative_matrix2` (4), plus `GL_KHR_cooperative_matrix` and
 `GL_EXT_shader_explicit_arithmetic_types`. 16.6.0 is what upstream pins; a distro
