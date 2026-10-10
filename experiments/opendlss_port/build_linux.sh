@@ -95,7 +95,31 @@ for p in 64 128 192 256; do
 done
 gen global_attention_stream_e4m3.py normalize build/ptx/global_normalize_e4m3.ptx
 gen global_attention_stream_e4m3.py attention build/ptx/global_attention_stream_e4m3.ptx 4
-echo "PTX -> build/ptx ($(ls build/ptx/*.ptx | wc -l) kernels)"
+# split-512 GEMMs through gemmv (96-row tiles, no partition): layer 0 (E4), contract
+# (residual + E4), projection (dual); plus the unsplit ViT shapes of high resolutions
+# (many token row groups): contract K4096 f5, qkv K1024 f8, projection K1024 f5
+for cfg in "512 4" "512 5" "512 13" "256 5" "4096 5" "1024 8" "1024 5"; do
+  set -- $cfg
+  gen gemmv_e4m3.py "$1" "$2" 1 "build/ptx/gemmv_e4m3_K$1_f$2_s1_m96.ptx" 4 6 0 0 0 96
+done
+# fused 32-channel block variants: E4 out; E4 + pool; pre + E4 + pool; upres + E4; post + head
+for f in 2 66 74 130 48; do
+  gen block32_e4m3.py "$f" "build/ptx/block32_e4m3_f$f.ptx"
+done
+
+# Every emitter invocation in build_shaders.ps1 has to be here. A short list is not a
+# build failure on its own: the host resolves kernels by name at run time, so a missing
+# one surfaces there as "cannot read PTX kernel ..." the first time that dispatch is
+# reached — a whole model in, on the GPU box, with nothing pointing back at this script.
+# 78 is what the ps1 emits; if the two drift, fix this script rather than the number.
+EXPECTED_PTX=78
+ptx_count=$(ls build/ptx/*.ptx 2>/dev/null | wc -l)
+[ "$ptx_count" -eq "$EXPECTED_PTX" ] || {
+  echo "PTX: built $ptx_count of $EXPECTED_PTX kernels. build_shaders.ps1 is the list;" >&2
+  echo "a missing kernel fails at run time with 'cannot read PTX kernel', not here." >&2
+  exit 1
+}
+echo "PTX -> build/ptx ($ptx_count kernels)"
 
 # --- host --------------------------------------------------------------------
 # VK_ENABLE_BETA_EXTENSIONS must reach volk.c as well as src/: volk.h gates the

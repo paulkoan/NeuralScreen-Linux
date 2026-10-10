@@ -16,7 +16,7 @@ Windows at all (`demo/crash_report.cpp`, and `find_vcvars.ps1`). It builds on Li
 |---|---|
 | glslang 16.6.0 | built from source for this test (`cmake -DENABLE_OPT=OFF`) |
 | shaders | **13/13 compile** to SPIR-V, `-V --target-env vulkan1.3` |
-| PTX kernels | **66 generated** by `scripts/ptx/*.py` (pure Python, portable as-is) |
+| PTX kernels | **78 generated** by `scripts/ptx/*.py` (pure Python, portable as-is) |
 | host | **compiles and links** — `src/*.cpp` + `volk.c`, gcc/g++ 14.2, `-std=c++20` |
 | artifact | `build/dlss5vk`, 600 KB |
 | running it | reaches `vkCreateInstance`, fails `-9` (VK_ERROR_INCOMPATIBLE_DRIVER) — **this box has no Vulkan driver**, which is the expected boundary |
@@ -24,7 +24,10 @@ Windows at all (`demo/crash_report.cpp`, and `find_vcvars.ps1`). It builds on Li
 So the entire build is portable, and the only thing that needs the GPU box is *running*
 it.
 
-## The four fixes, all of them MSVC-only assumptions
+## The fixes, in the order they were found
+
+The first four are all the same shape: something MSVC accepts and gcc does not.
+The last two are mine, and the sixth is the one that cost a round trip on the box.
 
 1. **`src/kernels.h` — `= Chain()` as a default argument.** `Chain` has default member
    initializers, so a default argument that constructs one is parsed while `Chain` is
@@ -45,6 +48,16 @@ it.
    died with `cc1: fatal error: tools/volk/volk.c: No such file or directory`, which names
    the file but not the reason. It now clones the same two pinned tags itself, and refuses
    loudly if it cannot.
+6. **`scripts/build_linux.sh` a third time — the PTX list stopped early.** The script's
+   emitter invocations are a copy of `build_shaders.ps1`, and it was copied from a partial
+   read of that file: the last two loops were missing, so **12 of 78 kernels were never
+   generated** — the five `block32_e4m3_f{2,66,74,130,48}` fused 32-channel blocks and the
+   seven `gemmv_e4m3_K*_s1_m96` split-512 GEMMs. The build reported success, because a
+   short list is not a build failure: the host resolves kernel files by name when a
+   dispatch is first reached, so it appeared on the GPU box as
+   `error: cannot read PTX kernel ./build/shaders/../ptx/block32_e4m3_f74.ptx`, with nothing
+   pointing back at the script. It now emits all 78 and **checks the count**, so the same
+   drift fails here instead.
 
 Nothing in `src/` needed a behavioural change. The patch is `linux-port.patch`.
 
@@ -56,6 +69,10 @@ cd OpenDLSS-NR
 git apply /path/to/linux-port.patch
 bash scripts/build_linux.sh                     # fetches tools/, then shaders + PTX + host
 ```
+
+It prints three counts, and all three matter: `shaders -> build/shaders (13 modules)`,
+`PTX -> build/ptx (78 kernels)`, `built .../build/dlss5vk`. A PTX count below 78 now stops
+the build (see fix 6) instead of surfacing later as `cannot read PTX kernel`.
 
 Nothing else to fetch: the script clones `Vulkan-Headers v1.4.363` and
 `volk vulkan-sdk-1.4.357.0` into `tools/` — the same tags `fetch_tools.ps1` pins — if
