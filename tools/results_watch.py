@@ -20,6 +20,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -50,17 +51,27 @@ def ids_on(branch: str) -> list[str]:
     return sorted(line.rsplit("/", 1)[-1] for line in listing.stdout.split() if line.strip())
 
 
-def load_state() -> set[str]:
+# How long a result keeps being repeated after it is first seen. The state advances when a
+# report is PRINTED, and printing is not delivery: the first real run was reported into a cron
+# output file and never reached the chat, and because the id was marked seen the next tick was
+# silent. Repeating for a while makes a lost delivery retry itself instead of vanishing.
+REPEAT_WINDOW_S = 600
+
+
+def load_state() -> tuple[set[str], dict[str, float]]:
     try:
-        return set(json.loads(STATE.read_text()))
+        raw = json.loads(STATE.read_text())
     except Exception:
-        return set()
+        return set(), {}
+    if isinstance(raw, list):                      # the older shape: ids only
+        return set(raw), {}
+    return set(raw.get("ids", [])), dict(raw.get("first_seen", {}))
 
 
-def save_state(seen: set[str]) -> None:
+def save_state(seen: set[str], first_seen: dict[str, float]) -> None:
     try:
         STATE.parent.mkdir(parents=True, exist_ok=True)
-        STATE.write_text(json.dumps(sorted(seen)))
+        STATE.write_text(json.dumps({"ids": sorted(seen), "first_seen": first_seen}))
     except OSError as error:
         print(f"[watch] could not write {STATE}: {error}", file=sys.stderr)
 
@@ -84,12 +95,17 @@ def summary(branch: str, run_id: str) -> str:
     if refused:
         lines.append(f"  REFUSED: {refused}")
     # The tail is where a timing run says what happened; the head is where a failure does.
-    interesting = [line for line in report.splitlines()
-                   if any(word in line for word in
-                          ("fps", "frame", "ms", "error", "Error", "FAIL", "assert", "timing",
-                           "spread", "frames:", "capture", "send", "recv", "display"))]
-    for line in interesting[-12:]:
-        lines.append(f"  | {line}")
+    # Short on purpose: this lands as a chat message. The history is the branch, and a long
+    # report is both harder to notice and worse at being noticed than a line saying what
+    # happened. One line per fact, and the numbers only when they are the point.
+    for line in report.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("timing:", "frames:")):
+            lines.append(f"  {stripped}")
+    failures = [line.strip() for line in report.splitlines()
+                if any(word in line for word in ("Traceback", "error:", "FAIL", "assert"))]
+    for line in failures[:3]:
+        lines.append(f"  ! {line[:120]}")
     return "\n".join(lines)
 
 
@@ -106,22 +122,26 @@ def main(argv: list[str] | None = None) -> int:
     if not fetch(args.branch):
         return 2
     present = ids_on(args.branch)
-    seen = set() if args.all else load_state()
-    new = [run_id for run_id in present if run_id not in seen]
+    seen, first_seen = (set(), {}) if args.all else load_state()
+    now = time.time()
+    new = [run_id for run_id in present
+           if run_id not in seen or now - first_seen.get(run_id, 0.0) < REPEAT_WINDOW_S]
+    for run_id in present:
+        first_seen.setdefault(run_id, now)
 
     if args.check:
         return 1 if new else 0
     if not new:
         # Silent by default: this is meant to run on a timer, and a job that says "nothing
-        # happened" every ten minutes is a job people stop reading.
+        # happened" every tick is a job people stop reading.
         if args.verbose:
             print(f"no new results on {args.branch} ({len(present)} on the branch)")
-        save_state(set(present))
+        save_state(set(present), first_seen)
         return 0
     for run_id in new:
         print(summary(args.branch, run_id))
         print()
-    save_state(set(present) | set(new))
+    save_state(set(present) | set(new), first_seen)
     return 0
 
 
