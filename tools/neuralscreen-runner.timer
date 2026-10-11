@@ -1,4 +1,4 @@
-# Start the runner a minute after the last pass finished, and once at login.
+# Start the runner a few seconds after the last pass finished, and once at logging in.
 #
 # OnUnitInactiveSec rather than OnUnitActiveSec: the unit is oneshot, so this measures from
 # the END of the previous run - a run that takes four minutes does not get a second pass
@@ -15,10 +15,18 @@
 [Unit]
 Description=Poll for NeuralScreen run requests
 
+# 15s rather than 60: a pass is a fetch and usually the word "nothing queued", and the
+# waiting is what a request feels as latency. There is no overlap risk to trade against it -
+# the unit is oneshot, and OnUnitInactiveSec measures from the END of the previous pass, so a
+# pass that takes 25 seconds (a slow fetch) simply delays the next one instead of stacking.
+#
+# It can go lower. 15s is chosen against GitHub's patience rather than the machine's: a pass
+# is a few KB over ssh, so ~5,800 connections a day at 15s is civil, and one fetch per second
+# would not be.
 [Timer]
-OnBootSec=2min
-OnUnitInactiveSec=60s
-AccuracySec=5s
+OnBootSec=30s
+OnUnitInactiveSec=15s
+AccuracySec=2s
 Persistent=false
 
 [Install]
