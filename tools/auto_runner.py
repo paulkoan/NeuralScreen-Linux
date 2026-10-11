@@ -24,6 +24,7 @@ What it does hold to:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -48,6 +49,20 @@ class RunnerError(Exception):
     systemd unit with a bare exit code sends whoever reads the journal looking in the wrong
     place, which is exactly what happened the first time this ran.
     """
+
+
+def fingerprint(path: Path) -> str:
+    """Which copy of a file is running, in twelve characters.
+
+    The first run inside the unit failed from a traceback that pointed at line 80 of a file
+    I had already replaced: the pull landed and the install step did not, and nothing said
+    so. A stamp makes "which code is running" answerable from the journal instead of
+    inferable from a line number.
+    """
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+    except OSError:
+        return "unreadable"
 
 
 def log(message: str) -> None:
@@ -294,6 +309,8 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"no policy at {policy_path}: install "
                          f"tools/runner_policy.example.toml as root first")
     policy = load_policy(policy_path)
+    log(f"runner {fingerprint(Path(__file__))} · policy {fingerprint(policy_path)} "
+        f"· entry points: {', '.join(sorted(policy['entries']))}")
 
     pause = policy.get("pause_file")
     if pause and Path(pause).exists():

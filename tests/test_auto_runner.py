@@ -308,3 +308,14 @@ def test_the_unit_allows_what_name_resolution_needs():
     assert "AF_NETLINK" in unit, "name resolution needs AF_NETLINK, or every fetch fails"
     assert "IPAddressAllow=localhost" in unit
     assert "GIT_TERMINAL_PROMPT=0" in unit, "a prompt under systemd can only hang"
+
+
+def test_the_journal_says_which_runner_and_policy_are_running(world: World):
+    """A stale install reads exactly like a broken remote, so it has to be visible."""
+    world.queue({"id": "r009", "entry": "ok"})
+    finished = world.run()
+    assert finished.returncode == 0, finished.stderr
+    stamps = [line for line in finished.stderr.splitlines() if line.startswith("[runner] runner ")]
+    assert stamps, finished.stderr
+    assert "policy " in stamps[0], stamps[0]
+    assert "entry points: boom, ok" in stamps[0], stamps[0]
