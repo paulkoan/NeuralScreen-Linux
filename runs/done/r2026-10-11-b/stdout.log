@@ -1,0 +1,10 @@
+source image (fixtures/youtube-1440p.png)  capture 2560x1440  ->  work 2560x1440 (work scale 1.00, NGX ceiling 2560x1440)
+params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+worker: /home/paul/dev/OpenDLSS-NR/build/dlss5vk serve --model /home/paul/dev/odl-model
+version: repo a3c205f (+2 uncommitted) · worker built from patch ea90414e2b00 at port 9d08f41 · in sync
+[main] shared memory agreed: 29.5 MB, the frame does not go through the pipe
+frame 0 is the worker's warm-up: the window stays black until its first answer lands
+frames: 60 done, 0 skipped, 5.99s (10.02 fps), worker exit 0
+timing: capture 2.1ms  send 2.2ms  recv 87.3ms  display 4.6ms   (total 96.2ms/frame, 10.4 fps)
+send spread: min 1.5  median 2.1  max 6.9 ms at frame 0 of 60   (one-off at frame 0 — the worker's warm-up, not a per-frame cost)
+recv spread: min 15.9  median 18.6  max 4066.6 ms at frame 0 of 60   (one-off at frame 0 — the worker's warm-up, not a per-frame cost)
