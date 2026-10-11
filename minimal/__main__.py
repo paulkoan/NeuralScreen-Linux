@@ -129,6 +129,10 @@ def build_parser() -> argparse.ArgumentParser:
                         "the pipe path: measured on the box, the worker goes "
                         "silent for 60s and never answers frame 0. Kept for the "
                         "wire format and the tests; see docs/M0-FINDINGS.md")
+    p.add_argument("--worker-log", action="store_true",
+                   help="echo the worker's stderr as it arrives — its warm-up and its "
+                        "per-frame timings — instead of only printing it when a run "
+                        "fails, which is why a slow first frame was invisible")
     p.add_argument("--headless", action="store_true",
                    help="run without presenting (for tests and CI)")
     p.add_argument("--save-before", metavar="PATH",
@@ -197,7 +201,8 @@ def main(argv: list[str] | None = None) -> int:
                         bypass=args.bypass,
                         send_ahead=args.send_ahead,
                         frame_timeout=args.frame_timeout,
-                        writev=args.writev)
+                        writev=args.writev,
+                        worker_log=args.worker_log)
     except (CaptureError, DisplayError) as exc:
         print(f"startup failed: {exc}", file=sys.stderr)
         return 2

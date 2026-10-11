@@ -79,7 +79,8 @@ class Pipeline:
                  worker_cwd: Path | None = None, capture=None, display=None,
                  work_scale: float = 1.0, motion_small: bool = False,
                  bypass: bool = False, send_ahead: int = 1,
-                 frame_timeout: float = 60.0, writev: bool = False):
+                 frame_timeout: float = 60.0, writev: bool = False,
+                 worker_log: bool = False):
         self.params = dict(params or DEFAULT_PARAMS)
         self.warmup = warmup
         self.headless = headless
@@ -136,7 +137,8 @@ class Pipeline:
             nr_small=self.nr_small,
             motion_small=self.motion_small,
             bypass=self.bypass,
-            writev=self.writev)
+            writev=self.writev,
+            echo_logs=worker_log)
 
         if display is not None:
             self.display = display
@@ -300,6 +302,16 @@ class Pipeline:
         # the thing being measured. Both loops below return a matched pair.
         pair_before = None
         last_after = None
+
+        if not self.bypass:
+            # The window is up before the worker has answered anything, and its first
+            # answer is behind whatever the worker does at startup — with the native
+            # worker, a model load and the JIT of 249 PTX kernels. A black window and a
+            # silent console for twenty seconds looks like a hang, and on the box it was
+            # reported as one. Here rather than in a loop, because both loops drive
+            # frames and only one of them would say it.
+            print("frame 0 is the worker's warm-up: the window stays black until its "
+                  "first answer lands", flush=True)
 
         try:
             if self.send_ahead > 1:

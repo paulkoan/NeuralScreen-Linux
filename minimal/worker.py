@@ -18,6 +18,7 @@ import os
 import re
 import struct
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -226,7 +227,8 @@ class Worker:
                  cwd: Path | None = None,
                  full_w: int = 0, full_h: int = 0,
                  nr_small: bool = False, motion_small: bool = False,
-                 bypass: bool = False, writev: bool = False):
+                 bypass: bool = False, writev: bool = False,
+                 echo_logs: bool = False):
         self.width, self.height = int(width), int(height)
         self.work_w, self.work_h = int(work_w), int(work_h)
         self.params = params
@@ -247,6 +249,13 @@ class Worker:
         # fixed ~45ms a frame in `send` at every frame size — measured — while
         # the worker's own timestamps say it delivers a 64KB frame in 0.21ms.
         self.writev = bool(writev)
+        # Echo the worker's stderr to ours as it arrives, instead of only keeping it
+        # for the error path. The worker is where the pass reports itself — the native
+        # one logs its warm-up and then a line per frame — and a run that buffers that
+        # until something fails cannot be watched while it works, which is exactly when
+        # the answer is wanted. Off by default: the per-frame lines are noise in a
+        # measurement run, and `--worker-log` is one flag away.
+        self.echo_logs = bool(echo_logs)
         self.warmup = int(warmup)
         self.cmd = cmd or default_launcher()
         self.cwd = cwd or NATIVE_DIR
@@ -299,6 +308,8 @@ class Worker:
                     break
                 line = raw.decode("utf-8", "replace").rstrip()
                 self.logs.append(line)
+                if self.echo_logs:
+                    print(f"[worker] {line}", file=sys.stderr, flush=True)
                 if len(self.logs) > 4000:
                     del self.logs[: len(self.logs) - 4000]
         except Exception:

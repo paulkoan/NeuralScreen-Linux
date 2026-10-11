@@ -505,3 +505,53 @@ def test_pipeline_quits_on_display_event(fake_capture, mock_worker_cmd):
                     worker_cwd=REPO)
     summary = pipe.run(frames=0)
     assert summary["frames_done"] == 2, "the quit event did not stop the loop"
+
+def test_the_workers_own_log_can_be_watched_live(fake_capture, fake_display,
+                                                 mock_worker_cmd, capsys):
+    """The worker is where the pass reports itself, so its log is not error output.
+
+    It was only ever printed when a run failed. On the box that cost a diagnosis: the
+    native worker announces its warm-up (a model load, then the JIT of 249 PTX kernels)
+    and a line per frame on stderr, and the client kept all of it to itself — a slow
+    first frame looked like a hang behind a window that had never been painted.
+    """
+    import time
+    watched = Pipeline(capture=fake_capture, display=fake_display, headless=True,
+                       worker_cmd=mock_worker_cmd, worker_cwd=REPO, worker_log=True)
+    watched.run(frames=1)
+
+    echo = ""
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        echo += capsys.readouterr().err
+        if "[worker] mock_worker: stream" in echo:
+            break
+        time.sleep(0.05)
+    assert "[worker] mock_worker: stream" in echo, (
+        f"the worker's startup line was not echoed: {echo!r}")
+
+    quiet = Pipeline(capture=fake_capture, display=fake_display, headless=True,
+                     worker_cmd=mock_worker_cmd, worker_cwd=REPO)
+    quiet.run(frames=1)
+    assert "[worker]" not in capsys.readouterr().err, (
+        "the echo has to be opt-in: a measurement run should not carry it")
+
+
+def test_a_real_run_says_the_first_frame_is_the_warm_up(fake_capture, fake_display,
+                                                       mock_worker_cmd, capsys):
+    """Say why the window is black and why nothing has been printed yet.
+
+    The first answer is behind the worker's startup, which for the native worker is a
+    model load plus 249 JIT compiles. Silence in that gap is indistinguishable from a
+    hang, and on the box it was read as one — so the console says so, once, and only
+    when the network is actually being run (a bypass run has nothing to warm up).
+    """
+    pipe = Pipeline(capture=fake_capture, display=fake_display, headless=True,
+                    worker_cmd=mock_worker_cmd, worker_cwd=REPO)
+    pipe.run(frames=1)
+    assert "frame 0 is the worker's warm-up" in capsys.readouterr().out
+
+    bypass = Pipeline(capture=fake_capture, display=fake_display, headless=True,
+                      worker_cmd=mock_worker_cmd, worker_cwd=REPO, bypass=True)
+    bypass.run(frames=1)
+    assert "warm-up" not in capsys.readouterr().out
