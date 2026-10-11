@@ -95,12 +95,17 @@ def summary(branch: str, run_id: str) -> str:
     if refused:
         lines.append(f"  REFUSED: {refused}")
     # The tail is where a timing run says what happened; the head is where a failure does.
-    interesting = [line for line in report.splitlines()
-                   if any(word in line for word in
-                          ("fps", "frame", "ms", "error", "Error", "FAIL", "assert", "timing",
-                           "spread", "frames:", "capture", "send", "recv", "display"))]
-    for line in interesting[-12:]:
-        lines.append(f"  | {line}")
+    # Short on purpose: this lands as a chat message. The history is the branch, and a long
+    # report is both harder to notice and worse at being noticed than a line saying what
+    # happened. One line per fact, and the numbers only when they are the point.
+    for line in report.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("timing:", "frames:")):
+            lines.append(f"  {stripped}")
+    failures = [line.strip() for line in report.splitlines()
+                if any(word in line for word in ("Traceback", "error:", "FAIL", "assert"))]
+    for line in failures[:3]:
+        lines.append(f"  ! {line[:120]}")
     return "\n".join(lines)
 
 
