@@ -6,7 +6,9 @@ changed, would cost someone an afternoon on the GPU box.
 """
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -154,3 +156,50 @@ def test_the_stamp_reaches_the_binary_and_the_mode_reports_it():
     assert "runStamp" in patch and 'strcmp(argv[1], "stamp")' in patch, (
         "a stamp nothing can ask for is not a check")
     assert "buildStamp()" in patch and "stamp.h" in patch
+
+
+def test_the_composite_is_a_shader_and_the_mode_uses_it():
+    """The frame's composite, on the GPU, and the plumbing that makes that reachable.
+
+    The host spelling of it was ~130ms a frame at 1440p (11M pixels of fma, floor and
+    half-truncation) and it forced the head's 60MB of f32 through the readback instead of
+    the finished 14.7MB image. Three things have to stay true for it to be reachable:
+    the shader is in the patch, the module list loads it, and the mode calls it.
+    """
+    patch = PATCH.read_text()
+    assert "diff --git a/shaders/composite_serve.comp" in patch, "the shader is gone"
+    assert '"gemm_reduce", "composite_serve"' in patch, (
+        "Kernels loads a fixed module list; a shader missing from it cannot be dispatched")
+    assert "compositeToRgba8" in patch
+    assert "kernels->compositeToRgba8(" in patch, "the mode does not call it"
+
+
+def test_the_composite_shader_compiles():
+    """It is a shader: a stray type is a build failure, and this is where that shows.
+
+    The first version of it shifted a `vec3` of uints — `vec3(toByte(..))` converts to
+    float — and glslang refused it. The build compiles shaders/*.comp, so the port's own
+    build catches it, but only on a machine that has glslang and the patch applied.
+    """
+    glslang = (os.environ.get("GLSLANG") or shutil.which("glslang")
+               or shutil.which("glslangValidator"))
+    if glslang is None:
+        pytest.skip("no glslang here to compile the shader with")
+    import re
+
+    patch = PATCH.read_text()
+    start = patch.index("diff --git a/shaders/composite_serve.comp")
+    body = patch[start:]
+    following = body.find("\ndiff --git ", 10)
+    diff = body if following < 0 else body[:following]
+    source = "".join(line[1:] + "\n" for line in diff.splitlines() if line.startswith("+")
+                     and not line.startswith("+++"))
+    assert source.startswith("#version 460"), source[:40]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "composite_serve.comp"
+        path.write_text(source)
+        result = subprocess.run([glslang, "-V", "--target-env", "vulkan1.3", str(path),
+                                 "-o", str(Path(tmp) / "out.spv")],
+                                capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr

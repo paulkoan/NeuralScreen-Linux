@@ -1,4 +1,4 @@
-From 3feeb1293e5267d130cdb77837b47b5c95d318b4 Mon Sep 17 00:00:00 2001
+From 689b71b907744bb2c3f2012832d60adc99ea55ad Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -50,16 +50,18 @@ Also lands: `--model`/`--shaders`/`--frames` for the mode, the warm record that 
 249-kernel JIT burst on a zero proxy where the log can say what the wait was, and a
 per-frame timing line on stderr.
 ---
- scripts/build_linux.sh | 161 +++++++++++++
- src/kernels.cpp        |   7 +
- src/kernels.h          |  10 +-
- src/main.cpp           |   6 +-
- src/nr_model.h         |   1 +
- src/serve.cpp          | 535 +++++++++++++++++++++++++++++++++++++++++
- src/vk_context.cpp     |  26 +-
- src/vk_context.h       |   3 +
- 8 files changed, 742 insertions(+), 7 deletions(-)
+ scripts/build_linux.sh       | 161 +++++++++++
+ shaders/composite_serve.comp |  69 +++++
+ src/kernels.cpp              |  26 +-
+ src/kernels.h                |  17 +-
+ src/main.cpp                 |   6 +-
+ src/nr_model.h               |   1 +
+ src/serve.cpp                | 513 +++++++++++++++++++++++++++++++++++
+ src/vk_context.cpp           |  26 +-
+ src/vk_context.h             |   3 +
+ 9 files changed, 814 insertions(+), 8 deletions(-)
  create mode 100755 scripts/build_linux.sh
+ create mode 100644 shaders/composite_serve.comp
  create mode 100644 src/serve.cpp
 
 diff --git a/scripts/build_linux.sh b/scripts/build_linux.sh
@@ -229,11 +231,120 @@ index 0000000..e16bc4d
 +
 +"$CXX" "${objs[@]}" build/obj/volk.o -o build/dlss5vk -pthread -ldl
 +echo "built $root/build/dlss5vk"
+diff --git a/shaders/composite_serve.comp b/shaders/composite_serve.comp
+new file mode 100644
+index 0000000..99efd96
+--- /dev/null
++++ b/shaders/composite_serve.comp
+@@ -0,0 +1,69 @@
++#version 460
++// The serve path's composite: the network's head and the proxy image in, RGBA8 out.
++//
++// Same arithmetic as the host spelling in src/main.cpp (`composed`) and the demo's
++// nr_composite.comp, so what this publishes is what the parity gate compares against:
++//
++//   neural = clamp(proxy + head / 4, 0, 1)      published through the half grid
++//
++// It exists because the host spelling of that is ~130ms a frame at 1440p — 11M pixels by
++// three channels of fma, floor and half-truncation — and because the head is 16 bytes per
++// padded pixel, so publishing it on the host means reading 60MB back per frame where the
++// finished image is 14.7MB. Here it is one dispatch and the readback is the picture.
++//
++// The truncation to the half grid is the composite's publication of the neural result
++// (`truncateHalf` in src/main.cpp): toward zero, not to nearest, so it cannot be spelled
++// with roundF16 and is done on the bits.
++layout(local_size_x = 8, local_size_y = 8) in;
++
++layout(push_constant) uniform Push {
++  uint proxyWidth;    // the proxy's stride: frames are uploaded at the valid size
++  uint headWidth;     // the head's stride: rows are padded to a multiple of 64
++  uint validWidth;
++  uint validHeight;
++} pc;
++
++layout(std430, binding = 0) readonly buffer Proxy { vec4 proxy[]; };
++layout(std430, binding = 6) readonly buffer Head { vec4 head[]; };
++layout(std430, binding = 7) writeonly buffer Out { uint pixels[]; };   // RGBA8, little-endian
++
++float truncateHalf(float value) {
++  uint bits = floatBitsToUint(value);
++  uint signBit = (bits >> 16u) & 0x8000u;
++  uint exponent = (bits >> 23u) & 0xffu;
++  uint mantissa = bits & 0x7fffffu;
++  uint halfBits;
++  if (exponent == 0xffu) halfBits = signBit | (mantissa != 0u ? 0x7e00u : 0x7c00u);
++  else {
++    int halfExponent = int(exponent) - 112;
++    if (halfExponent >= 31) halfBits = signBit | 0x7c00u;
++    else if (halfExponent <= 0)
++      halfBits = halfExponent < -10 ? signBit
++                                    : signBit | ((mantissa | 0x800000u) >> uint(14 - halfExponent));
++    else halfBits = signBit | (uint(halfExponent) << 10u) | (mantissa >> 13u);
++  }
++  return unpackHalf2x16(halfBits).x;
++}
++
++float composeChannel(float headValue, float centredProxy) {
++  const float inner = fma(headValue, 0.03125, centredProxy);       // head / 32 + centred
++  return truncateHalf(clamp(inner * 8.0 + 0.5, 0.0, 1.0));         // proxy + head / 4
++}
++
++uint toByte(float value) {
++  return uint(clamp(floor(value * 255.0 + 0.5), 0.0, 255.0));
++}
++
++void main() {
++  uvec2 id = gl_GlobalInvocationID.xy;
++  if (id.x >= pc.validWidth || id.y >= pc.validHeight) return;
++  vec4 source = proxy[id.y * pc.proxyWidth + id.x];
++  vec4 neural = head[id.y * pc.headWidth + id.x];
++  vec3 centred = fma(source.rgb, vec3(0.125), vec3(-0.0625));
++  vec3 value = vec3(composeChannel(neural.r, centred.r),
++                    composeChannel(neural.g, centred.g),
++                    composeChannel(neural.b, centred.b));
++  uvec3 bytes = uvec3(toByte(value.r), toByte(value.g), toByte(value.b));
++  pixels[id.y * pc.validWidth + id.x] =
++      bytes.r | (bytes.g << 8u) | (bytes.b << 16u) | (255u << 24u);
++}
+\ No newline at end of file
 diff --git a/src/kernels.cpp b/src/kernels.cpp
-index 62bb8c3..b1c017f 100644
+index 62bb8c3..3cc7970 100644
 --- a/src/kernels.cpp
 +++ b/src/kernels.cpp
-@@ -793,6 +793,13 @@ uint32_t Kernels::ffnRowTiles(uint32_t channels) {
+@@ -42,7 +42,8 @@ void check(bool condition, const char* message) {
+ Kernels::Kernels(vk::Context& context, const std::string& shaderDirectory) : context_(context) {
+   ptxDirectory_ = getenv("DLSS5VK_PTX_DIR") ? getenv("DLSS5VK_PTX_DIR") : shaderDirectory + "/../ptx";
+   for (const char* name : {"gemm_fp8", "gemm_f16", "ops", "window_normalize", "window_attend", "global_normalize",
+-                           "global_attend", "preprocess", "fused_block32", "qkv_attention", "gemm_mlp", "global_attention", "gemm_reduce"}) {
++                           "global_attend", "preprocess", "fused_block32", "qkv_attention", "gemm_mlp", "global_attention",
++                           "gemm_reduce", "composite_serve"}) {
+     modules_[name] = context_.loadShaderModule(shaderDirectory + "/" + name + ".spv");
+   }
+ }
+@@ -508,6 +509,22 @@ void Kernels::preprocessFromProxy(VkCommandBuffer commands, const vk::Buffer& pr
+            (a.fullHeight + 7) / 8, 1);
+ }
+ 
++void Kernels::compositeToRgba8(VkCommandBuffer commands, const vk::Buffer& proxy, const Activation& head,
++                               const vk::Buffer& output, uint32_t proxyWidth, uint32_t headWidth,
++                               uint32_t validWidth, uint32_t validHeight) {
++  check(head.format == Format::F32 && head.channels == 4, "the composite takes the f32 head");
++  struct Push {
++    uint32_t proxyWidth, headWidth, validWidth, validHeight;
++  } push{proxyWidth, headWidth, validWidth, validHeight};
++  const vk::Buffer* bindings[vk::kGenericBindings] = {};
++  bindings[0] = &proxy;
++  bindings[6] = &head.buffer;
++  bindings[7] = &output;
++  dispatchLabel_ = "composite serve";
++  dispatch(commands, pipeline("composite_serve", {}, 0), bindings, &push, sizeof(push),
++           (validWidth + 7) / 8, (validHeight + 7) / 8, 1);
++}
++
+ void Kernels::convertF32ToF16(VkCommandBuffer commands, const Activation& input, Activation& output) {
+   check(input.format == Format::F32 && output.format == Format::F16, "convert formats");
+   uint32_t count = input.rows * input.channels;
+@@ -793,6 +810,13 @@ uint32_t Kernels::ffnRowTiles(uint32_t channels) {
    return channels == 256 ? 3u : 4u;   // warps = E * rowTiles (<= 32); C=256: 24 warps at .maxnreg 80 keep one workgroup per SM
  }
  
@@ -248,10 +359,24 @@ index 62bb8c3..b1c017f 100644
    check(a.input && a.input->format == Format::E4 && a.output && a.output->format == Format::E4, "PTX FFN formats");
    check(a.channels == 64 || a.channels == 128 || a.channels == 256, "PTX FFN channels");
 diff --git a/src/kernels.h b/src/kernels.h
-index 472bd36..6424848 100644
+index 472bd36..674377e 100644
 --- a/src/kernels.h
 +++ b/src/kernels.h
-@@ -210,13 +210,19 @@ class Kernels {
+@@ -81,6 +81,13 @@ class Kernels {
+   // Input features from an RGBA f32 proxy image (display code values).
+   void preprocessFromProxy(VkCommandBuffer commands, const vk::Buffer& proxy, Activation& features,
+                            const PreprocessArgs& args);
++  // The serve path's composite: the f32 head and the proxy in, RGBA8 out (see
++  // shaders/composite_serve.comp). On the GPU because the host spelling of it is 11M
++  // pixels of fma, floor and half-truncation a frame, and because it means the finished
++  // 14.7MB image is read back instead of the head's 60MB of f32.
++  void compositeToRgba8(VkCommandBuffer commands, const vk::Buffer& proxy, const Activation& head,
++                        const vk::Buffer& output, uint32_t proxyWidth, uint32_t headWidth,
++                        uint32_t validWidth, uint32_t validHeight);
+   void convertF32ToF16(VkCommandBuffer commands, const Activation& input, Activation& output);
+   void quantize(VkCommandBuffer commands, const Activation& input, Activation& output);
+   void downsample2x(VkCommandBuffer commands, const Activation& input, Activation& output, uint32_t inWidth,
+@@ -210,13 +217,19 @@ class Kernels {
    // w2 tile-major [e][4][32][32], w3 tile-major [K/32][K][32].
    static bool ptxFfnEnabled();
    static uint32_t ffnRowTiles(uint32_t channels);          // PTX expert FFN: 16-row tiles per workgroup (its chaining signals cover 16 * tiles rows)
@@ -311,10 +436,10 @@ index 867c97e..66f2175 100644
  #include <string>
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..f25e48b
+index 0000000..1ed85de
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,535 @@
+@@ -0,0 +1,513 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -421,32 +546,11 @@ index 0000000..f25e48b
 +static_assert(kAckBytes == 4 * 4 + 8, "the acks are 24 bytes");
 +static_assert(kShmBytes == 4 * 4 + 8 + 64, "SHM_FMT is 88 bytes");
 +
-+// --- the composite (kept identical to src/main.cpp's copy) ---------------------
-+// parity compares a fixture against these two functions; serve publishes pixels with
-+// them. One drifting from the other would be a silent difference between what we serve
-+// and what the gate checks, so both say where the other lives.
-+
-+// Truncation (toward zero) to the half grid: the composite's publication of the neural result.
-+float truncateHalf(float value) {
-+  uint32_t bits; memcpy(&bits, &value, 4);
-+  const uint32_t signBit = (bits >> 16) & 0x8000u, exponent = (bits >> 23) & 0xffu, mantissa = bits & 0x7fffffu;
-+  uint32_t halfBits;
-+  if (exponent == 0xffu) halfBits = signBit | (mantissa ? 0x7e00u : 0x7c00u);
-+  else {
-+    const int halfExponent = (int)exponent - 112;
-+    if (halfExponent >= 31) halfBits = signBit | 0x7c00u;
-+    else if (halfExponent <= 0) halfBits = halfExponent < -10 ? signBit : signBit | ((mantissa | 0x800000u) >> (14 - halfExponent));
-+    else halfBits = signBit | ((uint32_t)halfExponent << 10) | (mantissa >> 13);
-+  }
-+  return num::f16ToF32((uint16_t)halfBits);
-+}
-+
-+// The composed RGB of one frame with no history, as the demo composite publishes it:
-+// neural = clamp((head / 32 + centred) * 8 + 0.5, 0, 1), truncated to the half grid.
-+float composed(float head, float centred) {
-+  const float inner = std::fmaf(head, 0.03125f, centred);
-+  return truncateHalf(std::fmin(std::fmax(inner * 8.0f + 0.5f, 0.0f), 1.0f));
-+}
++// The composite moved to the GPU (shaders/composite_serve.comp): the host spelling of it
++// was 11M pixels of fma, floor and half-truncation a frame, and it forced the head's 60MB
++// of f32 through the readback instead of the finished 14.7MB image. src/main.cpp keeps its
++// own copy — parity compares a fixture against that one — and the shader carries the same
++// arithmetic, so the served picture and the gate still agree.
 +
 +// --- io ------------------------------------------------------------------------
 +
@@ -646,6 +750,7 @@ index 0000000..f25e48b
 +  std::unique_ptr<nr::Kernels> kernels;
 +  std::unique_ptr<nr::Graph> graph;
 +  vk::Buffer proxy{};
++  vk::Buffer imageBuffer{};      // RGBA8, the composite's output and what leaves the device
 +  nr::Activation* features = nullptr;
 +  uint32_t fullWidth = 0, fullHeight = 0;
 +
@@ -667,6 +772,7 @@ index 0000000..f25e48b
 +                                        nr::Graph::Options{.fusedBlocks = true});
 +    features = graph->allocate("input features", fullWidth * fullHeight, 16, nr::Format::F32);
 +    proxy = context->createBuffer((VkDeviceSize)workWidth * workHeight * 16, false, "proxy");
++    imageBuffer = context->createBuffer((VkDeviceSize)workWidth * workHeight * 4, false, "rgba8 image");
 +    preprocess.fullWidth = fullWidth;
 +    preprocess.fullHeight = fullHeight;
 +    // The warm record: every PTX kernel is JIT-compiled on first use, so the first frame
@@ -687,7 +793,6 @@ index 0000000..f25e48b
 +  std::vector<uint8_t> colour((size_t)workWidth * workHeight * 4);
 +  std::vector<uint8_t> motion((size_t)workWidth * workHeight * 4);   // 2 x f16 per pixel
 +  std::vector<float> proxyValues((size_t)workWidth * workHeight * 4);
-+  std::vector<uint8_t> output((size_t)workWidth * workHeight * 4);
 +
 +  uint32_t frames = 0;
 +  double totalMs = 0;
@@ -762,11 +867,14 @@ index 0000000..f25e48b
 +        const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
 +        if (reset) fprintf(stderr, "serve: frame %u carries reset (no history is kept, so it is a no-op)\n", index);
 +
-+        // The proxy: the frame's code values, rounded to f16 (the network's proxy is an
-+        // f16 quantity), alpha set to 1 - preprocess.comp reads .rgb only.
++        // The proxy: the frame's code values, alpha 1 — preprocess.comp reads .rgb only.
++        // No rounding to f16 on the host: preprocess.comp rounds the proxy itself
++        // (`roundF16(roundF16(roundF16(rgba.r) - 0.5) * 0.125)`), so the 11M roundF16 calls
++        // a frame that used to be spent here were producing bytes the shader then rounded
++        // again.
 +        for (size_t i = 0; i < (size_t)workWidth * workHeight; ++i) {
 +          for (int c = 0; c < 3; ++c)
-+            proxyValues[i * 4 + c] = num::roundF16((float)colour[i * 4 + c] * (1.0f / 255.0f));
++            proxyValues[i * 4 + c] = (float)colour[i * 4 + c] * (1.0f / 255.0f);
 +          proxyValues[i * 4 + 3] = 1.0f;
 +        }
 +        context->upload(proxy, proxyValues.data(), (VkDeviceSize)proxyValues.size() * 4);
@@ -775,18 +883,24 @@ index 0000000..f25e48b
 +        VkCommandBuffer commands = context->beginCommands();
 +        kernels->preprocessFromProxy(commands, proxy, *features, preprocess);
 +        graph->record(commands, *features);
++        // The composite, on the GPU: the head and the proxy in, RGBA8 out. Two reasons it is
++        // not on the host any more — it is 11M pixels of fma, floor and half-truncation a
++        // frame there, and publishing it here means the readback is the finished 14.7MB
++        // image rather than the head's 60MB of f32.
++        kernels->compositeToRgba8(commands, proxy, graph->head(), imageBuffer, workWidth, fullWidth,
++                                  workWidth, workHeight);
 +        context->endAndSubmit(commands, true);
 +        checkChainTimeouts(*kernels);
 +        const std::chrono::steady_clock::time_point afterRecord = std::chrono::steady_clock::now();
 +
-+        const std::vector<uint8_t> headBytes =
-+            context->download(graph->head().buffer, (VkDeviceSize)fullWidth * fullHeight * 4 * 4);
-+        const std::chrono::steady_clock::time_point afterDownload = std::chrono::steady_clock::now();
-+        const float* head = reinterpret_cast<const float*>(headBytes.data());
-+        // What the network produced, in numbers, because a flat picture cannot say whether
-+        // it is a head full of garbage or a composite that throws a good head away. A real
-+        // head is small values near zero; garbage is huge, constant, or not finite.
-+        if (frames <= 1 || frames % 30 == 0) {
++        // The head is read back once, on the first frame, where the warm-up already
++        // dominates. Its numbers are what says whether a wrong picture is the network
++        // diverging or the composite throwing a good head away; after that the picture is
++        // the only thing that leaves the device.
++        if (frames == 0) {
++          const std::vector<uint8_t> headBytes =
++              context->download(graph->head().buffer, (VkDeviceSize)fullWidth * fullHeight * 4 * 4);
++          const float* head = reinterpret_cast<const float*>(headBytes.data());
 +          const size_t values = (size_t)fullWidth * fullHeight * 4;
 +          size_t nonFinite = 0;
 +          double sum = 0;
@@ -802,22 +916,12 @@ index 0000000..f25e48b
 +          for (int i = 0; i < 8; ++i) fprintf(stderr, " %.4f", head[i]);
 +          fprintf(stderr, "\n");
 +        }
-+        for (uint32_t y = 0; y < workHeight; ++y)
-+          for (uint32_t x = 0; x < workWidth; ++x) {
-+            for (uint32_t c = 0; c < 3; ++c) {
-+              // The centred proxy exactly as parity computes it from the input image,
-+              // rather than the f16-rounded form preprocess.comp builds for the network:
-+              // the two differ by ~1e-4, and agreeing with the gate is worth more here.
-+              const float centred = std::fmaf(proxyValues[((size_t)y * workWidth + x) * 4 + c], 0.125f, -0.0625f);
-+              const float value = composed(head[((size_t)y * fullWidth + x) * 4 + c], centred);
-+              const float published = std::fmin(255.0f, std::fmax(0.0f, std::floor(value * 255.0f + 0.5f)));
-+              output[((size_t)y * workWidth + x) * 4 + c] = (uint8_t)published;
-+            }
-+            output[((size_t)y * workWidth + x) * 4 + 3] = 255;
-+          }
-+        const std::chrono::steady_clock::time_point afterCompose = std::chrono::steady_clock::now();
++
++        const std::vector<uint8_t> image =
++            context->download(imageBuffer, (VkDeviceSize)workWidth * workHeight * 4);
++        const std::chrono::steady_clock::time_point afterDownload = std::chrono::steady_clock::now();
 +        frames++;
-+        sendFrame(index, 1, (uint32_t)output.size(), 0, pts, &output);
++        sendFrame(index, 1, (uint32_t)image.size(), 0, pts, &image);
 +        const std::chrono::steady_clock::time_point afterSend = std::chrono::steady_clock::now();
 +
 +        auto since = [](const std::chrono::steady_clock::time_point& from,
@@ -833,11 +937,10 @@ index 0000000..f25e48b
 +        // and then sparsely.
 +        if (frames <= 3 || frames % 30 == 0)
 +          fprintf(stderr,
-+                  "serve frame %u: %.1f ms (proxy %.1f, network %.1f, readback %.1f, "
-+                  "compose %.1f, reply %.1f)\n",
++                  "serve frame %u: %.1f ms (proxy %.1f, network+composite %.1f, readback %.1f, "
++                  "reply %.1f)\n",
 +                  index, ms, since(began, afterUpload), since(afterUpload, afterRecord),
-+                  since(afterRecord, afterDownload), since(afterDownload, afterCompose),
-+                  since(afterCompose, afterSend));
++                  since(afterRecord, afterDownload), since(afterDownload, afterSend));
 +      }
 +
 +      if (frameLimit > 0 && (int)frames >= frameLimit) {
