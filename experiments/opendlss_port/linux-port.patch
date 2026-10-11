@@ -1,14 +1,12 @@
-From 3730983fc3cf544c76e8f95f0594956360c336ea Mon Sep 17 00:00:00 2001
+From 0d2c5796fb3eed0c0059628eb14188e19d8ca9d8 Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
-Subject: [PATCH] Linux build: the four MSVC-only fixes, and the PTX list that
- was one read short
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
+Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
+ `serve` mode that speaks our worker protocol
 
-gcc 14 / glslang 16.6.0 build the whole thing: 13/13 shaders to SPIR-V, the full
-PTX set, a 600 KB dlss5vk that runs and reaches vkCreateInstance.
+gcc 14 / glslang 16.6.0 build the whole thing: 13/13 shaders to SPIR-V, all 78 PTX
+kernels, a dlss5vk that runs the network on the GPU box (9.960 ms median at 2560x1440
+on a 4080 SUPER, 249 dispatches, PTX route).
 
 Four fixes, all of them things MSVC accepted:
 
@@ -21,26 +19,47 @@ Four fixes, all of them things MSVC accepted:
     references at link). The PowerShell build gets the define for free by compiling
     volk.c in the same cl invocation.
 
-And the bug this replaced: the script's PTX list is a hand copy of the emitter
-invocations in scripts/build_shaders.ps1, and it was copied from an incomplete read
-of that file — the last two loops were missing, so 12 of 78 kernels were never
-generated: the five fused 32-channel block variants (block32_e4m3_f2/66/74/130/48)
-and the seven split-512 GEMMs through gemmv (gemmv_e4m3_K{512,256,4096,1024}_f*_s1_m96).
-Nothing failed at build time: the host resolves kernel files by name when the
-dispatch is first reached, so it surfaced on the GPU box as
+And the bug that replaced one of them: the script's PTX list is a hand copy of the
+emitter invocations in scripts/build_shaders.ps1, and it was copied from an incomplete
+read of that file - the last two loops were missing, so 12 of 78 kernels were never
+generated: the five fused 32-channel block variants (block32_e4m3_f2/66/74/130/48) and
+the seven split-512 GEMMs (gemmv_e4m3_K{512,256,4096,1024}_f*_s1_m96). Nothing failed at
+build time - the host resolves kernel files by name when a dispatch is first reached -
+so it surfaced as
 
     error: cannot read PTX kernel ./build/shaders/../ptx/block32_e4m3_f74.ptx
 
-The script now emits all 78 and checks the count, because the failure mode of a
-short list is a run-time error that names the missing file and not the reason.
+The script now emits all 78 and checks the count, because the failure mode of a short
+list is a run-time error that names the missing file and not the reason.
+
+New: `dlss5vk serve`, so the pipeline can run the pass without Wine.
+
+It speaks the wire format native/dlss5-feed-host64.cpp speaks, byte for byte, so
+pointing NS_WORKER_CMD at it is the whole integration - the startup header, FRAME_MAGIC
+with colour and motion inline, OUT_MAGIC with the pixels back. No upscaling (the header's
+full size must be 0 or the work size), no shared-memory channel (SHMI is refused with
+ok=0, the documented fallback), and no temporal history: the pipeline sends a zero motion
+field for every frame, which is the case preprocess.comp builds for a first frame, and
+the composite is the no-history one - the same formula parity checks a fixture against.
+
+With FRAME_FLAG_BYPASS the pixels come back untouched and no device is created, which is
+what lets the framing, the header parse, the refusals and the end-of-stream handshake be
+tested on a machine with no GPU.
+
+Also lands: `--model`/`--shaders`/`--frames` for the mode, the warm record that pays the
+249-kernel JIT burst on a zero proxy where the log can say what the wait was, and a
+per-frame timing line on stderr.
 ---
- scripts/build_linux.sh | 143 +++++++++++++++++++++++++++++++++++++++++
- src/kernels.cpp        |   7 ++
- src/kernels.h          |  10 ++-
+ scripts/build_linux.sh | 143 +++++++++++++
+ src/kernels.cpp        |   7 +
+ src/kernels.h          |  10 +-
+ src/main.cpp           |   4 +-
  src/nr_model.h         |   1 +
+ src/serve.cpp          | 460 +++++++++++++++++++++++++++++++++++++++++
  src/vk_context.h       |   1 +
- 5 files changed, 160 insertions(+), 2 deletions(-)
+ 7 files changed, 623 insertions(+), 3 deletions(-)
  create mode 100755 scripts/build_linux.sh
+ create mode 100644 src/serve.cpp
 
 diff --git a/scripts/build_linux.sh b/scripts/build_linux.sh
 new file mode 100755
@@ -235,6 +254,28 @@ index 472bd36..6424848 100644
    void windowNormalize(VkCommandBuffer commands, const Activation& qkv, const Tensor& tensor,
                         uint32_t scaleByteOffset, Activation& normalized, uint32_t tokens, uint32_t heads);
    void windowAttend(VkCommandBuffer commands, const Activation& normalized, const vk::Buffer& prior,
+diff --git a/src/main.cpp b/src/main.cpp
+index 6d57e3a..cb4c86a 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -615,6 +615,7 @@ int runBench(int argc, char** argv) {
+ }  // namespace
+ 
+ int runVerify(int argc, char** argv);
++int runServe(int argc, char** argv);
+ 
+ namespace {
+ int runShaderInfo(int argc, char** argv) {
+@@ -737,7 +738,8 @@ int runCommand(int argc, char** argv) {
+   if (argc >= 2 && !strcmp(argv[1], "profile")) return runProfile(argc, argv);
+   if (argc >= 2 && !strcmp(argv[1], "parity")) return runParity(argc, argv);
+   if (argc >= 2 && !strcmp(argv[1], "bench")) return runBench(argc, argv);
+-  fprintf(stderr, "usage: dlss5vk parity|verify|bench|profile|shaderinfo --model <dir> ...\n");
++  if (argc >= 2 && !strcmp(argv[1], "serve")) return runServe(argc, argv);
++  fprintf(stderr, "usage: dlss5vk parity|verify|bench|profile|shaderinfo|serve --model <dir> ...\n");
+   return 2;
+ }
+ 
 diff --git a/src/nr_model.h b/src/nr_model.h
 index 867c97e..66f2175 100644
 --- a/src/nr_model.h
@@ -247,6 +288,473 @@ index 867c97e..66f2175 100644
  #include <map>
  #include <memory>
  #include <string>
+diff --git a/src/serve.cpp b/src/serve.cpp
+new file mode 100644
+index 0000000..df2c016
+--- /dev/null
++++ b/src/serve.cpp
+@@ -0,0 +1,460 @@
++// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
++//
++//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
++//
++// It speaks the wire format native/dlss5-feed-host64.cpp speaks - the exact bytes
++// protocol.py packs and unpacks - so the pipeline can point NS_WORKER_CMD at this
++// binary instead of `wine nvngx.dll --live` and nothing else has to change:
++//
++//   startup  VIDEO_MAGIC  "<10I4f2I"  64 bytes  work size + the NR parameters
++//   frame    FRAME_MAGIC  "<4Iq"      24 bytes  then colour RGBA8 + motion f16, inline
++//   reply    OUT_MAGIC    "<5Iq"      28 bytes  then colour RGBA8 (work_w * work_h * 4)
++//
++// What this is not, and says so rather than misbehaving:
++//
++//   * No NGX upscaling. fullWidth/fullHeight must be 0 or the work size. The MVP sends
++//     0 ("colour and work are the same size"); a --work-scale run is rejected here.
++//   * No shared-memory channel. SHMI is answered ok=0, which is the documented
++//     fallback: the client stays on sending frames down the pipe. (Worker.start passes
++//     no shm at all, so the MVP never asks; this is for everything else that might.)
++//   * No temporal history. The MVP sends a zero motion field for every frame
++//     ("The MVP has no real motion vectors", minimal/loop.py), so the features are the
++//     ones preprocess.comp builds for a first frame - lanes 7-9 hold the current proxy,
++//     not a reprojected previous output - and the composite is the no-history one, the
++//     same formula parity checks a fixture against. Motion is read and ignored.
++//
++// The proxy is the incoming frame's code values, f16-rounded. The network sees a
++// display proxy (docs/frame.md) and an SDR video frame is already display-referred, so
++// there is no tone map to apply on this side. A stream is 8-bit, which is the precision
++// floor of this path and the first thing to suspect if the result looks banded.
++#include <cerrno>
++#include <chrono>
++#include <cmath>
++#include <cstdint>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <memory>
++#include <string>
++#include <vector>
++
++#include <unistd.h>
++
++#include "kernels.h"
++#include "nr_graph.h"
++#include "nr_model.h"
++#include "numeric.h"
++#include "reference.h"
++#include "vk_context.h"
++
++namespace {
++
++// --- the wire format (protocol.py, native/dlss5-feed-host64.cpp) --------------
++
++constexpr uint32_t kVideoMagic = 0x33563544u;   // 'DV5'3
++constexpr uint32_t kFrameMagic = 0x314D5246u;   // 'FMR1'
++constexpr uint32_t kOutMagic   = 0x3154554Fu;   // 'OUT1'
++constexpr uint32_t kShmMagic   = 0x494D4853u;   // 'SHMI'
++constexpr uint32_t kShmAck     = 0x4B434153u;   // 'SACK'
++constexpr uint32_t kMotionMagic = 0x53544F4Du;  // 'MOTS'
++constexpr uint32_t kMotionAck  = 0x4B43414Du;   // 'MACK'
++constexpr uint32_t kWindowMagic = 0x4F444E57u;  // 'WNDO'
++constexpr uint32_t kWindowAck  = 0x4B434157u;   // 'WACK'
++constexpr uint32_t kResizeMagic = 0x5A534E52u;  // 'RNSZ'
++constexpr uint32_t kResizeAck  = 0x4B434152u;   // 'RACK'
++constexpr uint32_t kDdaMagic   = 0x31414444u;   // 'DDA1'
++constexpr uint32_t kDdaAck     = 0x4B434144u;   // 'DACK'
++constexpr uint32_t kOutsMagic  = 0x5354554Fu;   // 'OUTS'
++constexpr uint32_t kOutsAck    = 0x324B414Fu;   // 'OAK2'
++constexpr uint32_t kGrayMagic  = 0x59415247u;   // 'GRAY'
++constexpr uint32_t kGrayAck    = 0x4B434147u;   // 'GAK'
++constexpr uint32_t kWgcMagic   = 0x57434757u;   // 'WGCW'
++constexpr uint32_t kWgcAck     = 0x4B414757u;   // 'WGAK'
++
++constexpr uint32_t kFrameFlagWantPixels = 0x2;
++constexpr uint32_t kFrameFlagMotionSmall = 0x4;
++constexpr uint32_t kFrameFlagNoColor = 0x8;
++constexpr uint32_t kFrameFlagBypass = 0x10;
++
++constexpr size_t kHeaderBytes = 64;        // HEADER_FMT  "<10I4f2I"
++constexpr size_t kFrameHeaderBytes = 24;   // FRAME_FMT   "<4Iq"
++constexpr size_t kOutHeaderBytes = 28;     // OUT_FMT     "<5Iq"
++constexpr size_t kAckBytes = 24;           // SHM_ACK_FMT and every other ack
++constexpr size_t kShmBytes = 88;           // SHM_FMT     "<4Iq64s"
++
++// The Python side has one static_assert behind each of these too
++// (tests/test_protocol_sizes.py checks the two sides against each other). A size that
++// drifts here desynchronises the stream on the first frame, so it fails at compile time
++// rather than as a plausible-looking wrong frame.
++static_assert(kHeaderBytes == 10 * 4 + 4 * 4 + 2 * 4, "HEADER_FMT is 64 bytes");
++static_assert(kFrameHeaderBytes == 4 * 4 + 8, "FRAME_FMT is 24 bytes");
++static_assert(kOutHeaderBytes == 5 * 4 + 8, "OUT_FMT is 28 bytes");
++static_assert(kAckBytes == 4 * 4 + 8, "the acks are 24 bytes");
++static_assert(kShmBytes == 4 * 4 + 8 + 64, "SHM_FMT is 88 bytes");
++
++// --- the composite (kept identical to src/main.cpp's copy) ---------------------
++// parity compares a fixture against these two functions; serve publishes pixels with
++// them. One drifting from the other would be a silent difference between what we serve
++// and what the gate checks, so both say where the other lives.
++
++// Truncation (toward zero) to the half grid: the composite's publication of the neural result.
++float truncateHalf(float value) {
++  uint32_t bits; memcpy(&bits, &value, 4);
++  const uint32_t signBit = (bits >> 16) & 0x8000u, exponent = (bits >> 23) & 0xffu, mantissa = bits & 0x7fffffu;
++  uint32_t halfBits;
++  if (exponent == 0xffu) halfBits = signBit | (mantissa ? 0x7e00u : 0x7c00u);
++  else {
++    const int halfExponent = (int)exponent - 112;
++    if (halfExponent >= 31) halfBits = signBit | 0x7c00u;
++    else if (halfExponent <= 0) halfBits = halfExponent < -10 ? signBit : signBit | ((mantissa | 0x800000u) >> (14 - halfExponent));
++    else halfBits = signBit | ((uint32_t)halfExponent << 10) | (mantissa >> 13);
++  }
++  return num::f16ToF32((uint16_t)halfBits);
++}
++
++// The composed RGB of one frame with no history, as the demo composite publishes it:
++// neural = clamp((head / 32 + centred) * 8 + 0.5, 0, 1), truncated to the half grid.
++float composed(float head, float centred) {
++  const float inner = std::fmaf(head, 0.03125f, centred);
++  return truncateHalf(std::fmin(std::fmax(inner * 8.0f + 0.5f, 0.0f), 1.0f));
++}
++
++// --- io ------------------------------------------------------------------------
++
++uint32_t le32(const uint8_t* bytes) {
++  uint32_t value = 0;                       // the wire format and x86-64 are both little-endian
++  memcpy(&value, bytes, 4);
++  return value;
++}
++
++int64_t le64(const uint8_t* bytes) {
++  int64_t value = 0;
++  memcpy(&value, bytes, 8);
++  return value;
++}
++
++void put32(uint8_t* bytes, uint32_t value) { memcpy(bytes, &value, 4); }
++
++// Reads exactly `bytes` from stdin. False means the stream ended (the client closed the
++// pipe, or stopped), which is a normal way for this process to end.
++bool readExact(void* destination, size_t bytes) {
++  uint8_t* out = static_cast<uint8_t*>(destination);
++  size_t got = 0;
++  while (got < bytes) {
++    const ssize_t n = ::read(0, out + got, bytes - got);
++    if (n == 0) return false;
++    if (n < 0) {
++      if (errno == EINTR) continue;
++      throw std::runtime_error(std::string("read(stdin): ") + strerror(errno));
++    }
++    got += (size_t)n;
++  }
++  return true;
++}
++
++void writeAll(const void* source, size_t bytes) {
++  const uint8_t* in = static_cast<const uint8_t*>(source);
++  size_t sent = 0;
++  while (sent < bytes) {
++    const ssize_t n = ::write(1, in + sent, bytes - sent);
++    if (n < 0) {
++      if (errno == EINTR) continue;
++      throw std::runtime_error(std::string("write(stdout): ") + strerror(errno));
++    }
++    sent += (size_t)n;
++  }
++}
++
++std::string argValue(int argc, char** argv, const char* name, const std::string& fallback = "") {
++  for (int i = 1; i + 1 < argc; ++i) if (!strcmp(argv[i], name)) return argv[i + 1];
++  return fallback;
++}
++
++std::string executableDirectory(const char* argv0) {
++  std::string path = argv0;
++  size_t slash = path.find_last_of("/\\");
++  return slash == std::string::npos ? "." : path.substr(0, slash);
++}
++
++// After a frame: a chained wait that gave up means its output is wrong (docs/execution.md,
++// "Barrier-free chaining"). Same check as every other mode in main.cpp.
++void checkChainTimeouts(const nr::Kernels& kernels) {
++  const nr::Kernels::ChainTimeouts timeouts = kernels.chainTimeouts();
++  if (timeouts.waits)
++    throw std::runtime_error(std::to_string(timeouts.waits) + " chained wait(s) timed out, the first on " + timeouts.counter +
++                             ": the frame is invalid (DLSS5VK_CHAIN=0 runs without chaining)");
++}
++
++// --- the startup header --------------------------------------------------------
++
++struct Startup {
++  uint32_t workWidth = 0, workHeight = 0, warmup = 0, frameCount = 0, profile = 0, preset = 0,
++           style = 0, autoMask = 0, uiCorrection = 0;
++  float intensity = 1.0f, localTone = 1.0f, localStructure = 1.0f, skinStructure = 1.0f;
++  uint32_t fullWidth = 0, fullHeight = 0;
++};
++
++Startup parseStartup(const uint8_t* bytes) {
++  Startup s;
++  s.workWidth = le32(bytes + 4);
++  s.workHeight = le32(bytes + 8);
++  s.warmup = le32(bytes + 12);
++  s.frameCount = le32(bytes + 16);
++  s.profile = le32(bytes + 20);
++  s.preset = le32(bytes + 24);
++  s.style = le32(bytes + 28);
++  s.autoMask = le32(bytes + 32);
++  s.uiCorrection = le32(bytes + 36);
++  memcpy(&s.intensity, bytes + 40, 4);
++  memcpy(&s.localTone, bytes + 44, 4);
++  memcpy(&s.localStructure, bytes + 48, 4);
++  memcpy(&s.skinStructure, bytes + 52, 4);
++  s.fullWidth = le32(bytes + 56);
++  s.fullHeight = le32(bytes + 60);
++  return s;
++}
++
++void sendAck(uint32_t magic, uint32_t ok, uint32_t a = 0, uint32_t b = 0, int64_t pts = 0) {
++  uint8_t ack[kAckBytes];
++  put32(ack, magic);
++  put32(ack + 4, ok);
++  put32(ack + 8, a);
++  put32(ack + 12, b);
++  memcpy(ack + 16, &pts, 8);
++  writeAll(ack, sizeof(ack));
++}
++
++void sendFrame(uint32_t index, uint32_t ok, uint32_t bytes, uint32_t ngxResult, int64_t pts,
++               const std::vector<uint8_t>* pixels) {
++  uint8_t header[kOutHeaderBytes];
++  put32(header, kOutMagic);
++  put32(header + 4, index);
++  put32(header + 8, ok);
++  put32(header + 12, bytes);
++  put32(header + 16, ngxResult);
++  memcpy(header + 20, &pts, 8);
++  writeAll(header, sizeof(header));
++  if (pixels) writeAll(pixels->data(), pixels->size());
++}
++
++}  // namespace
++
++int runServe(int argc, char** argv) {
++  const std::string modelDir = argValue(argc, argv, "--model");
++  const std::string shaderDir = argValue(argc, argv, "--shaders", executableDirectory(argv[0]) + "/shaders");
++  const int frameLimit = atoi(argValue(argc, argv, "--frames", "0").c_str());
++  if (modelDir.empty()) {
++    fprintf(stderr, "usage: dlss5vk serve --model <dir> [--shaders <dir>] [--frames N]\n");
++    return 2;
++  }
++
++  uint8_t header[kHeaderBytes];
++  if (!readExact(header, sizeof(header))) {
++    fprintf(stderr, "serve: no startup header arrived on stdin\n");
++    return 2;
++  }
++  if (le32(header) != kVideoMagic) {
++    fprintf(stderr, "serve: expected a stream header (VIDEO_MAGIC 0x%08X), got 0x%08X\n", kVideoMagic, le32(header));
++    return 2;
++  }
++  const Startup startup = parseStartup(header);
++  const uint32_t workWidth = startup.workWidth, workHeight = startup.workHeight;
++  if (workWidth == 0 || workHeight == 0) {
++    fprintf(stderr, "serve: the stream header carried a work size of %ux%u\n", workWidth, workHeight);
++    return 2;
++  }
++  if ((startup.fullWidth && startup.fullWidth != workWidth) || (startup.fullHeight && startup.fullHeight != workHeight)) {
++    fprintf(stderr, "serve: the client expects NGX upscaling (%ux%u -> %ux%u); this worker runs the network at one "
++                    "size. Run the pipeline without --work-scale.\n",
++            workWidth, workHeight, startup.fullWidth, startup.fullHeight);
++    return 2;
++  }
++
++  const uint32_t seed = (uint32_t)atoi(getenv("DLSS5VK_SERVE_SEED") ? getenv("DLSS5VK_SERVE_SEED") : "0");
++  fprintf(stderr, "serve: %ux%u, model %s, shaders %s, seed %u\n", workWidth, workHeight, modelDir.c_str(),
++          shaderDir.c_str(), seed);
++  if (startup.intensity != 1.0f)
++    fprintf(stderr, "serve: the header asks for intensity %.3f; this path has no intensity blend, it is ignored\n",
++            startup.intensity);
++  if (startup.uiCorrection) fprintf(stderr, "serve: ui_correction %u is ignored\n", startup.uiCorrection);
++
++  nr::Kernels::PreprocessArgs preprocess;
++  preprocess.fullWidth = 0;           // filled once the geometry is known
++  preprocess.fullHeight = 0;
++  preprocess.validWidth = workWidth;
++  preprocess.validHeight = workHeight;
++  preprocess.sourceWidth = workWidth;
++  preprocess.sourceHeight = workHeight;
++  preprocess.seed = seed;
++  preprocess.autoMask = startup.autoMask != 0;
++  preprocess.localTone = startup.localTone;
++  preprocess.localStructure = startup.localStructure;
++  preprocess.skinStructure = startup.skinStructure;
++  // preprocess.comp builds lane 10 as style / 128, so the header's style is a 1/128
++  // fixed-point fraction: the pipeline's default of 1 is 0.008, i.e. the neutral end.
++  preprocess.style = (float)startup.style;
++
++  std::unique_ptr<vk::Context> context;
++  std::unique_ptr<nr::Model> model;
++  std::unique_ptr<nr::Kernels> kernels;
++  std::unique_ptr<nr::Graph> graph;
++  vk::Buffer proxy{};
++  nr::Activation* features = nullptr;
++  uint32_t fullWidth = 0, fullHeight = 0;
++
++  auto startEngine = [&]() {
++    context = std::make_unique<vk::Context>();
++    fprintf(stderr, "serve: device %s\n", context->deviceName().c_str());
++    model = std::make_unique<nr::Model>(*context, modelDir, false);
++    kernels = std::make_unique<nr::Kernels>(*context, shaderDir);
++    kernels->setSiluTable(ref::siluTable());
++    const nr::Geometry geometry = nr::Geometry::fromValid(workWidth, workHeight);
++    fullWidth = geometry.fullWidth;
++    fullHeight = geometry.fullHeight;
++    graph = std::make_unique<nr::Graph>(*context, *model, *kernels, geometry,
++                                        nr::Graph::Options{.fusedBlocks = true});
++    features = graph->allocate("input features", fullWidth * fullHeight, 16, nr::Format::F32);
++    proxy = context->createBuffer((VkDeviceSize)workWidth * workHeight * 16, false, "proxy");
++    preprocess.fullWidth = fullWidth;
++    preprocess.fullHeight = fullHeight;
++    // The warm record: every PTX kernel is JIT-compiled on first use, so the first frame
++    // would otherwise pay for 249 launches. Recording once against a zero proxy pays it
++    // here, where the log says what the wait was.
++    context->fillZero(proxy);
++    const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
++    fprintf(stderr, "serve: warming up (the PTX modules are JIT-compiled on first use)\n");
++    VkCommandBuffer commands = context->beginCommands();
++    kernels->preprocessFromProxy(commands, proxy, *features, preprocess);
++    graph->record(commands, *features);
++    context->endAndSubmit(commands, true);
++    checkChainTimeouts(*kernels);
++    fprintf(stderr, "serve: warm-up %.0f ms\n",
++            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - began).count());
++  };
++
++  std::vector<uint8_t> colour((size_t)workWidth * workHeight * 4);
++  std::vector<uint8_t> motion((size_t)workWidth * workHeight * 4);   // 2 x f16 per pixel
++  std::vector<float> proxyValues((size_t)workWidth * workHeight * 4);
++  std::vector<uint8_t> output((size_t)workWidth * workHeight * 4);
++
++  uint32_t frames = 0;
++  double totalMs = 0;
++  try {
++    while (true) {
++      uint8_t magicBytes[4];
++      if (!readExact(magicBytes, sizeof(magicBytes))) {
++        fprintf(stderr, "serve: input stream closed after %u frame(s)\n", frames);
++        return 0;
++      }
++      const uint32_t magic = le32(magicBytes);
++
++      if (magic != kFrameMagic) {
++        // Commands this worker does not implement. Answering with ok=0 - rather than
++        // saying nothing - is what keeps the caller from waiting for an acknowledgement
++        // that will never come; the client reports the refusal, and the MVP never sends
++        // any of these in the first place (Worker.start passes no shm).
++        const size_t restBytes = magic == kShmMagic ? kShmBytes - 4 : kAckBytes - 4;
++        std::vector<uint8_t> rest(restBytes);
++        if (!readExact(rest.data(), rest.size())) return 0;
++        uint32_t answer = 0;
++        switch (magic) {
++          case kShmMagic:    answer = kShmAck;    break;
++          case kMotionMagic: answer = kMotionAck; break;
++          case kWindowMagic: answer = kWindowAck; break;
++          case kResizeMagic: answer = kResizeAck; break;
++          case kDdaMagic:    answer = kDdaAck;    break;
++          case kOutsMagic:   answer = kOutsAck;   break;
++          case kGrayMagic:   answer = kGrayAck;   break;
++          case kWgcMagic:    answer = kWgcAck;    break;
++          default:
++            fprintf(stderr, "serve: unknown command 0x%08X on stdin\n", magic);
++            return 2;
++        }
++        fprintf(stderr, "serve: refusing command 0x%08X (not implemented here)\n", magic);
++        sendAck(answer, 0);
++        continue;
++      }
++
++      uint8_t frameHeader[kFrameHeaderBytes];
++      memcpy(frameHeader, magicBytes, 4);
++      if (!readExact(frameHeader + 4, sizeof(frameHeader) - 4)) {
++        fprintf(stderr, "serve: the stream ended inside a frame header\n");
++        return 0;
++      }
++      const uint32_t index = le32(frameHeader + 4);
++      const uint32_t reset = le32(frameHeader + 8);
++      const uint32_t flags = le32(frameHeader + 12);
++      const int64_t pts = le64(frameHeader + 16);
++
++      if (flags & kFrameFlagNoColor) {
++        fprintf(stderr, "serve: a frame arrived with NO_COLOR (the worker is expected to capture the screen itself); "
++                        "that is the Wine worker's DDA mode and is not implemented here\n");
++        return 2;
++      }
++      if (!readExact(colour.data(), colour.size())) {
++        fprintf(stderr, "serve: the stream ended inside frame %u's colour\n", index);
++        return 0;
++      }
++      if (!readExact(motion.data(), motion.size())) {
++        fprintf(stderr, "serve: the stream ended inside frame %u's motion\n", index);
++        return 0;
++      }
++
++      if (flags & kFrameFlagBypass) {
++        // NR off: the pipeline still wants its frame back, unprocessed. No device is
++        // touched for this, which is also what makes the protocol testable without a GPU.
++        frames++;
++        sendFrame(index, 1, (uint32_t)colour.size(), 0, pts, &colour);
++      } else {
++        if (!context) startEngine();
++        const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
++        if (reset) fprintf(stderr, "serve: frame %u carries reset (no history is kept, so it is a no-op)\n", index);
++
++        // The proxy: the frame's code values, rounded to f16 (the network's proxy is an
++        // f16 quantity), alpha set to 1 - preprocess.comp reads .rgb only.
++        for (size_t i = 0; i < (size_t)workWidth * workHeight; ++i) {
++          for (int c = 0; c < 3; ++c)
++            proxyValues[i * 4 + c] = num::roundF16((float)colour[i * 4 + c] * (1.0f / 255.0f));
++          proxyValues[i * 4 + 3] = 1.0f;
++        }
++        context->upload(proxy, proxyValues.data(), (VkDeviceSize)proxyValues.size() * 4);
++        context->resetDescriptorPool();
++        VkCommandBuffer commands = context->beginCommands();
++        kernels->preprocessFromProxy(commands, proxy, *features, preprocess);
++        graph->record(commands, *features);
++        context->endAndSubmit(commands, true);
++        checkChainTimeouts(*kernels);
++
++        const std::vector<uint8_t> headBytes =
++            context->download(graph->head().buffer, (VkDeviceSize)fullWidth * fullHeight * 4 * 4);
++        const float* head = reinterpret_cast<const float*>(headBytes.data());
++        for (uint32_t y = 0; y < workHeight; ++y)
++          for (uint32_t x = 0; x < workWidth; ++x) {
++            for (uint32_t c = 0; c < 3; ++c) {
++              // The centred proxy exactly as parity computes it from the input image,
++              // rather than the f16-rounded form preprocess.comp builds for the network:
++              // the two differ by ~1e-4, and agreeing with the gate is worth more here.
++              const float centred = std::fmaf(proxyValues[((size_t)y * workWidth + x) * 4 + c], 0.125f, -0.0625f);
++              const float value = composed(head[((size_t)y * fullWidth + x) * 4 + c], centred);
++              const float published = std::fmin(255.0f, std::fmax(0.0f, std::floor(value * 255.0f + 0.5f)));
++              output[((size_t)y * workWidth + x) * 4 + c] = (uint8_t)published;
++            }
++            output[((size_t)y * workWidth + x) * 4 + 3] = 255;
++          }
++        frames++;
++        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - began).count();
++        totalMs += ms;
++        fprintf(stderr, "serve frame %u: %.2f ms%s\n", index, ms, frames > 1 ? "" : " (includes the first frame's dispatch setup)");
++        sendFrame(index, 1, (uint32_t)output.size(), 0, pts, &output);
++      }
++
++      if (frameLimit > 0 && (int)frames >= frameLimit) {
++        fprintf(stderr, "serve: %u frames, %.2f ms mean, stopping as asked\n", frames, totalMs / (double)frames);
++        return 0;
++      }
++    }
++  } catch (const std::exception& error) {
++    fprintf(stderr, "serve: %s\n", error.what());
++    return 1;
++  }
++}
+\ No newline at end of file
 diff --git a/src/vk_context.h b/src/vk_context.h
 index 13a19e9..28968a3 100644
 --- a/src/vk_context.h

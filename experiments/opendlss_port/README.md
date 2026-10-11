@@ -83,6 +83,60 @@ version matters**: the shaders require `GL_EXT_float_e4m3` (9 uses) and
 `GL_EXT_shader_explicit_arithmetic_types`. 16.6.0 is what upstream pins; a distro
 glslang older than that will fail on the FP8 shaders specifically.
 
+## Running it as the pipeline's worker
+
+`dlss5vk serve` speaks the wire format of `native/dlss5-feed-host64.cpp` — the same bytes
+`protocol.py` packs and unpacks — so the pipeline can point at it instead of
+`wine nvngx.dll --live`, with nothing else changed:
+
+```
+NS_WORKER_CMD="/home/paul/dev/OpenDLSS-NR/build/dlss5vk serve --model /home/paul/dev/odl-model" \
+  uv run python -m minimal ...
+```
+
+`Worker.start` writes the stream header, `send` writes colour + motion inline, the reader
+expects `OUT1` — all three already match, so `NS_WORKER_CMD` is the whole integration.
+
+Verified without a GPU, on the real protocol (`tests/test_native_serve.py`, and by hand
+against the built binary): the header is parsed and the work size taken from it, two
+bypassed frames came back byte-identical, `SHMI` is refused with `ok=0` (the documented
+fallback — the client keeps sending down the pipe), an unknown command is answered rather
+than ignored, and a closed stream ends the process with exit 0.
+
+What it does **not** do, and says so instead of misbehaving:
+
+- **No NGX upscaling.** `fullWidth`/`fullHeight` must be 0 or the work size, so a
+  `--work-scale` run is rejected at the header rather than served wrong-sized frames.
+- **No shared-memory channel.** SHMI is refused; the MVP never asks for it (`Worker.start`
+  passes no shm), so frames stay on the pipe and the ~45ms `send` stays until the
+  transport itself changes.
+- **No temporal history.** The pipeline sends a zero motion field every frame
+  (`minimal/loop.py`: "The MVP has no real motion vectors"), so the features are
+  `preprocess.comp`'s first-frame ones — lanes 7-9 are the current proxy, not a
+  reprojected previous output — and the composite is the no-history formula `parity`
+  checks a fixture against. Motion is read and ignored, not silently trusted.
+
+Two knobs and one open question:
+
+- `DLSS5VK_SERVE_SEED` (default 0) is the noise seed. Fixed by default: with no history to
+  blend against, a different noise field every frame would only make the detail shimmer.
+- `preprocess.comp` builds lane 10 as `style / 128`, so the header's `style` is a 1/128
+  fixed-point fraction and the pipeline's default of `1` lands at ~0.008 — the neutral end.
+  Whether that matches what NGX does with the same number is untested.
+- `intensity` has no equivalent on this path. A run that sets it away from 1.0 is told so
+  on stderr rather than having it quietly ignored.
+
+## Measured on the GPU box (RTX 4080 SUPER, KDE/Wayland)
+
+| run | result |
+|---|---|
+| `bench --width 2560 --height 1440` | **9.960 ms** median, 9.787 ms min, 249 dispatches (PTX route) |
+| the same with every `DLSS5VK_PTX_*=0` | 15.799 ms median, 15.507 ms min — the PTX route is worth 5.8ms, 37% |
+| for scale, the NGX worker under Wine | 28.6 ms per 1440p frame, from its own log |
+
+`bench` is GPU time for the network with synthetic input: it measures the pass, not the
+pipeline, and it says nothing about whether the pixels are right.
+
 ## The GPU side, already checked
 
 `vulkaninfo` on the box reports every extension the project requires:
@@ -104,13 +158,23 @@ disabled before any measurement means anything.
 
 ## What is still unverified
 
-- **That it runs correctly on the Linux driver.** Building is not running. The feature
-  bits above are the gate.
-- **Bit-exactness.** `parity` compares against recorded captures of the original, which
-  the repository does not ship. We would have to record our own from the NGX path we
-  already have working — which is the one advantage we have over anyone else attempting
-  this.
+- **That the served pixels are right.** It runs — `bench` and `serve` both execute the
+  whole graph on the box — but nothing has compared its output against the original. The
+  next step is a frame through both paths side by side, not a bit-exact gate.
+- **Bit-exactness, and why it is not the next step.** `parity` compares against recorded
+  captures of the original, which the repository does not ship; we would have to record
+  our own from the NGX path. The tolerance branch for an RGBA8 capture reads *recorded
+  16-lane features*, and three of those lanes are seed-derived Gaussian noise:
+  `native/dlss5-feed-host64.cpp` sets `LocalToneStrength`, `LocalStructureStrength`,
+  `SkinStructureStrength`, `Style` and `UseAutoMask` — the conditioning — but **no seed**,
+  so NGX picks its own noise and the input side cannot be reconstructed from it. A seed
+  sweep is the experiment that would settle it (the manifest's seed is one JSON field);
+  until then, bit-exactness is blocked behind an unknown, not behind effort.
+- **The conditioning mapping.** Our knobs reach `preprocess.comp`'s lanes by name
+  (`style` as 1/128, `local_tone` and friends as strengths, `auto_mask` switching what the
+  last three lanes mean), but whether our neutral values are the port's neutral values is
+  untested. That is a calibration question, and it shows up as a look difference.
 - **The model directory.** `experiments/opendlss_weights/extract.py --out` emits one from
   the DLL (153 tensors, 71 blocks, 140.84 MiB). Its *lengths* match upstream's documented
-  layout exactly, but the stage split is ours to define and no byte-level round trip has
-  been shown.
+  layout exactly, and the port's loader accepts it and runs the whole network — which is
+  not the same as the *values* being right, since `bench` never looks at them.
