@@ -1,4 +1,4 @@
-From ea90414e2b0055cd1e7477c260e98faf3bb84571 Mon Sep 17 00:00:00 2001
+From c2c4279a962366602b95e04afef9ee4ed8662adc Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -38,9 +38,15 @@ It speaks the wire format native/dlss5-feed-host64.cpp speaks, byte for byte, so
 pointing NS_WORKER_CMD at it is the whole integration - the startup header, FRAME_MAGIC
 with colour and motion inline, OUT_MAGIC with the pixels back. No upscaling (the header's
 full size must be 0 or the work size), no shared-memory channel (SHMI is refused with
-ok=0, the documented fallback), and no temporal history: the pipeline sends a zero motion
-field for every frame, which is the case preprocess.comp builds for a first frame, and
-the composite is the no-history one - the same formula parity checks a fixture against.
+ok=0, the documented fallback). The history is kept: serve expands the frame it published
+last into a proxy of its own and hands it to preprocess.comp, which samples it for lanes
+7-9 where the demo's nr_preprocess.comp samples its own history surface. With the zero
+motion field the pipeline sends the reprojection is the identity, so that sample is the
+pixel itself rather than a motion-compensated one, and one extra dispatch - no host bytes
+moved - is the whole cost. A frame that carries a reset, or one served in bypass, has no
+history and falls back to the current proxy, the first-frame input. The composite is
+still the no-history one: it does not blend the history, so what changed here is the
+network's input, and nothing claims the picture is better.
 
 With FRAME_FLAG_BYPASS the pixels come back untouched and no device is created, which is
 what lets the framing, the header parse, the refusals and the end-of-stream handshake be
@@ -50,17 +56,18 @@ Also lands: `--model`/`--shaders`/`--frames` for the mode, the warm record that 
 249-kernel JIT burst on a zero proxy where the log can say what the wait was, and a
 per-frame timing line on stderr.
 ---
- scripts/build_linux.sh       | 161 +++++++++
+ scripts/build_linux.sh       | 161 ++++++++
  shaders/composite_serve.comp |  69 ++++
+ shaders/preprocess.comp      |  26 +-
  shaders/proxy_expand.comp    |  32 ++
- src/kernels.cpp              |  39 ++-
- src/kernels.h                |  22 +-
+ src/kernels.cpp              |  45 ++-
+ src/kernels.h                |  27 +-
  src/main.cpp                 |   6 +-
  src/nr_model.h               |   1 +
- src/serve.cpp                | 662 +++++++++++++++++++++++++++++++++++
+ src/serve.cpp                | 686 +++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |  26 +-
  src/vk_context.h             |   3 +
- 10 files changed, 1013 insertions(+), 8 deletions(-)
+ 11 files changed, 1069 insertions(+), 13 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/proxy_expand.comp
@@ -309,6 +316,60 @@ index 0000000..99efd96
 +      bytes.r | (bytes.g << 8u) | (bytes.b << 16u) | (255u << 24u);
 +}
 \ No newline at end of file
+diff --git a/shaders/preprocess.comp b/shaders/preprocess.comp
+index 97edc1b..b5f247b 100644
+--- a/shaders/preprocess.comp
++++ b/shaders/preprocess.comp
+@@ -2,7 +2,8 @@
+ // Input feature generation. Sixteen f32 lanes per padded pixel:
+ // three Box-Muller Gaussian lanes evaluated with the GPU's approximate f32
+ // transcendentals, constant 1, the centered proxy
+-// color twice (the second copy is the history when temporal input is valid),
++// color twice (the second copy is the previous frame's output - lanes 7-9, the history -
++// when the caller has one, and the current proxy when it does not),
+ // and the five conditioning lanes.
+ #extension GL_EXT_shader_explicit_arithmetic_types : require
+ #extension GL_GOOGLE_include_directive : require
+@@ -23,9 +24,14 @@ layout(push_constant) uniform Push {
+   float localStructure;
+   float skinStructure;
+   float style;
++  uint historyValid;     // 1: lanes 7-9 are sampled from History, 0: they repeat the current proxy
+ } pc;
+ 
+ layout(std430, binding = 0) readonly buffer Source { vec4 proxy[]; };   // RGBA f32 proxy code values
++// The previous frame's output through the same transform, in the same layout (the serve path
++// builds it with proxy_expand.comp, which is why the index below is the source one).
++// Without a history the caller still binds a buffer here and says historyValid = 0.
++layout(std430, binding = 1) readonly buffer History { vec4 history[]; };
+ layout(std430, binding = 7) writeonly buffer Features { float features[]; };
+ 
+ float hashUniform(uint value) {
+@@ -77,9 +83,21 @@ void main() {
+   features[base + 4u] = r;
+   features[base + 5u] = g;
+   features[base + 6u] = b;
+-  features[base + 7u] = r;
+-  features[base + 8u] = g;
+-  features[base + 9u] = b;
++  // Lanes 7-9: the same transform applied to the reprojected previous output (docs/frame.md).
++  // This path is handed no motion field, so the reprojection is the identity and the history is
++  // the previous frame's output at this same pixel. Where there is no history - the first frame,
++  // or one that carried a reset - the current proxy stands in, as the demo's nr_preprocess.comp
++  // does for a pixel without one.
++  float historyR = r, historyG = g, historyB = b;
++  if (pc.historyValid != 0u) {
++    vec4 previous = history[imageY * pc.sourceWidth + imageX];
++    historyR = roundF16(roundF16(roundF16(previous.r) - 0.5) * 0.125);
++    historyG = roundF16(roundF16(roundF16(previous.g) - 0.5) * 0.125);
++    historyB = roundF16(roundF16(roundF16(previous.b) - 0.5) * 0.125);
++  }
++  features[base + 7u] = historyR;
++  features[base + 8u] = historyG;
++  features[base + 9u] = historyB;
+   features[base + 10u] = pc.style / 128.0;
+   features[base + 11u] = roundF16(pc.localTone);
+   features[base + 12u] = roundF16(pc.autoMask > 0.0 ? 1.0 : pc.localStructure);
 diff --git a/shaders/proxy_expand.comp b/shaders/proxy_expand.comp
 new file mode 100644
 index 0000000..fff90c9
@@ -349,7 +410,7 @@ index 0000000..fff90c9
 +}
 \ No newline at end of file
 diff --git a/src/kernels.cpp b/src/kernels.cpp
-index 62bb8c3..da01b39 100644
+index 62bb8c3..9bab820 100644
 --- a/src/kernels.cpp
 +++ b/src/kernels.cpp
 @@ -42,7 +42,8 @@ void check(bool condition, const char* message) {
@@ -362,7 +423,22 @@ index 62bb8c3..da01b39 100644
      modules_[name] = context_.loadShaderModule(shaderDirectory + "/" + name + ".spv");
    }
  }
-@@ -508,6 +509,35 @@ void Kernels::preprocessFromProxy(VkCommandBuffer commands, const vk::Buffer& pr
+@@ -498,16 +499,49 @@ void Kernels::preprocessFromProxy(VkCommandBuffer commands, const vk::Buffer& pr
+   struct Push {
+     uint32_t fullWidth, fullHeight, validWidth, validHeight, sourceWidth, sourceHeight, seed;
+     float autoMask, localTone, localStructure, skinStructure, style;
++    uint32_t historyValid;
+   } push{a.fullWidth, a.fullHeight, a.validWidth, a.validHeight, a.sourceWidth, a.sourceHeight, a.seed,
+-         a.autoMask ? 1.0f : -1.0f, a.localTone, a.localStructure, a.skinStructure, a.style};
++         a.autoMask ? 1.0f : -1.0f, a.localTone, a.localStructure, a.skinStructure, a.style,
++         a.history ? 1u : 0u};
+   const vk::Buffer* bindings[vk::kGenericBindings] = {};
+   bindings[0] = &proxy;
++  // Always bound: with no history the shader is told so and never reads it.
++  bindings[1] = a.history ? a.history : &proxy;
+   bindings[7] = &features.buffer;
+   dispatchLabel_ = "preprocess";
+   dispatch(commands, pipeline("preprocess", {}, 0), bindings, &push, sizeof(push), (a.fullWidth + 7) / 8,
             (a.fullHeight + 7) / 8, 1);
  }
  
@@ -398,7 +474,7 @@ index 62bb8c3..da01b39 100644
  void Kernels::convertF32ToF16(VkCommandBuffer commands, const Activation& input, Activation& output) {
    check(input.format == Format::F32 && output.format == Format::F16, "convert formats");
    uint32_t count = input.rows * input.channels;
-@@ -793,6 +823,13 @@ uint32_t Kernels::ffnRowTiles(uint32_t channels) {
+@@ -793,6 +827,13 @@ uint32_t Kernels::ffnRowTiles(uint32_t channels) {
    return channels == 256 ? 3u : 4u;   // warps = E * rowTiles (<= 32); C=256: 24 warps at .maxnreg 80 keep one workgroup per SM
  }
  
@@ -413,10 +489,19 @@ index 62bb8c3..da01b39 100644
    check(a.input && a.input->format == Format::E4 && a.output && a.output->format == Format::E4, "PTX FFN formats");
    check(a.channels == 64 || a.channels == 128 || a.channels == 256, "PTX FFN channels");
 diff --git a/src/kernels.h b/src/kernels.h
-index 472bd36..b81d3be 100644
+index 472bd36..bf27ba9 100644
 --- a/src/kernels.h
 +++ b/src/kernels.h
-@@ -81,6 +81,18 @@ class Kernels {
+@@ -77,10 +77,27 @@ class Kernels {
+     uint32_t fullWidth, fullHeight, validWidth, validHeight, sourceWidth, sourceHeight, seed;
+     bool autoMask;
+     float localTone, localStructure, skinStructure, style;
++    // The reprojected previous output, as an RGBA f32 proxy (the serve path builds it from the
++    // frame it published last with proxy_expand.comp). Null - the default, and what every other
++    // mode passes - means lanes 7-9 repeat the current proxy: the first-frame input, and what
++    // this path served before it kept a history.
++    const vk::Buffer* history = nullptr;
+   };
    // Input features from an RGBA f32 proxy image (display code values).
    void preprocessFromProxy(VkCommandBuffer commands, const vk::Buffer& proxy, Activation& features,
                             const PreprocessArgs& args);
@@ -435,7 +520,7 @@ index 472bd36..b81d3be 100644
    void convertF32ToF16(VkCommandBuffer commands, const Activation& input, Activation& output);
    void quantize(VkCommandBuffer commands, const Activation& input, Activation& output);
    void downsample2x(VkCommandBuffer commands, const Activation& input, Activation& output, uint32_t inWidth,
-@@ -210,13 +222,19 @@ class Kernels {
+@@ -210,13 +227,19 @@ class Kernels {
    // w2 tile-major [e][4][32][32], w3 tile-major [K/32][K][32].
    static bool ptxFfnEnabled();
    static uint32_t ffnRowTiles(uint32_t channels);          // PTX expert FFN: 16-row tiles per workgroup (its chaining signals cover 16 * tiles rows)
@@ -495,10 +580,10 @@ index 867c97e..66f2175 100644
  #include <string>
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..5869f2f
+index 0000000..8ff74f5
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,662 @@
+@@ -0,0 +1,686 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -518,11 +603,13 @@ index 0000000..5869f2f
 +//   * No shared-memory channel. SHMI is answered ok=0, which is the documented
 +//     fallback: the client stays on sending frames down the pipe. (Worker.start passes
 +//     no shm at all, so the MVP never asks; this is for everything else that might.)
-+//   * No temporal history. The MVP sends a zero motion field for every frame
-+//     ("The MVP has no real motion vectors", minimal/loop.py), so the features are the
-+//     ones preprocess.comp builds for a first frame - lanes 7-9 hold the current proxy,
-+//     not a reprojected previous output - and the composite is the no-history one, the
-+//     same formula parity checks a fixture against. Motion is read and ignored.
++//   * A history, and no reprojection. serve keeps the frame it published last and feeds it
++//     back as lanes 7-9, which is what the network's temporal input is. With the zero motion
++//     field the MVP sends ("The MVP has no real motion vectors", minimal/loop.py) the
++//     reprojection is the identity, so that sample is the pixel itself, not a
++//     motion-compensated one - one frame, one surface, and a reset drops it. The composite is
++//     still the no-history formula: it does not blend the history, so what changed here is the
++//     network's input and nothing claims the picture is better until a run measures it.
 +//
 +// The proxy is the incoming frame's code values, f16-rounded. The network sees a
 +// display proxy (docs/frame.md) and an SDR video frame is already display-referred, so
@@ -902,8 +989,10 @@ index 0000000..5869f2f
 +  vk::Buffer proxy{};
 +  vk::Buffer colourBuffer{};  // the client's RGBA8 frame, from the pipe or the mapping
 +  vk::Buffer imageBuffer{};      // RGBA8, the composite's output and what leaves the device
++  vk::Buffer historyProxy{};     // the last published frame, as a proxy the next one reads
 +  nr::Activation* features = nullptr;
 +  uint32_t fullWidth = 0, fullHeight = 0;
++  bool haveHistory = false;      // a frame has been served, so lanes 7-9 have one to read
 +
 +  auto startEngine = [&]() {
 +    context = std::make_unique<vk::Context>();
@@ -926,6 +1015,11 @@ index 0000000..5869f2f
 +    colourBuffer =
 +        context->createBuffer((VkDeviceSize)workWidth * workHeight * 4, false, "rgba8 frame");
 +    imageBuffer = context->createBuffer((VkDeviceSize)workWidth * workHeight * 4, false, "rgba8 image");
++    // The history surface: the frame this one published last, expanded to a proxy of its own.
++    // A buffer and a dispatch, no host bytes: how the composite publishes a frame is what the
++    // next frame's lanes 7-9 read (docs/frame.md's history, at this path's 8 bits).
++    historyProxy = context->createBuffer((VkDeviceSize)workWidth * workHeight * 16, false, "history proxy");
++    context->fillZero(historyProxy);
 +    preprocess.fullWidth = fullWidth;
 +    preprocess.fullHeight = fullHeight;
 +    // The warm record: every PTX kernel is JIT-compiled on first use, so the first frame
@@ -1040,7 +1134,8 @@ index 0000000..5869f2f
 +      const bool noMotion = (flags & kFrameFlagNoMotion) != 0;
 +      if (noMotion && !motionSaidNothing) {
 +        motionSaidNothing = true;
-+        fprintf(stderr, "serve: the caller declared no motion field (nothing here reads one)\n");
++        fprintf(stderr, "serve: the caller declared no motion field: the history is sampled at the pixel\n"
++                        "serve: itself, which is what zero motion means\n");
 +      }
 +      if ((flags & kFrameFlagShm) && input.map) {
 +        // The frame is in the mapping: only its header came down the pipe.
@@ -1067,6 +1162,9 @@ index 0000000..5869f2f
 +      if (flags & kFrameFlagBypass) {
 +        // NR off: the pipeline still wants its frame back, unprocessed. No device is
 +        // touched for this, which is also what makes the protocol testable without a GPU.
++        // The history is dropped rather than fed back: this frame does not go through the
++        // composite, so imageBuffer still holds an older frame (or none at all).
++        haveHistory = false;
 +        frames++;
 +        const std::vector<uint8_t>* inlinePixels = nullptr;
 +        uint32_t replyBytes = 0;
@@ -1075,7 +1173,10 @@ index 0000000..5869f2f
 +      } else {
 +        if (!context) startEngine();
 +        const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
-+        if (reset) fprintf(stderr, "serve: frame %u carries reset (no history is kept, so it is a no-op)\n", index);
++        if (reset) {
++          haveHistory = false;
++          fprintf(stderr, "serve: frame %u carries reset: no history for this frame, and this frame primes the next\n", index);
++        }
 +
 +        // The proxy, on the GPU: the frame goes up as it was captured (RGBA8, 3.7MB - a
 +        // quarter of the f32 proxy, which was 11M float writes a frame down here) and one
@@ -1085,7 +1186,13 @@ index 0000000..5869f2f
 +        const std::chrono::steady_clock::time_point afterUpload = std::chrono::steady_clock::now();
 +        context->resetDescriptorPool();
 +        VkCommandBuffer commands = context->beginCommands();
++        // The history, first in this recording, because imageBuffer still holds the frame that
++        // was published last and this is the only moment it does - the composite below overwrites
++        // it. The same expand the current frame gets, on the previous one: one dispatch and no
++        // host bytes.
++        if (haveHistory) kernels->expandRgba8ToProxy(commands, imageBuffer, historyProxy, workWidth, workHeight);
 +        kernels->expandRgba8ToProxy(commands, colourBuffer, proxy, workWidth, workHeight);
++        preprocess.history = haveHistory ? &historyProxy : nullptr;
 +        kernels->preprocessFromProxy(commands, proxy, *features, preprocess);
 +        graph->record(commands, *features);
 +        // The composite, on the GPU: the head and the proxy in, RGBA8 out. Two reasons it is
@@ -1130,6 +1237,8 @@ index 0000000..5869f2f
 +        uint32_t replyBytes = 0;
 +        publishImage(output, image, &inlinePixels, &replyBytes);
 +        sendFrame(index, 1, replyBytes, 0, pts, inlinePixels);
++        // What this frame published is the history the next frame reads.
++        haveHistory = true;
 +        const std::chrono::steady_clock::time_point afterSend = std::chrono::steady_clock::now();
 +
 +        auto since = [](const std::chrono::steady_clock::time_point& from,

@@ -8,22 +8,26 @@ pass; the test suite green before anything is pushed; never touch /etc or instal
 packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Linux; never edit
 /opt/neuralscreen (policy, executor, key, unit); never queue a run that is not described here.
 
-## 2. Temporal history, step one: let serve keep a frame
-
-Every measurement so far is a single-frame NR: the client sends zero motion and the mode keeps
-no history, so the network never sees a previous frame. That is the difference between what we
-have and what the network is for. This step is plumbing only - a history feature buffer in
-serve fed the previous frame - and claims nothing about quality until a run measures it.
-
-* edit src/serve.cpp and src/kernels.{h,cpp} in the port, regenerate
-  experiments/opendlss_port/linux-port.patch (steps in that directory's README)
-* verify here: uv run pytest tests/ -q green, the shader compile test with GLSLANG set, and a
-  pristine-clone apply-and-build
-* then queue a run and compare network+composite against 12.5ms
-* if the port's own parity mode objects, hand it back rather than papering over it
-
-## 3. Ask first - do not start these alone
+## 1. Ask first - do not start these alone
 
 * Crop the fixture to the video area: the region has to be chosen by someone who can see it.
 * The container: it needs nvidia-container-toolkit, a system package. The developer's call.
 * Anything touching /etc, system packages or the box's configuration. Every time.
+
+## Learned
+
+* Temporal history, step one (retired here): serve now feeds the frame it published last back
+  as lanes 7-9. It is `expandRgba8ToProxy` of `imageBuffer` into a `historyProxy` buffer at the
+  top of the frame - one dispatch, no host bytes - and `preprocess.comp` gained a history
+  binding plus a `historyValid` push field: with a history it samples lanes 7-9 from it, without
+  one it repeats the current proxy, which is what it always did. The reprojection is the
+  identity because this path is handed no motion; a reset and a bypass frame drop the history.
+* Verified here: `uv run pytest tests/ -q` 305 passed / 14 skipped, the port's 15 shaders compile
+  with glslang 16.6.0, a pristine clone of 9d08f41 + the new patch builds 78 PTX kernels and
+  `dlss5vk` (stamp: port 9d08f41 (12 modified) patch c2c4279a9623), and the six native-serve
+  tests pass against that binary with NS_ODL_NATIVE_BIN set.
+* Parity is untouched by construction, not by argument: `main.cpp` passes no history, so its
+  features are the first-frame ones it always compared. That is why this did not need handing back.
+* The patch commit is c2c4279a9623; the composite still does not blend the history, so the
+  temporal half of the loop (the blend, and motion) is the next step, and `r2026-10-11-f` is
+  queued for this one's cost.

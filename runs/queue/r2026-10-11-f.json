@@ -1,9 +1,21 @@
 {
   "id": "r2026-10-11-f",
   "entry": "minimal",
-  "args": ["--source", "image", "--input-image", "fixtures/youtube-720p.png", "--headless",
-           "--frames", "60", "--worker-log", "--shm", "--no-motion", "--send-ahead", "2"],
+  "args": [
+    "--source",
+    "image",
+    "--input-image",
+    "fixtures/youtube-1440p.png",
+    "--headless",
+    "--frames",
+    "60",
+    "--worker-log",
+    "--shm",
+    "--no-motion",
+    "--send-ahead",
+    "2"
+  ],
   "timeout_s": 300,
   "artifacts": [],
-  "note": "Quarter the pixels, because --size does not reach an image source: the work size is whatever the image is. This says which of serve's parts scale with pixels - the pass should fall roughly fourfold if the cost is the network, and barely move if it is per-frame glue."
+  "note": "The first run with a history: serve feeds the frame it published last back as lanes 7-9, so the network sees a previous frame for the first time. Read the worker log's per-frame network+composite lines against 12.5ms (r2026-10-11-c) and 12.8ms at frame 59 of r2026-10-11-e. No --size: the last request asked for 1280x720 and the run used 2560x1440 anyway, so this is deliberately the same shape as the run it is compared with. The history is one more proxy_expand dispatch and no host bytes, and it lands in the proxy bucket, not the network+composite one. Nothing here claims the picture is better - a still fixture with no motion is the narrowest case of the loop, and this run is for the cost, not the look."
 }
