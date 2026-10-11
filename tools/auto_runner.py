@@ -219,23 +219,62 @@ def run_request(request: dict, policy: dict, worktree: Path, run_dir: Path,
     return code
 
 
-def publish(worktree: Path, policy: dict, request_path: Path, run_dir: Path, exit_code: int,
+def publish(worktree: Path, policy: dict, run_dir: Path, exit_code: int,
             dry_run: bool = False) -> None:
-    """Move the request into done/ and push. The push is the only thing a run produces."""
+    """Commit the result on top of the results branch and push it.
+
+    The commit is built with plumbing rather than `git commit`, and that is not pedantry:
+
+      * its FIRST parent is the previous results tip, so every pass fast-forwards. Committing
+        on the checkout instead would build each result on a fresh request branch, and the
+        second push would be rejected as non-fast-forward - only the first run would ever
+        publish.
+      * its second parent is the request branch, so the result stays diffable against the
+        code it ran on without carrying a copy of that code as its history.
+      * the working tree is left on the request branch, which is what the entries ran against.
+
+    The tree is the request branch's tree plus runs/, so a result is still readable next to
+    the exact code that produced it.
+    """
     if dry_run:
         log(f"would publish {run_dir} to {policy['results_branch']}")
         return
+    results, request = policy["results_branch"], policy["request_branch"]
+    revision = git(worktree, "rev-parse", f"origin/{request}").stdout.strip()
+    (run_dir / "revision.txt").write_text(revision + "\n")
+
+    # The tree is the request branch's code - what the run actually used - with everything the
+    # results branch has accumulated under runs/ laid over it. Staging runs/ from the checkout
+    # alone would drop the previous runs' results: the checkout is reset to the request branch
+    # every pass, so it remembers nothing.
+    git(worktree, "read-tree", f"origin/{request}")
+    parents = []
+    if git(worktree, "rev-parse", "--verify", f"origin/{results}", check=False).returncode == 0:
+        parents.append(f"origin/{results}")
+        git(worktree, "checkout", f"origin/{results}", "--", "runs")
+    parents.append(f"origin/{request}")
+
+    # A request that has run does not belong in the snapshot: the queue is the request
+    # branch's business, and the results branch should show what happened, not what was asked.
+    for stale in (worktree / "runs" / "queue").glob("*.json"):
+        if (worktree / "runs" / "done" / stale.stem).exists():
+            stale.unlink()
+
     git(worktree, "add", "-A", "runs")
-    # An identity of its own: the service user has none, and a commit that fails for want
-    # of a name would lose the run's only trace.
-    git(worktree, "-c", "user.name=neuralscreen-runner",
-        "-c", "user.email=runner@localhost", "commit", "-m",
-        f"run {run_dir.name}: {request_path.name} -> exit {exit_code}")
-    push = git(worktree, "push", "origin", f"HEAD:{policy['results_branch']}", check=False)
+    tree = git(worktree, "write-tree").stdout.strip()
+
+    # An identity of its own: the runner has none, and a commit that fails for want of a name
+    # would lose the run's only trace.
+    message = f"run {run_dir.name}: exit {exit_code} on {revision[:12]}"
+    made = git(worktree, "-c", "user.name=neuralscreen-runner",
+               "-c", "user.email=runner@localhost", "commit-tree", tree,
+               *[arg for parent in parents for arg in ("-p", parent)], "-m", message)
+    commit = made.stdout.strip()
+    push = git(worktree, "push", "origin", f"{commit}:refs/heads/{results}", check=False)
     if push.returncode != 0:
         log(f"push failed: {push.stderr.strip()}")
         raise SystemExit(2)
-    log(f"published {run_dir.name} to {policy['results_branch']}")
+    log(f"published {run_dir.name} to {results} (on {revision[:12]})")
 
 
 def done_ids(worktree: Path, policy: dict) -> set[str]:
@@ -289,8 +328,7 @@ def process(policy: dict, worktree: Path, dry_run: bool = False) -> int:
             log(f"{run_id}: the runner itself failed: {error!r}")
             (run_dir / "report.md").write_text(f"# run {run_id}\n\n**The runner failed.** "
                                                f"`{error!r}`\n")
-        publish(worktree, policy, worktree / "runs" / "done" / run_id / "request.json",
-                run_dir, exit_code, dry_run=dry_run)
+        publish(worktree, policy, run_dir, exit_code, dry_run=dry_run)
     return 0
 
 
@@ -311,6 +349,16 @@ def main(argv: list[str] | None = None) -> int:
     policy = load_policy(policy_path)
     log(f"runner {fingerprint(Path(__file__))} · policy {fingerprint(policy_path)} "
         f"· entry points: {', '.join(sorted(policy['entries']))}")
+    # Which ssh the unit handed us, and whether it is the one the repository ships. A unit
+    # that was pulled but never reinstalled looks exactly like a rejected key: ssh reads
+    # /etc/ssh/ssh_config, the sandbox will not let it, and the fetch fails saying the
+    # repository's access rights are wrong.
+    ssh_command = os.environ.get("GIT_SSH_COMMAND", "")
+    log(f"ssh: {ssh_command or '(unset: git uses its own default)'}")
+    if "/opt/neuralscreen/ssh_config" not in ssh_command:
+        log("  ^ this unit is not the one in the repository: pull, reinstall it into "
+            "~/.config/systemd/user/, daemon-reload, then start it again. Without -F, ssh "
+            "reads /etc/ssh/ssh_config and the sandbox makes it refuse that file.")
 
     pause = policy.get("pause_file")
     if pause and Path(pause).exists():

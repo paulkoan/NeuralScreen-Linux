@@ -344,3 +344,55 @@ def test_ssh_skips_the_system_config_the_sandbox_cannot_offer():
     settings = [line for line in shipped.splitlines()
                 if line.strip() and not line.strip().startswith("#")]
     assert settings == [], f"the ssh config must stay empty; found: {settings}"
+
+
+def test_the_runner_says_when_the_unit_it_was_started_by_is_stale(world: World, monkeypatch):
+    """Three installs went stale and each one cost a round trip. Now the journal says so.
+
+    A unit that was pulled but never reinstalled hands the runner an ssh command without -F,
+    and the fetch then fails reading /etc/ssh/ssh_config - which looks like a rejected key.
+    """
+    import os as _os
+    world.queue({"id": "r010", "entry": "ok"})
+    stale = subprocess.run(
+        [sys.executable, str(RUNNER), "--policy", str(world.policy), "--once"],
+        capture_output=True, text=True,
+        env={**_os.environ, "GIT_SSH_COMMAND": "ssh -i /opt/neuralscreen/deploy_key"})
+    assert stale.returncode == 0, stale.stderr
+    assert "this unit is not the one in the repository" in stale.stderr, stale.stderr
+
+    world.queue({"id": "r011", "entry": "ok"})
+    current = subprocess.run(
+        [sys.executable, str(RUNNER), "--policy", str(world.policy), "--once"],
+        capture_output=True, text=True,
+        env={**_os.environ,
+             "GIT_SSH_COMMAND": "ssh -F /opt/neuralscreen/ssh_config -i /opt/neuralscreen/deploy_key"})
+    assert current.returncode == 0, current.stderr
+    assert "this unit is not the one in the repository" not in current.stderr, current.stderr
+    assert "ssh: ssh -F /opt/neuralscreen/ssh_config" in current.stderr, current.stderr
+
+
+def test_a_second_run_publishes_on_top_of_the_first(world: World):
+    """Committing on a fresh request branch makes the second push non-fast-forward.
+
+    The results commit's first parent has to be the previous results tip, or only the first
+    run of the runner's life ever publishes - and the rejection arrives as a push error that
+    looks like a credential or branch-protection problem.
+    """
+    first = world.queue({"id": "rA", "entry": "ok"})
+    assert world.run().returncode == 0
+    second = world.queue({"id": "rB", "entry": "ok"})
+    finished = world.run()
+    assert finished.returncode == 0, finished.stderr
+    assert "push failed" not in finished.stderr, finished.stderr
+
+    tree = world.results_tree()
+    assert f"runs/done/{first}/report.md" in tree, tree
+    assert f"runs/done/{second}/report.md" in tree, "the second run never published"
+
+    subjects = git("log", "--first-parent", "--format=%s", "results",
+                   cwd=world.remote).stdout.splitlines()
+    assert len(subjects) >= 2, subjects
+    assert "rB" in subjects[0] and "rA" in subjects[1], subjects
+    assert (world.done_dir(second) / "revision.txt").read_text().strip(), \
+        "the run should record the revision it ran against"
