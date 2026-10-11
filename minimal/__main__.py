@@ -76,7 +76,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="force the frame size for sources that can make one "
                         "(synthetic). Lets the 2560x1440 matrix be measured "
                         "without the portal and so without a dialog — which is "
-                        "how the 1440p cost gets decomposed instead of guessed")
+                        "how the 1440p cost gets decomposed instead of guessed. "
+                        "Required by --source window: a window stream reports no "
+                        "size, and frames are scaled to this")
     p.add_argument("--input-image", metavar="PATH",
                    help="the frame to replay with --source image")
     p.add_argument("--param", action="append", metavar="NAME=VALUE",

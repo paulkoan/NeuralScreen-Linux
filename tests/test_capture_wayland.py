@@ -240,3 +240,59 @@ def test_window_capture_asks_the_portal_for_a_window(monkeypatch):
 
     cw.PortalCapture()                    # the default is still a whole screen
     assert seen[-1]["types"] == SOURCE_MONITOR
+
+class _SizedSession:
+    """A portal stream that reports the size the compositor gave it (or 0x0)."""
+
+    def __init__(self, width: int, height: int):
+        self.width, self.height = width, height
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _stub_portal(monkeypatch, session):
+    from minimal.portal import SOURCE_WINDOW  # noqa: F401  (imported for the tests below)
+    monkeypatch.setattr(cw, "requirements", lambda: (True, ""))
+    monkeypatch.setattr(cw, "open_screencast", lambda **kw: session)
+    monkeypatch.setattr(cw.PortalCapture, "_start_pipeline", lambda self: None)
+
+
+def test_a_window_stream_reporting_no_size_takes_the_requested_one(monkeypatch):
+    """KDE reports 0x0 for a window, and that is not a refusal.
+
+    The size for a window is negotiated later, over PipeWire; the portal reports one for a
+    screen. Our gst pipeline has to name the dimensions it scales to, so the request fills
+    the gap — measured on the box as `stream node=259 serial=None 0x0` followed by "the
+    portal did not report a stream size", which pointed at the portal rather than at us.
+    """
+    from minimal.portal import SOURCE_WINDOW
+
+    session = _SizedSession(0, 0)
+    _stub_portal(monkeypatch, session)
+    logged: list[str] = []
+    cap = cw.PortalCapture(source=SOURCE_WINDOW, width=2560, height=1440,
+                           log=logged.append)
+    assert (cap.width, cap.height) == (2560, 1440)
+    assert any("no size" in line for line in logged), (
+        "it has to say where the size came from, not use it quietly")
+
+
+def test_a_stream_reporting_no_size_and_no_request_names_the_flag(monkeypatch):
+    """Refusing is still right when nobody named a size — but the message has to be usable."""
+    from minimal.portal import SOURCE_WINDOW
+
+    session = _SizedSession(0, 0)
+    _stub_portal(monkeypatch, session)
+    with pytest.raises(CaptureError, match="--size"):
+        cw.PortalCapture(source=SOURCE_WINDOW)
+    assert session.closed, "a session it cannot use should be closed, not left open"
+
+
+def test_the_reported_size_wins_over_a_requested_one(monkeypatch):
+    """A screen reports its own size; --size must not override what the compositor said."""
+    session = _SizedSession(1280, 720)
+    _stub_portal(monkeypatch, session)
+    cap = cw.PortalCapture(width=640, height=480)
+    assert (cap.width, cap.height) == (1280, 720)

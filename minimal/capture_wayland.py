@@ -76,7 +76,8 @@ class PortalCapture:
 
     def __init__(self, monitor_idx: int = 0, *, source: int = SOURCE_MONITOR,
                  gst: str = GST_LAUNCH, timeout: float = 120.0, log=print,
-                 video_scale: bool = True):
+                 video_scale: bool = True, width: int | None = None,
+                 height: int | None = None):
         self.monitor_idx = monitor_idx
         self.source = int(source)
         self.video_scale = bool(video_scale)
@@ -98,12 +99,26 @@ class PortalCapture:
         except PortalError as exc:
             raise CaptureError(str(exc)) from exc
 
-        self.width = int(self._sc.width)
-        self.height = int(self._sc.height)
-        if self.width <= 0 or self.height <= 0:
+        reported_w, reported_h = int(self._sc.width), int(self._sc.height)
+        if reported_w > 0 and reported_h > 0:
+            self.width, self.height = reported_w, reported_h
+        elif width and height:
+            # A window stream arrives as 0x0: the compositor reports a size for a screen
+            # and not for a window, whose real size is negotiated later over PipeWire —
+            # measured on KDE, `stream node=259 serial=None 0x0`. Our pipeline has to name
+            # the dimensions it scales to, so take the requested ones instead of refusing
+            # the capture: the frames are scaled to them, which is what a window smaller
+            # or larger than the request needs anyway.
+            self.width, self.height = int(width), int(height)
+            self._log(f"  window stream reports no size; using the requested "
+                      f"{self.width}x{self.height}")
+        else:
             self._sc.close()
             raise CaptureError(
-                "the portal did not report a stream size; cannot size frames")
+                "the portal did not report a stream size. A window stream often arrives "
+                "as 0x0 (the compositor reports a size for a screen, not for a window), "
+                "and the frame size has to be named: pass --size WxH, the size the window "
+                "is running at — for a fullscreen game client that is the screen size")
 
         self._start_pipeline()
 
