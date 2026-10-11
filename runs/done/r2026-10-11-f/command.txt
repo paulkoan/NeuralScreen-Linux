@@ -1,0 +1,1 @@
+uv run python -m minimal --source image --input-image fixtures/youtube-720p.png --headless --frames 60 --worker-log --shm --no-motion --send-ahead 2
