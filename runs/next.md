@@ -1,43 +1,41 @@
-# What to run next
+# The plan
 
-A queue of *planned* requests, in order. The point of it is that the thinking step - deciding
-what to measure next and why - is written down somewhere reviewable, instead of living only in
-a chat. A cron agent tick may take the first item, turn it into a request in `runs/queue/`, and
-delete it from here. Nothing else in this file is executable, and one item per tick is the
-limit: a loop that queues its own follow-ups without a written plan is a loop nobody reviews.
+Work items in order, for whoever - or whatever - picks this up next. Take the top item, do it,
+delete it, append what you learned at the bottom.
 
-## 1. Is the pass helping, on video rather than desktop chrome?
+Not negotiable, because these are the difference between a loop and a runaway: one item per
+pass; the test suite green before anything is pushed; never touch /etc or install system
+packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Linux; never edit
+/opt/neuralscreen (policy, executor, key, unit); never queue a run that is not described here.
 
-The fixture is a whole-desktop capture, so the pass runs over browser chrome, a sidebar and
-thumbnails - fine for timing, useless for judging quality. This run asks for a crop of the
-video area only, and saves both frames, so a comparison is between two pictures of the same
-thing and nothing else.
+## 1. Does the cost scale with pixels? (ready - queue it)
 
-* id: `r2026-10-11-d`
-* entry: `minimal`
-* args: `--source image --input-image fixtures/video-crop.png --headless --frames 60
-  --worker-log --shm --no-motion --send-ahead 2 --save-before before.png --save-after after.png`
-* artifacts: `before.png`, `after.png`
-* needs first: `fixtures/video-crop.png`, a 1280x720-or-larger crop of the video region from
-  `fixtures/youtube-1440p.png`. Until it exists this item should not be queued.
+serve spends ~22ms a frame: network+composite 12.5, proxy 4-5. The network alone measured
+9.96ms in bench at 2560x1440, so the composite and the proxy expansion share a queue with it.
+Half the work size separates what scales with pixels from what does not.
 
-## 2. Where the worker's 22ms actually goes
+* id `r2026-10-11-e`, entry `minimal`, args `--source image --input-image
+  fixtures/youtube-1440p.png --headless --size 1280x720 --frames 60 --worker-log --shm
+  --no-motion --send-ahead 2`, artifacts none
+* read it against the 2560x1440 numbers in runs/done/r2026-10-11-c
+* learned: (fill in)
 
-`serve` reports `network+composite` 12.5ms and `proxy` 4-5ms per frame; the pass alone measured
-9.96ms in `bench`. The gap is the composite and the proxy expansion sharing a queue with the
-network. A run at 720p work size would separate "cost that scales with pixels" from "cost that
-does not", and the `serve frame` lines already carry the split.
+## 2. Temporal history, step one: let serve keep a frame
 
-* id: `r2026-10-11-e`
-* entry: `minimal`
-* args: `--source image --input-image fixtures/youtube-1440p.png --headless --size 1280x720
-  --frames 60 --worker-log --shm --no-motion --send-ahead 2`
-* artifacts: none
+Every measurement so far is a single-frame NR: the client sends zero motion and the mode keeps
+no history, so the network never sees a previous frame. That is the difference between what we
+have and what the network is for. This step is plumbing only - a history feature buffer in
+serve fed the previous frame - and claims nothing about quality until a run measures it.
 
-## 3. The missing temporal history
+* edit src/serve.cpp and src/kernels.{h,cpp} in the port, regenerate
+  experiments/opendlss_port/linux-port.patch (steps in that directory's README)
+* verify here: uv run pytest tests/ -q green, the shader compile test with GLSLANG set, and a
+  pristine-clone apply-and-build
+* then queue a run and compare network+composite against 12.5ms
+* if the port's own parity mode objects, hand it back rather than papering over it
 
-Everything so far is a single-frame NR: the client sends a zero motion field and `serve`
-keeps no history, so the network never sees a previous frame. This is the difference between
-what we have and what the network is for, and it is not a request to queue yet - it needs
-`serve` to keep a history feature and the client to send real motion vectors, which is a
-conversation, not a run.
+## 3. Ask first - do not start these alone
+
+* Crop the fixture to the video area: the region has to be chosen by someone who can see it.
+* The container: it needs nvidia-container-toolkit, a system package. The developer's call.
+* Anything touching /etc, system packages or the box's configuration. Every time.
