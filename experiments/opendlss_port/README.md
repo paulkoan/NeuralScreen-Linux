@@ -131,11 +131,15 @@ What it does **not** do, and says so instead of misbehaving:
   `--work-scale` run is rejected at the header rather than served wrong-sized frames.
   passes no shm), so frames stay on the pipe and the ~45ms `send` stays until the
   transport itself changes.
-- **No temporal history.** The pipeline sends a zero motion field every frame
-  (`minimal/loop.py`: "The MVP has no real motion vectors"), so the features are
-  `preprocess.comp`'s first-frame ones — lanes 7-9 are the current proxy, not a
-  reprojected previous output — and the composite is the no-history formula `parity`
-  checks a fixture against. Motion is read and ignored, not silently trusted.
+- **A history, and no reprojection.** `serve` keeps the frame it published last, expands it into a
+  proxy of its own (`proxy_expand.comp`, one dispatch, no host bytes) and hands it to
+  `preprocess.comp` as lanes 7-9 — where the demo's `nr_preprocess.comp` samples its history
+  surface. The pipeline sends a zero motion field every frame (`minimal/loop.py`: "The MVP has
+  no real motion vectors"), so the reprojection is the identity and that sample is the pixel
+  itself, not a motion-compensated one; a frame carrying a reset, or one served in bypass, has
+  no history and falls back to the current proxy. Motion is read and ignored, not silently
+  trusted — and the composite still does not blend the history, so the network's input is what
+  changed and nothing claims the picture is better.
 
 The model directory is the one input to this path nobody can look at: it comes out of
 NVIDIA's DLL through `extract.py`, and the port's loader verifies every stage against the
