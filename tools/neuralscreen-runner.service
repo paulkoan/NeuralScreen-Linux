@@ -3,6 +3,7 @@
 #   install -d -m 0755 /opt/neuralscreen /opt/neuralscreen/state
 #   install -m 0755 tools/auto_runner.py /opt/neuralscreen/auto_runner.py
 #   install -m 0644 tools/runner_policy.example.toml /opt/neuralscreen/policy.toml
+#   install -m 0644 tools/runner_ssh_config /opt/neuralscreen/ssh_config
 #   install -d -m 0755 ~/.config/systemd/user
 #   install -m 0644 tools/neuralscreen-runner.service tools/neuralscreen-runner.timer \
 #        ~/.config/systemd/user/
@@ -41,7 +42,12 @@ ExecStart=/usr/bin/python3 /opt/neuralscreen/auto_runner.py --policy /opt/neural
 # its own under the state directory.
 # No credential prompt, ever: under systemd there is nobody to answer one, so fail instead.
 Environment="GIT_TERMINAL_PROMPT=0"
-Environment="GIT_SSH_COMMAND=ssh -i /opt/neuralscreen/deploy_key -o IdentitiesOnly=yes -o UserKnownHostsFile=/opt/neuralscreen/state/known_hosts -o StrictHostKeyChecking=accept-new"
+#
+# -F names an empty config under /opt/neuralscreen, which makes ssh ignore the system-wide
+# /etc/ssh/ssh_config. Without it ssh refuses that file inside the sandbox ("Bad owner or
+# permissions on .../20-systemd-ssh-proxy.conf") and aborts before offering the key, which
+# surfaces as "Could not read from remote repository" - a credential error that is not one.
+Environment="GIT_SSH_COMMAND=ssh -F /opt/neuralscreen/ssh_config -i /opt/neuralscreen/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o UserKnownHostsFile=/opt/neuralscreen/state/known_hosts -o StrictHostKeyChecking=accept-new"
 
 # --- the bounds ---------------------------------------------------------------------------
 # These hold whatever a run request, or the code it runs, tries. The policy decides what is

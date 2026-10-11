@@ -262,10 +262,19 @@ def test_the_runner_authenticates_with_a_key_and_never_a_token():
     unit = (REPO / "tools" / "neuralscreen-runner.service").read_text()
     policy = (REPO / "tools" / "runner_policy.example.toml").read_text()
     assert "/opt/neuralscreen/deploy_key" in unit, "the unit must name the key"
-    assert "/etc/" not in unit, "the user asked for nothing in /etc - keep it that way"
     assert "systemctl --user" in unit, "it is a user unit: no sudo anywhere"
-    assert "/etc/" not in policy, "the policy points at /opt/neuralscreen, not /etc"
     assert "sudo" not in unit.split("[Service]")[1], "the service section must need no root"
+
+    # Settings again, not prose: this unit explains at length why /etc/ssh has to be *skipped*,
+    # and a check that reads comments would forbid saying so.
+    unit_settings = [line for line in unit.splitlines()
+                     if line.strip() and not line.strip().startswith("#")]
+    assert not any("/etc/" in line for line in unit_settings), \
+        "the user asked for nothing in /etc - the settings must name none of it"
+    policy_settings = [line for line in policy.splitlines()
+                       if line.strip() and not line.strip().startswith("#")]
+    assert not any("/etc/" in line for line in policy_settings), \
+        "the policy points at /opt/neuralscreen, not /etc"
     assert "IdentitiesOnly=yes" in unit, \
         "without IdentitiesOnly the service would try its own keys as well"
     assert "UserKnownHostsFile=" in unit
@@ -319,3 +328,19 @@ def test_the_journal_says_which_runner_and_policy_are_running(world: World):
     assert stamps, finished.stderr
     assert "policy " in stamps[0], stamps[0]
     assert "entry points: boom, ok" in stamps[0], stamps[0]
+
+
+def test_ssh_skips_the_system_config_the_sandbox_cannot_offer():
+    """The sandbox's view of /etc/ssh ownership makes ssh refuse its own system config.
+
+    It then aborts before offering the key and reports "Could not read from remote
+    repository", which is a permission problem wearing a credential problem's clothes. -F
+    against an empty file, kept empty, is the fix - so the file must stay empty.
+    """
+    unit = (REPO / "tools" / "neuralscreen-runner.service").read_text()
+    assert "-F /opt/neuralscreen/ssh_config" in unit, "ssh must be told to skip the system config"
+    assert "BatchMode=yes" in unit, "no prompt can be answered inside a unit"
+    shipped = (REPO / "tools" / "runner_ssh_config").read_text()
+    settings = [line for line in shipped.splitlines()
+                if line.strip() and not line.strip().startswith("#")]
+    assert settings == [], f"the ssh config must stay empty; found: {settings}"

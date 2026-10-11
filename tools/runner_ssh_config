@@ -1,0 +1,21 @@
+# An empty per-user ssh config, named by the unit as `ssh -F /opt/neuralscreen/ssh_config`.
+#
+# `-F` makes ssh ignore the *system-wide* /etc/ssh/ssh_config. That is the whole point: under
+# the unit's sandbox ssh refuses that file with
+#
+#   Bad owner or permissions on /etc/ssh/ssh_config.d/20-systemd-ssh-proxy.conf
+#
+# because the ownership it sees for a file it requires to be root-owned is not root, and it
+# then aborts before offering any key. The failure surfaces as
+#
+#   fatal: Could not read from remote repository
+#   Please make sure you have the correct access rights
+#
+# which reads as "the deploy key was rejected" and sends you looking in the wrong place.
+#
+# Nothing is lost by skipping it: this client needs no ProxyCommand, no SendEnv, no host
+# aliases and no systemd-ssh-proxy entries. Everything it does need - the key, identities,
+# known_hosts - is passed on the command line by the unit.
+#
+# Keep this file empty, and keep it free of Include lines: an Include is exactly the door the
+# system config came in through.
