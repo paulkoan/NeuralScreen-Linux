@@ -63,10 +63,13 @@ LockPersonality=yes
 # time.
 MemoryDenyWriteExecute=no
 
-# GitHub for the fetch and the push, and nothing else. If your systemd refuses these two in a
-# user unit, drop them: a run's own network access is decided separately, in the policy.
+# GitHub for the fetch and the push, and nothing else. localhost is in the list because of
+# DNS: without it the resolver is unreachable, every fetch fails with "could not resolve
+# host" and the cause looks like a credential problem. (With systemd-resolved the resolver is
+# 127.0.0.53, which localhost covers.) If your systemd refuses these lines in a user unit,
+# drop them: a run's own network access is decided separately, in the policy.
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-IPAddressAllow=github.com
+IPAddressAllow=localhost github.com
 IPAddressDeny=any
 
 # --- bounds on a runaway -------------------------------------------------------------------

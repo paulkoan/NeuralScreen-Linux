@@ -269,6 +269,9 @@ def test_the_runner_authenticates_with_a_key_and_never_a_token():
     assert "IdentitiesOnly=yes" in unit, \
         "without IdentitiesOnly the service would try its own keys as well"
     assert "UserKnownHostsFile=" in unit
+    # DNS has to be reachable or every fetch fails as "could not resolve host", which reads
+    # like a credential problem and is not one.
+    assert "IPAddressAllow=localhost" in unit, "the resolver must be allowed, or DNS is blocked"
 
     # Settings, not prose: this file talks about tokens on purpose, and a check that reads
     # the comments would fail the moment someone explains why there is no token.
