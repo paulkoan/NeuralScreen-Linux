@@ -217,7 +217,7 @@ def test_a_request_runs_once_even_though_the_checkout_is_reset(world: World):
 
     second = world.run()
     assert second.returncode == 0
-    assert "already" in second.stderr and "skipping" in second.stderr, second.stderr
+    assert "published, skipping" in second.stderr, second.stderr
     assert world.log() == history, "the second pass pushed something"
     assert (world.worktree / "ran.txt").read_text() == "", \
         "the stub ran again: the working tree is reset every pass, so the ledger has to be " \
@@ -450,7 +450,7 @@ def test_a_refused_push_does_not_become_a_rerun_loop(world: World):
         # The ran.txt of a fresh run; the second pass must not overwrite it.
         (world.worktree / "ran.txt").write_text("untouched")
         second = world.run()
-        assert "already attempted on this machine, skipping" in second.stderr, second.stderr
+        assert "not running it again" in second.stderr, second.stderr
         assert (world.worktree / "ran.txt").read_text() == "untouched", \
             "the request ran a second time because the push had failed"
     finally:

@@ -370,13 +370,18 @@ def process(policy: dict, worktree: Path, dry_run: bool = False) -> int:
     for request_path in queue:
         run_id = request_path.stem
         run_dir = worktree / "runs" / "done" / run_id
+        # The order is the message. "on results" means finished and published, which is the
+        # end of the story; "attempted here" means it ran and may not have got out, which is
+        # publish_pending's job rather than a reason to run it again.
+        if run_id in already:
+            log(f"{run_id}: done and published, skipping")
+            (attempted / run_id).unlink(missing_ok=True)   # the local marker has no further use
+            continue
         if (attempted / run_id).exists():
             # Written before the run, not after: a pass that dies half way through must not
             # decide on the next pass that nothing happened.
-            log(f"{run_id}: already attempted on this machine, skipping")
-            continue
-        if run_id in already:
-            log(f"{run_id}: already on {policy['results_branch']}, skipping")
+            log(f"{run_id}: ran here and is not on {policy['results_branch']} yet "
+                f"- publishing it, not running it again")
             continue
         if run_dir.exists():
             log(f"{run_id}: already done, skipping")
