@@ -1,15 +1,16 @@
-# The auto-runner's policy. Install this OUTSIDE the repository, root-owned:
+# The auto-runner's policy. Install this OUTSIDE the repository, in /opt/neuralscreen:
 #
-#   sudo install -d -m 0755 /etc/neuralscreen-runner
-#   sudo install -m 0644 tools/runner_policy.example.toml /etc/neuralscreen-runner/policy.toml
-#   sudo $EDITOR /etc/neuralscreen-runner/policy.toml        # worktree, repo_url
-#   sudo install -m 0644 tools/neuralscreen-runner.service tools/neuralscreen-runner.timer \
-#        /etc/systemd/system/
-#   sudo systemctl enable --now neuralscreen-runner.timer
+#   install -d -m 0755 /opt/neuralscreen /opt/neuralscreen/state
+#   install -m 0644 tools/runner_policy.example.toml /opt/neuralscreen/policy.toml
+#   $EDITOR /opt/neuralscreen/policy.toml                    # the entries, if you want fewer
 #
-# It has to live here rather than in the repo because it is the thing that decides what may
-# run: if it were versioned, a commit could name a new entry point and grant itself the
-# machine. Root-owned, it cannot.
+# No root, and nothing in /etc: the runner is a systemd USER unit reading this file. The
+# unit's sandbox - not a privileged install - is what bounds a run (see
+# tools/neuralscreen-runner.service).
+#
+# It has to live outside the repo because it is the thing that decides what may run: if it
+# were versioned, a commit could name a new entry point and grant itself the machine. This
+# copy, in /opt/neuralscreen, is the one that counts.
 #
 # Everything below is a starting point. The entries are the whole of what this runner will
 # execute; a request naming anything else is refused and the refusal is pushed like any
@@ -19,20 +20,26 @@ repo_url = "git@github.com:paulkoan/NeuralScreen-Linux.git"
 # SSH with a deploy key scoped to this one repository, not a token: the runner only ever
 # pushes one branch, and a key can be revoked without touching anything else you have.
 # The key is generated ON THE MACHINE THAT USES IT (the private half never travels) and
-# lives at /etc/neuralscreen-runner/deploy_key, root-owned, readable by the service group.
+# lives at /opt/neuralscreen/deploy_key, mode 0600, owned by you and read by nothing else.
 # GIT_SSH_COMMAND pointing at it is set in the unit - see neuralscreen-runner.service.
-worktree = "/var/lib/neuralscreen-runner/repo"   # the runner's OWN clone, not your checkout
+worktree = "/opt/neuralscreen/state/repo"        # the runner's OWN clone, not your checkout
 request_branch = "main"                          # run requests come from here
 results_branch = "results"                       # results go here, and only the runner writes it
 max_timeout_s = 900
 default_timeout_s = 300
-pause_file = "/etc/neuralscreen-runner/PAUSE"    # touch this and nothing runs
+pause_file = "/opt/neuralscreen/PAUSE"           # touch this and nothing runs
 
-# Run entries in a container by default. The image is yours, built once from a Dockerfile
-# outside the repo, so the toolchain cannot be swapped by a commit either.
-container = true
-image = "localhost/neuralscreen-runner:1"
-device = "nvidia.com/gpu=all"
+# Runs happen directly as you, inside the user unit's sandbox - no sudo, no system files, no
+# container. That is the default because the container needs nvidia-container-toolkit, which
+# is a system package, and you asked for nothing in /etc.
+#
+# If you ever want the stronger bound (checkout read-only, one writable directory, no
+# network at all), build tools/runner_container/Dockerfile somewhere outside the repo, point
+# podman at a user-level CDI spec, and flip this to true. Until then `container = false` is
+# the honest description of what runs: this user, these files, this sandbox.
+container = false
+# image = "localhost/neuralscreen-runner:1"
+# device = "nvidia.com/gpu=all"
 
 # Everything the runner is allowed to run. argv is a prefix; a request supplies the rest as
 # a list of strings and they go to execve as they are - there is no shell at any point.

@@ -1,10 +1,9 @@
 # The image a run happens inside. Copy this OUTSIDE the repository, build it once as root,
 # and name it in /etc/neuralscreen-runner/policy.toml:
 #
-#   sudo install -d /opt/neuralscreen-runner/image
-#   sudo install -m 0644 tools/runner_container/Dockerfile /opt/neuralscreen-runner/image/
-#   cd /opt/neuralscreen-runner/image
-#   sudo podman build -t localhost/neuralscreen-runner:1 .
+#   install -d /opt/neuralscreen/image
+#   install -m 0644 tools/runner_container/Dockerfile /opt/neuralscreen/image/
+#   podman build -t localhost/neuralscreen-runner:1 /opt/neuralscreen/image
 #
 # Why outside the repo: if this file lived in the tree, a commit could add a package, a pip
 # install, a hook, and the toolchain would no longer be the one you reviewed. The policy
@@ -14,9 +13,13 @@
 # the container toolkit, which is the only way to be sure the image's libraries match the
 # kernel module you are actually running:
 #
+# These two ARE system packages and a system file, which is the whole reason the container is
+# not the default here - see the policy. If you do want it:
+#
 #   sudo pacman -S nvidia-container-toolkit
-#   sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
-#   podman run --rm --device nvidia.com/gpu=all localhost/neuralscreen-runner:1 \
+#   nvidia-ctk cdi generate --output=$HOME/.config/cdi/nvidia.yaml    # user-level, no sudo
+#   podman run --rm --device nvidia.com/gpu=all \
+#        --cdi-spec-dir=$HOME/.config/cdi localhost/neuralscreen-runner:1 \
 #        vulkaninfo --summary        # should name the RTX 4080 SUPER
 #
 # Verify that before trusting a run: inside the sandbox the GPU is the whole point, and a

@@ -62,10 +62,12 @@ is actually *right*, are what the manual runs are for.
 ## Stopping it
 
 ```sh
-sudo touch /etc/neuralscreen-runner/PAUSE      # nothing runs; the timer keeps ticking
-sudo rm /etc/neuralscreen-runner/PAUSE
-journalctl -u neuralscreen-runner.service -n 50
+touch /opt/neuralscreen/PAUSE                  # nothing runs; the timer keeps ticking
+rm /opt/neuralscreen/PAUSE
+systemctl --user status neuralscreen-runner.service
+journalctl --user -u neuralscreen-runner.service -n 50
 ```
 
-Installation, and what is deliberately kept out of this repository, is in
-`tools/neuralscreen-runner.service` and `tools/runner_policy.example.toml`.
+Installation - a systemd user unit, no root, nothing in /etc - is the header of
+`tools/neuralscreen-runner.service`, and what may run at all is
+`tools/runner_policy.example.toml`.

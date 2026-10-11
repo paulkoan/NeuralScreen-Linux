@@ -1,12 +1,16 @@
-# Start the runner a minute after the last pass finished, and once at boot.
+# Start the runner a minute after the last pass finished, and once at login.
 #
-# OnUnitInactiveSec rather than OnUnitActiveSec: the unit is oneshot, and this measures from
-# the end of the previous run, so a run that takes four minutes does not get a second pass
+# OnUnitInactiveSec rather than OnUnitActiveSec: the unit is oneshot, so this measures from
+# the END of the previous run - a run that takes four minutes does not get a second pass
 # started on top of it.
 #
-#   sudo systemctl enable --now neuralscreen-runner.timer
-#   systemctl list-timers neuralscreen-runner.timer
-#   journalctl -u neuralscreen-runner.service -f
+#   systemctl --user enable --now neuralscreen-runner.timer
+#   systemctl --user list-timers neuralscreen-runner.timer
+#   journalctl --user -u neuralscreen-runner.service -f
+#
+# To keep it running while you are logged out (a user command, not a root one):
+#
+#   loginctl enable-linger $USER
 
 [Unit]
 Description=Poll for NeuralScreen run requests

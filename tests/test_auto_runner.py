@@ -231,7 +231,10 @@ def test_the_example_policy_names_only_what_the_runner_may_run():
     for line in names:
         assert "bash -c" not in line and "/bin/sh" not in line, line
     assert "pause_file" in text and "results_branch" in text
-    assert "container = true" in text, "the runs should start inside the sandbox"
+    # No container by default: it needs a system package, and the user asked for nothing
+    # outside /opt/neuralscreen. The policy should say so rather than leave it implied.
+    assert "container = false" in text, "the default should need no system packages"
+    assert "nvidia-container-toolkit" in text, "if the container is off, say what it would need"
 
 
 def test_the_watcher_declares_every_flag_its_body_uses():
@@ -258,7 +261,11 @@ def test_the_runner_authenticates_with_a_key_and_never_a_token():
     """
     unit = (REPO / "tools" / "neuralscreen-runner.service").read_text()
     policy = (REPO / "tools" / "runner_policy.example.toml").read_text()
-    assert "/etc/neuralscreen-runner/deploy_key" in unit, "the unit must name the key"
+    assert "/opt/neuralscreen/deploy_key" in unit, "the unit must name the key"
+    assert "/etc/" not in unit, "the user asked for nothing in /etc - keep it that way"
+    assert "systemctl --user" in unit, "it is a user unit: no sudo anywhere"
+    assert "/etc/" not in policy, "the policy points at /opt/neuralscreen, not /etc"
+    assert "sudo" not in unit.split("[Service]")[1], "the service section must need no root"
     assert "IdentitiesOnly=yes" in unit, \
         "without IdentitiesOnly the service would try its own keys as well"
     assert "UserKnownHostsFile=" in unit
