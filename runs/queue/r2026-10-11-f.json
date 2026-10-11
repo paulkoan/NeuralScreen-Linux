@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-11-f",
+  "entry": "minimal",
+  "args": ["--source", "image", "--input-image", "fixtures/youtube-720p.png", "--headless",
+           "--frames", "60", "--worker-log", "--shm", "--no-motion", "--send-ahead", "2"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "Quarter the pixels, because --size does not reach an image source: the work size is whatever the image is. This says which of serve's parts scale with pixels - the pass should fall roughly fourfold if the cost is the network, and barely move if it is per-frame glue."
+}
