@@ -64,11 +64,34 @@ Nothing in `src/` needed a behavioural change. The patch is `linux-port.patch`.
 ## Building it on the box
 
 ```
-git clone https://github.com/maanHimself/OpenDLSS-NR
-cd OpenDLSS-NR
-git apply /path/to/linux-port.patch
-bash scripts/build_linux.sh                     # fetches tools/, then shaders + PTX + host
+git clone https://github.com/maanHimself/OpenDLSS-NR /home/paul/dev/OpenDLSS-NR
+bash /path/to/NeuralScreen-Linux/experiments/opendlss_port/apply_to_port.sh /home/paul/dev/OpenDLSS-NR
+(cd /home/paul/dev/OpenDLSS-NR && bash scripts/build_linux.sh)   # fetches tools/, then shaders + PTX + host
+(cd /home/paul/dev/OpenDLSS-NR && ./build/dlss5vk stamp)          # what that binary was built from
 ```
+
+**Use the script, not a hand-typed `git apply`.** It is idempotent, and that is not a
+nicety: the patch *adds* files, so a second `git apply` refuses with
+
+```
+error: src/serve.cpp: already exists in working directory
+```
+
+after which `scripts/build_linux.sh` is not there to run (`bash: scripts/build_linux.sh:
+No such file or directory`) and the pipeline goes on to start the *previous* build. That
+happened, and the run's console said nothing about it — surprising timings from code that
+existed in no checkout. The script derives the files to clear from the patch itself
+instead of from a list someone typed, applies it, and records the patch's commit in
+`.ns-patch-id`, which the build bakes into the binary.
+
+Every mode that matters is then stamped, and the pipeline prints it before it runs:
+
+```
+version: repo 616c258 (clean) · worker built from patch e17393354d6e at port 9d08f41 · in sync
+```
+
+and, when they disagree, a second line that says `OUT OF SYNC` and names both patches.
+`dlss5vk stamp` prints the same thing on its own, with no device and no model.
 
 It prints three counts, and all three matter: `shaders -> build/shaders (13 modules)`,
 `PTX -> build/ptx (78 kernels)`, `built .../build/dlss5vk`. A PTX count below 78 now stops

@@ -4,6 +4,7 @@ These are not our sources — they are a patch against an MIT project and a buil
 script — so what is worth testing is the set of things that, if they silently
 changed, would cost someone an afternoon on the GPU box.
 """
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -126,3 +127,30 @@ def test_the_readme_keeps_its_evidence():
     assert "GL_EXT_float_e4m3" in readme, (
         "the glslang version constraint, which a distro glslang can fail on")
     assert "vkBasalt" in readme, "the implicit layer that would poison a measurement"
+
+
+def test_the_apply_script_exists_and_is_the_documented_route():
+    """A hand-typed `git apply` failed once and the run continued on an older binary.
+
+    The script is idempotent, so the failure is not available any more — but only if it
+    is what the README tells people to run, and only if it parses.
+    """
+    script = PORT / "apply_to_port.sh"
+    assert script.exists(), "the port has to be applied by something repeatable"
+    assert os.access(script, os.X_OK), "it should be runnable, not just present"
+    subprocess.run(["bash", "-n", str(script)], check=True)
+
+    readme = (PORT / "README.md").read_text()
+    assert "apply_to_port.sh" in readme, "the README is where the workflow lives"
+    assert "git apply /path/to/linux-port.patch" not in readme, (
+        "the hand-typed apply is what failed; it should not still be the documented route")
+    assert "dlss5vk stamp" in readme, "and the binary has to say what it was built from"
+
+
+def test_the_stamp_reaches_the_binary_and_the_mode_reports_it():
+    """`stamp` is a mode, the build writes the header it includes, and serve logs it."""
+    patch = PATCH.read_text()
+    assert "DLSS5VK_PATCH_ID" in patch, "the build has to bake the patch id in"
+    assert "runStamp" in patch and 'strcmp(argv[1], "stamp")' in patch, (
+        "a stamp nothing can ask for is not a check")
+    assert "buildStamp()" in patch and "stamp.h" in patch

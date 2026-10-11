@@ -13,6 +13,7 @@ import traceback
 from minimal.capture import CaptureError, list_monitors, open_capture
 from minimal.display import DisplayError
 from minimal.loop import DEFAULT_PARAMS, Pipeline
+from minimal.version import version_lines
 from minimal.worker import WORK_MAX_H, WORK_MAX_W
 
 
@@ -217,6 +218,11 @@ def main(argv: list[str] | None = None) -> int:
     # produced it, and a report is read long after the command line is gone.
     print("params: " + " ".join(f"{k}={pipe.params[k]}" for k in sorted(pipe.params)))
     print(f"worker: {' '.join(pipe.worker.cmd)}")
+    # Which code this run is, said before it starts. A run was once reported from a stale
+    # binary — the apply failed and the build never ran — and nothing in the output could
+    # have told anyone that, which is a whole afternoon when the numbers are surprising.
+    for line in version_lines(pipe.worker.cmd):
+        print(line)
 
     try:
         summary = pipe.run(frames=args.frames,
