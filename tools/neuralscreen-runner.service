@@ -65,6 +65,9 @@ Environment="GIT_SSH_COMMAND=ssh -F /opt/neuralscreen/ssh_config -i /opt/neurals
 NoNewPrivileges=yes
 ProtectSystem=strict
 ReadWritePaths=/opt/neuralscreen
+# read-only rather than yes while the worker and the model still live in the home directory;
+# once both are staged under /opt/neuralscreen, this becomes ProtectHome=yes and a run can no
+# longer read ~/.ssh or anything else in there.
 ProtectHome=read-only
 PrivateTmp=yes
 ProtectKernelTunables=yes

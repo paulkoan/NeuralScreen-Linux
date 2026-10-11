@@ -8,7 +8,21 @@ pass; the test suite green before anything is pushed; never touch /etc or instal
 packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Linux; never edit
 /opt/neuralscreen (policy, executor, key, unit); never queue a run that is not described here.
 
-## 2. Ask first - do not start these alone
+## 2. Let the loop rebuild the port (needs the staged copy first)
+
+The port and the model are being staged under /opt/neuralscreen, which makes the worker a
+pinned artefact rather than whatever is in the dev tree. The follow-up is a policy entry the
+developer installs:
+
+    [[entry]]
+    name = "port-build"
+    argv = ["bash", "experiments/opendlss_port/rebuild.sh"]
+
+so a tick can apply the current patch to the staged port, rebuild it, and leave the worker
+matching the patch id the runs report. Until that entry exists, a port change still needs the
+developer to rebuild by hand.
+
+## 3. Ask first - do not start these alone
 
 * Decided (2026-10-11): the fixture keeps the whole frame. No crop.
 * The container: it needs nvidia-container-toolkit, a system package. The developer's call.
