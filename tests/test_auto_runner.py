@@ -137,7 +137,9 @@ def test_a_request_runs_and_lands_on_the_results_branch(world: World):
     result = json.loads((done / "result.json").read_text())
     assert result["exit_code"] == 0, result
     assert result["argv"][-2:] == ["--frames", "60"], result["argv"]
-    assert "the stub ran" in (done / "report.md").read_text()
+    report = (done / "report.md").read_text()
+    assert "the stub ran" in report
+    assert "runner `" in report, "the report should name the runner that made it"
     assert (done / "before.png").read_bytes() == b"PNG from the stub", "the artifact was not collected"
     assert (done / "request.json").exists(), "the request should be kept with its result"
     assert (world.worktree / "ran.txt").read_text() == "--frames 60"

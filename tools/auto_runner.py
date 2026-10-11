@@ -215,9 +215,15 @@ def run_request(request: dict, policy: dict, worktree: Path, run_dir: Path,
             log(f"artifact {artifact} was not produced")
     (run_dir / "result.json").write_text(json.dumps(
         {"exit_code": code, "seconds": round(elapsed, 3), "argv": argv,
-         "artifacts": artifacts}, indent=2) + "\n")
+         "artifacts": artifacts, "runner": fingerprint(Path(__file__)),
+         "entry_env": sorted((entry.get("env") or {}).keys())}, indent=2) + "\n")
+    # The report names the runner that made it, for the same reason the port's build carries a
+    # stamp: a run that failed because the installed executor was old should say so in the
+    # artefact, not in a journal nobody kept.
     (run_dir / "report.md").write_text(
         f"# run {run_dir.name}\n\n"
+        f"runner `{fingerprint(Path(__file__))}` · entry `{entry['name']}` "
+        f"· env from policy: {', '.join(sorted((entry.get('env') or {}).keys())) or 'none'}\n\n"
         f"`{' '.join(argv)}`\n\n"
         f"exit **{code}** after {elapsed:.1f}s\n\n"
         f"```\n{(out or '')[-4000:]}\n```\n\n"
