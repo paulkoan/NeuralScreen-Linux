@@ -1,4 +1,4 @@
-From 0d2c5796fb3eed0c0059628eb14188e19d8ca9d8 Mon Sep 17 00:00:00 2001
+From c16ed08680b7fad1ed5d6603f94803242d55990a Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -50,14 +50,14 @@ Also lands: `--model`/`--shaders`/`--frames` for the mode, the warm record that 
 249-kernel JIT burst on a zero proxy where the log can say what the wait was, and a
 per-frame timing line on stderr.
 ---
- scripts/build_linux.sh | 143 +++++++++++++
+ scripts/build_linux.sh | 143 ++++++++++++
  src/kernels.cpp        |   7 +
  src/kernels.h          |  10 +-
  src/main.cpp           |   4 +-
  src/nr_model.h         |   1 +
- src/serve.cpp          | 460 +++++++++++++++++++++++++++++++++++++++++
+ src/serve.cpp          | 481 +++++++++++++++++++++++++++++++++++++++++
  src/vk_context.h       |   1 +
- 7 files changed, 623 insertions(+), 3 deletions(-)
+ 7 files changed, 644 insertions(+), 3 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 src/serve.cpp
 
@@ -290,10 +290,10 @@ index 867c97e..66f2175 100644
  #include <string>
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..df2c016
+index 0000000..24b1ab5
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,460 @@
+@@ -0,0 +1,481 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -714,15 +714,18 @@ index 0000000..df2c016
 +          proxyValues[i * 4 + 3] = 1.0f;
 +        }
 +        context->upload(proxy, proxyValues.data(), (VkDeviceSize)proxyValues.size() * 4);
++        const std::chrono::steady_clock::time_point afterUpload = std::chrono::steady_clock::now();
 +        context->resetDescriptorPool();
 +        VkCommandBuffer commands = context->beginCommands();
 +        kernels->preprocessFromProxy(commands, proxy, *features, preprocess);
 +        graph->record(commands, *features);
 +        context->endAndSubmit(commands, true);
 +        checkChainTimeouts(*kernels);
++        const std::chrono::steady_clock::time_point afterRecord = std::chrono::steady_clock::now();
 +
 +        const std::vector<uint8_t> headBytes =
 +            context->download(graph->head().buffer, (VkDeviceSize)fullWidth * fullHeight * 4 * 4);
++        const std::chrono::steady_clock::time_point afterDownload = std::chrono::steady_clock::now();
 +        const float* head = reinterpret_cast<const float*>(headBytes.data());
 +        for (uint32_t y = 0; y < workHeight; ++y)
 +          for (uint32_t x = 0; x < workWidth; ++x) {
@@ -737,11 +740,29 @@ index 0000000..df2c016
 +            }
 +            output[((size_t)y * workWidth + x) * 4 + 3] = 255;
 +          }
++        const std::chrono::steady_clock::time_point afterCompose = std::chrono::steady_clock::now();
 +        frames++;
-+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - began).count();
-+        totalMs += ms;
-+        fprintf(stderr, "serve frame %u: %.2f ms%s\n", index, ms, frames > 1 ? "" : " (includes the first frame's dispatch setup)");
 +        sendFrame(index, 1, (uint32_t)output.size(), 0, pts, &output);
++        const std::chrono::steady_clock::time_point afterSend = std::chrono::steady_clock::now();
++
++        auto since = [](const std::chrono::steady_clock::time_point& from,
++                        const std::chrono::steady_clock::time_point& to) {
++          return std::chrono::duration<double, std::milli>(to - from).count();
++        };
++        const double ms = since(began, afterSend);
++        totalMs += ms;
++        // The breakdown, because the total alone cannot say whether this is the network
++        // or what this mode does around it: the head is 16 bytes per padded pixel, so the
++        // readback alone is 60MB at 1440p, and whether that costs 6ms or 600ms decides
++        // where the next hour goes. Printed for the first few frames (where the JIT lands)
++        // and then sparsely.
++        if (frames <= 3 || frames % 30 == 0)
++          fprintf(stderr,
++                  "serve frame %u: %.1f ms (proxy %.1f, network %.1f, readback %.1f, "
++                  "compose %.1f, reply %.1f)\n",
++                  index, ms, since(began, afterUpload), since(afterUpload, afterRecord),
++                  since(afterRecord, afterDownload), since(afterDownload, afterCompose),
++                  since(afterCompose, afterSend));
 +      }
 +
 +      if (frameLimit > 0 && (int)frames >= frameLimit) {

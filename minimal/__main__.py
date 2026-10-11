@@ -249,18 +249,38 @@ def main(argv: list[str] | None = None) -> int:
     # timing line on purpose: if these two disagree about the same run, the
     # timing line is what is wrong.
     wc = summary.get("worker_clock") or {}
-    # The spread rather than the mean. send is a fixed ~40ms a frame at every
-    # frame size, which no per-frame work in this process explains: the worker's
-    # own clock says it delivered the same frame in 0.17ms. Steady send means
-    # something is pacing us at a fixed interval; spiky send means we are being
-    # descheduled, and only the first of those is a pacing bug.
-    if t.get("send_max") is not None:
-        lo, mid, hi = (1000 * t["send_min"], 1000 * t["send_median"],
-                       1000 * t["send_max"])
-        shape = ("steady — a fixed interval, not contention"
-                 if hi < 2 * lo else "spiky — we are being descheduled")
-        print(f"send spread: min {lo:.1f}  median {mid:.1f}  max {hi:.1f} ms "
-              f"at frame {t.get('send_max_at', -1)} of {t.get('count', 0)}   ({shape})")
+    # The spread rather than the mean, for every stage that has one. A stage that
+    # costs the same on every frame is structural — something is pacing at a fixed
+    # interval. A stage that is small most frames and huge once is a one-off, and
+    # the two need opposite fixes... but only if you can see which it is: a run
+    # reported "recv 627.7ms" as its mean, and that number is either the network
+    # being 60x slower than bench says or one warm-up frame divided by sixty.
+    # The frame that carried the peak is what settles it, so it is printed with it.
+    def spread_line(name: str) -> None:
+        lo, mid, hi = (1000 * t[f"{name}_min"], 1000 * t[f"{name}_median"],
+                       1000 * t[f"{name}_max"])
+        at = t.get(f"{name}_max_at", -1)
+        if hi < 2 * lo:
+            shape = "steady — a fixed interval, not contention"
+        elif at == 0:
+            shape = "one-off at frame 0 — the worker's warm-up, not a per-frame cost"
+        else:
+            shape = f"a one-off at frame {at} — not the warm-up, so worth looking at"
+        print(f"{name} spread: min {lo:.1f}  median {mid:.1f}  max {hi:.1f} ms "
+              f"at frame {at} of {t.get('count', 0)}   ({shape})")
+
+    for name in ("send", "recv"):          # our traffic out, and the worker's answer
+        if t.get(f"{name}_max") is not None:
+            spread_line(name)
+    for name in sorted(k[:-4] for k in t if k.endswith("_max")):
+        if name in ("send", "recv"):
+            continue
+        median = t.get(f"{name}_median", 0.0)
+        # Only the stages whose peak is a one-off in its own right: a stage that is
+        # always large has a large max too, and naming every one of those buries the
+        # line that matters.
+        if median > 0 and t[f"{name}_max"] > 2 * median and t[f"{name}_max"] > 0.02:
+            spread_line(name)
     if wc.get("ms_per_frame"):
         print(f"worker clock: {wc['frames']} frames in {wc['span_s']}s = "
               f"{wc['ms_per_frame']} ms/frame "
