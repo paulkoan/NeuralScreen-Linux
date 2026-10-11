@@ -1,4 +1,4 @@
-From e17393354d6ef17415a6072d7875e8a49472189b Mon Sep 17 00:00:00 2001
+From 8e7d65ded67621c632815113ce3808cf48e9f5bc Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -55,9 +55,9 @@ per-frame timing line on stderr.
  src/kernels.h          |  10 +-
  src/main.cpp           |   6 +-
  src/nr_model.h         |   1 +
- src/serve.cpp          | 511 +++++++++++++++++++++++++++++++++++++++++
+ src/serve.cpp          | 516 +++++++++++++++++++++++++++++++++++++++++
  src/vk_context.h       |   1 +
- 7 files changed, 694 insertions(+), 3 deletions(-)
+ 7 files changed, 699 insertions(+), 3 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 src/serve.cpp
 
@@ -310,10 +310,10 @@ index 867c97e..66f2175 100644
  #include <string>
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..be99891
+index 0000000..eb7495c
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,511 @@
+@@ -0,0 +1,516 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -651,7 +651,12 @@ index 0000000..be99891
 +  auto startEngine = [&]() {
 +    context = std::make_unique<vk::Context>();
 +    fprintf(stderr, "serve: device %s\n", context->deviceName().c_str());
-+    model = std::make_unique<nr::Model>(*context, modelDir, false);
++    // verifyHashes = true: each stage file is checked against the manifest's sha256, which
++    // is what upstream does on load and what our extractor writes. bench passes false to
++    // keep its timing loop honest, but this mode serves frames — a stage file that is
++    // truncated or half-written is otherwise silent, and the model directory is the one
++    // input to this whole path that nobody can look at. It costs a few seconds, once.
++    model = std::make_unique<nr::Model>(*context, modelDir, true);
 +    kernels = std::make_unique<nr::Kernels>(*context, shaderDir);
 +    kernels->setSiluTable(ref::siluTable());
 +    const nr::Geometry geometry = nr::Geometry::fromValid(workWidth, workHeight);

@@ -146,3 +146,15 @@ def test_our_client_drives_the_native_worker():
     finally:
         code = worker.stop()
     assert code == 0, f"the mode exited {code} on a closed stream instead of 0"
+
+def test_the_mode_checks_the_model_it_loads():
+    """Upstream verifies every stage against the manifest's sha256, and this mode is the
+    last place to turn that off.
+
+    The model directory is the one input to the whole path that cannot be looked at: it is
+    built by our own extractor from NVIDIA's DLL, and a stage file that is truncated or
+    half-written produces a network that runs and returns something. `bench` passes false
+    to keep its timing loop honest; a mode that serves frames should not.
+    """
+    assert "modelDir, true" in serve_source(), (
+        "the mode no longer verifies the model's stage hashes")

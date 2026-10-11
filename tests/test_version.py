@@ -27,7 +27,10 @@ APPLY = PORT / "apply_to_port.sh"
 from minimal.version import patch_id, repo_state, verdict, version_lines, worker_stamp  # noqa: E402
 
 STAMP = "port 9d08f41 (8 modified) patch {}\n"
-GOOD = "e17393354d6ef17415a6072d7875e8a49472189b"
+GOOD = "e17393354d6ef17415a6072d7875e8a49472189b"   # a made-up id, for parsing
+# The id this checkout's patch actually carries: read it rather than pinning it, or
+# every re-cut of the patch breaks tests that are not about the patch.
+REAL = patch_id(PATCH)
 
 
 def fake_worker(tmp_path: Path, body: str, name: str = "dlss5vk") -> Path:
@@ -68,20 +71,20 @@ def test_an_out_of_sync_binary_is_named_not_implied(tmp_path):
     lines = version_lines([str(binary)])
     assert len(lines) == 2, "an out-of-sync run gets a second line rather than a suffix"
     assert "OUT OF SYNC" in lines[1]
-    assert "aaaa11112222" in lines[1] and GOOD[:12] in lines[1]
+    assert "aaaa11112222" in lines[1] and REAL[:12] in lines[1]
 
 
 def test_in_sync_is_said_plainly(tmp_path, monkeypatch):
     """And the happy path stays one line: a check nobody reads is not a check."""
     import minimal.version as version
 
-    binary = fake_worker(tmp_path, f'#!/bin/sh\necho "port 9d08f41 (8 modified) patch {GOOD}"\n')
+    binary = fake_worker(tmp_path, f'#!/bin/sh\necho "port 9d08f41 (8 modified) patch {REAL}"\n')
     monkeypatch.setattr(version, "PATCH", PATCH)          # the real patch, the real id
     monkeypatch.setattr(version, "REPO", ROOT)
     lines = version_lines([str(binary)])
     assert len(lines) == 1
     assert "in sync" in lines[0]
-    assert GOOD[:12] in lines[0]
+    assert REAL[:12] in lines[0]
     assert repo_state(ROOT) is not None
 
 
