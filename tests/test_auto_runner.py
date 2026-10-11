@@ -286,3 +286,25 @@ def test_the_runner_authenticates_with_a_key_and_never_a_token():
     for line in settings:
         lowered = line.lower()
         assert not any(word in lowered for word in ("token =", "password =", "secret =")), line
+
+
+def test_a_git_failure_carries_gits_own_reason(world: World, tmp_path: Path):
+    """The first real run failed with exit 128 and no explanation, because I threw git's
+    stderr away. A clone that fails inside a systemd unit has to say why in the journal."""
+    bad = tmp_path / "policy-bad.toml"
+    bad.write_text(world.policy.read_text().replace(str(world.remote), str(tmp_path / "nope.git")))
+    finished = subprocess.run([sys.executable, str(RUNNER), "--policy", str(bad), "--once"],
+                              capture_output=True, text=True)
+    assert finished.returncode != 0
+    assert "could not clone" in finished.stderr, finished.stderr
+    assert any(said in finished.stderr for said in
+               ("does not exist", "does not appear to be a git repository",
+                "Could not read from remote", "not a git repository")), finished.stderr
+
+
+def test_the_unit_allows_what_name_resolution_needs():
+    """AF_NETLINK and the resolver: without them DNS fails as a network outage."""
+    unit = (REPO / "tools" / "neuralscreen-runner.service").read_text()
+    assert "AF_NETLINK" in unit, "name resolution needs AF_NETLINK, or every fetch fails"
+    assert "IPAddressAllow=localhost" in unit
+    assert "GIT_TERMINAL_PROMPT=0" in unit, "a prompt under systemd can only hang"

@@ -41,13 +41,26 @@ class Refused(Exception):
     """The request is not something this runner will do."""
 
 
+class RunnerError(Exception):
+    """The runner itself could not proceed - and the reason goes in the journal.
+
+    Anything git says is carried up rather than swallowed: a clone that fails inside a
+    systemd unit with a bare exit code sends whoever reads the journal looking in the wrong
+    place, which is exactly what happened the first time this ran.
+    """
+
+
 def log(message: str) -> None:
     print(f"[runner] {message}", file=sys.stderr, flush=True)
 
 
 def git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], cwd=str(repo), capture_output=True, text=True,
-                          check=check)
+    result = subprocess.run(["git", *args], cwd=str(repo), capture_output=True, text=True,
+                            check=False)
+    if check and result.returncode != 0:
+        raise RunnerError(f"git {' '.join(args)} failed ({result.returncode}): "
+                          f"{result.stderr.strip() or result.stdout.strip()}")
+    return result
 
 
 def load_policy(path: Path) -> dict:
@@ -77,8 +90,14 @@ def prepare_checkout(policy: dict) -> Path:
     if not (worktree / ".git").exists():
         worktree.parent.mkdir(parents=True, exist_ok=True)
         log(f"cloning {policy['repo_url']} into {worktree}")
-        subprocess.run(["git", "clone", policy["repo_url"], str(worktree)], check=True,
-                       capture_output=True, text=True)
+        clone = subprocess.run(["git", "clone", policy["repo_url"], str(worktree)],
+                               capture_output=True, text=True)
+        if clone.returncode != 0:
+            raise RunnerError(
+                f"could not clone {policy['repo_url']}: "
+                f"{clone.stderr.strip() or clone.stdout.strip()}\n"
+                f"  (a name that will not resolve and a key that will not authenticate both "
+                f"look like this from here; the line above is git's own reason)")
     git(worktree, "fetch", "origin", "--prune")
     git(worktree, "checkout", "-B", policy["request_branch"],
         f"origin/{policy['request_branch']}")
@@ -281,7 +300,11 @@ def main(argv: list[str] | None = None) -> int:
         log(f"paused: {pause} exists, nothing runs")
         return 0
 
-    worktree = prepare_checkout(policy)
+    try:
+        worktree = prepare_checkout(policy)
+    except RunnerError as error:
+        log(str(error))
+        return 3
     if args.request:
         source = Path(args.request)
         queue = worktree / "runs" / "queue"

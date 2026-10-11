@@ -39,6 +39,8 @@ ExecStart=/usr/bin/python3 /opt/neuralscreen/auto_runner.py --policy /opt/neural
 
 # The deploy key and nothing else: no ssh agent, no other identities, and a known_hosts of
 # its own under the state directory.
+# No credential prompt, ever: under systemd there is nobody to answer one, so fail instead.
+Environment="GIT_TERMINAL_PROMPT=0"
 Environment="GIT_SSH_COMMAND=ssh -i /opt/neuralscreen/deploy_key -o IdentitiesOnly=yes -o UserKnownHostsFile=/opt/neuralscreen/state/known_hosts -o StrictHostKeyChecking=accept-new"
 
 # --- the bounds ---------------------------------------------------------------------------
@@ -68,7 +70,9 @@ MemoryDenyWriteExecute=no
 # host" and the cause looks like a credential problem. (With systemd-resolved the resolver is
 # 127.0.0.53, which localhost covers.) If your systemd refuses these lines in a user unit,
 # drop them: a run's own network access is decided separately, in the policy.
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# AF_NETLINK is not optional: name resolution needs it, and without it every fetch fails
+# with "Temporary failure in name resolution" while looking like a network outage.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 IPAddressAllow=localhost github.com
 IPAddressDeny=any
 
