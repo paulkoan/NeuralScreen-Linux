@@ -46,7 +46,11 @@ container = false
 [[entry]]
 name = "minimal"
 argv = ["uv", "run", "python", "-m", "minimal"]
-description = "the MVP pipeline; feed it a fixture with --input-image and --headless"
+description = "the MVP pipeline, fed a fixture: --source image requires --input-image"
+# Machine properties belong here rather than in a commit. Point this at the native port built
+# on this machine; leave it out to run the Wine worker instead.
+[entry.env]
+NS_WORKER_CMD = "/home/paul/dev/OpenDLSS-NR/build/dlss5vk serve --model /home/paul/dev/odl-model"
 
 [[entry]]
 name = "pytest"
@@ -63,5 +67,19 @@ description = "the M1 gate; needs the screen-cast dialog, so it is not for unatt
 #   {"id": "r2026-10-12-a", "entry": "minimal",
 #    "args": ["--input-image", "fixtures/youtube-1440p.png", "--headless",
 #             "--frames", "60", "--worker-log", "--shm", "--no-motion", "--send-ahead", "2"],
+#    "timeout_s": 300, "artifacts": ["before.png", "after.png"],
+#    "note": "does the loop now sit under 60ms?"}
+
+# Before the first run, prime the virtualenv in the runner's own clone (as you, once - the
+# service can only reach GitHub, so it can never populate one itself):
+#
+#   cd /opt/neuralscreen/state/repo && uv sync
+#
+# A fixture-driven request then looks like:
+#
+#   {"id": "r2026-10-12-a", "entry": "minimal",
+#    "args": ["--source", "image", "--input-image", "fixtures/youtube-1440p.png",
+#             "--headless", "--frames", "60", "--worker-log", "--shm", "--no-motion",
+#             "--send-ahead", "2"],
 #    "timeout_s": 300, "artifacts": ["before.png", "after.png"],
 #    "note": "does the loop now sit under 60ms?"}

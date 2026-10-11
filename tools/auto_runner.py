@@ -184,6 +184,9 @@ def run_request(request: dict, policy: dict, worktree: Path, run_dir: Path,
         return 0
 
     env = dict(os.environ)
+    # A policy entry may carry environment of its own: which worker binary to run is a
+    # property of the machine, and the policy is where machine properties belong.
+    env.update({str(key): str(value) for key, value in (entry.get("env") or {}).items()})
     env["HOME"] = str(run_dir / "home")
     Path(env["HOME"]).mkdir(parents=True, exist_ok=True)
     env.pop("GIT_ASKPASS", None)          # a run does not need the runner's push credential

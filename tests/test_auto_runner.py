@@ -86,6 +86,9 @@ def world(tmp_path: Path) -> World:
     (w.seed / "stubs").mkdir()
     (w.seed / "stubs" / "ok.py").write_text(OK_STUB)
     (w.seed / "stubs" / "boom.py").write_text(BOOM_STUB)
+    (w.seed / "stubs" / "env.py").write_text(
+        "import os, pathlib\n"
+        "pathlib.Path('env.txt').write_text(os.environ.get('NS_FIXTURE_WORKER', 'unset'))\n")
     commit(w.seed, "seed the queue")
     git("push", "origin", "HEAD:main", cwd=w.seed)
     w.policy.write_text(f"""
@@ -105,6 +108,12 @@ argv = ["{sys.executable}", "stubs/ok.py"]
 [[entry]]
 name = "boom"
 argv = ["{sys.executable}", "stubs/boom.py"]
+
+[[entry]]
+name = "with-env"
+argv = ["{sys.executable}", "stubs/env.py"]
+[entry.env]
+NS_FIXTURE_WORKER = "a machine property"
 """)
     return w
 
@@ -396,3 +405,11 @@ def test_a_second_run_publishes_on_top_of_the_first(world: World):
     assert "rB" in subjects[0] and "rA" in subjects[1], subjects
     assert (world.done_dir(second) / "revision.txt").read_text().strip(), \
         "the run should record the revision it ran against"
+
+
+def test_a_policy_entry_may_carry_the_machines_environment(world: World):
+    """Which worker binary to run is a property of the machine, so it lives in the policy -
+    which is outside the repository and cannot be changed by a commit."""
+    world.queue({"id": "r012", "entry": "with-env"})
+    assert world.run().returncode == 0
+    assert (world.worktree / "env.txt").read_text() == "a machine property"

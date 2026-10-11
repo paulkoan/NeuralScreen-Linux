@@ -42,6 +42,14 @@ ExecStart=/usr/bin/python3 /opt/neuralscreen/auto_runner.py --policy /opt/neural
 # its own under the state directory.
 # No credential prompt, ever: under systemd there is nobody to answer one, so fail instead.
 Environment="GIT_TERMINAL_PROMPT=0"
+# A systemd user unit has no DISPLAY, and a run must not need one: the pipeline's hidden
+# window path works under SDL's dummy driver with the software renderer (verified), and a
+# fixture run reaches no compositor at all - which is the point of it.
+Environment="SDL_VIDEODRIVER=dummy"
+# The virtualenv has to be primed once by hand (uv sync in the runner's clone, as you): this
+# unit can only reach GitHub, so a run must never want PyPI. Offline makes that a fast
+# failure instead of a hang.
+Environment="UV_OFFLINE=1"
 #
 # -F names an empty config under /opt/neuralscreen, which makes ssh ignore the system-wide
 # /etc/ssh/ssh_config. Without it ssh refuses that file inside the sandbox ("Bad owner or
