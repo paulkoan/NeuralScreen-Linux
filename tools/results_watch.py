@@ -99,6 +99,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--all", action="store_true", help="ignore the state file")
     parser.add_argument("--check", action="store_true",
                         help="exit 1 when there is something new, print nothing")
+    parser.add_argument("--verbose", action="store_true",
+                        help="say so even when nothing is new: a cron job wants silence")
     args = parser.parse_args(argv)
 
     if not fetch(args.branch):

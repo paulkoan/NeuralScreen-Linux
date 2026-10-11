@@ -232,3 +232,19 @@ def test_the_example_policy_names_only_what_the_runner_may_run():
         assert "bash -c" not in line and "/bin/sh" not in line, line
     assert "pause_file" in text and "results_branch" in text
     assert "container = true" in text, "the runs should start inside the sandbox"
+
+
+def test_the_watcher_declares_every_flag_its_body_uses():
+    """A cron tick caught this the honest way: `--verbose` was read but never declared.
+
+    --help exits before the body runs, so asking it what it accepts is a cheap way to notice
+    that a flag the code branches on was never added - which is otherwise only visible when
+    the job fires, and the job is silent by design.
+    """
+    finished = subprocess.run([sys.executable, str(REPO / "tools" / "results_watch.py"), "--help"],
+                              capture_output=True, text=True)
+    assert finished.returncode == 0, finished.stderr
+    source = (REPO / "tools" / "results_watch.py").read_text()
+    for flag in ("--all", "--check", "--verbose", "--branch"):
+        assert flag in source, flag
+        assert flag in finished.stdout, f"{flag} is read but not declared:\n{finished.stdout}"
