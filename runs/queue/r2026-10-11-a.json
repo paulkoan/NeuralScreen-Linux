@@ -1,0 +1,17 @@
+{
+  "id": "r2026-10-11-a",
+  "entry": "minimal",
+  "args": [
+    "--source", "image",
+    "--input-image", "fixtures/youtube-1440p.png",
+    "--headless",
+    "--frames", "60",
+    "--worker-log",
+    "--shm",
+    "--no-motion",
+    "--send-ahead", "2"
+  ],
+  "timeout_s": 300,
+  "artifacts": ["before.png", "after.png"],
+  "note": "First automated run. Fixture through the native path with both shared channels negotiated, no motion field, two frames of overlap. Before this, the pipe carried 29MB in and 14.7MB back per frame; the prediction on the record is send in single digits and a frame near 60ms."
+}
