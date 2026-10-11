@@ -1,0 +1,27 @@
+{
+  "exit_code": 3,
+  "seconds": 15.393,
+  "argv": [
+    "uv",
+    "run",
+    "python",
+    "-m",
+    "minimal",
+    "--source",
+    "image",
+    "--input-image",
+    "fixtures/youtube-1440p.png",
+    "--headless",
+    "--frames",
+    "60",
+    "--worker-log",
+    "--shm",
+    "--no-motion",
+    "--send-ahead",
+    "2"
+  ],
+  "artifacts": [
+    "before.png",
+    "after.png"
+  ]
+}
