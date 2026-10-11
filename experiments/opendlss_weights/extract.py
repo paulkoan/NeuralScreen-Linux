@@ -66,7 +66,18 @@ NAME_RE_STR = re.compile(r"block\d+\.layer\d+\.[A-Za-z0-9_]+")
 # between the fields before the payload and the trailer after it is not, and
 # every split in this list reproduces all 153 next-name offsets.
 META_BYTES = 56
-FIELD_SPLITS = (32, 40, 48, 56)
+# 28 is the split, and it is pinned by a value rather than by arithmetic: the size fields
+# read `payload + 40` because a record carries 40 bytes of metadata — 28 before the payload
+# and 12 after it — so 40 is the metadata total and not the header. That distinction cost a
+# whole model: with the header read as 40, every payload started 12 bytes late and ended 12
+# bytes into the next record's metadata, so the network ran on shifted weights and diverged
+# (86% of the output head came back non-finite, and the composed image was a flat colour).
+#
+# The pin is docs/frame.md's one known value: `block70.layer0.blend_scale` is 0.7397 in the
+# shipped model, and that f16 (`eb 39`) sits exactly 28 bytes after the record's name. Every
+# other candidate puts it somewhere else, which is what `check()` reports.
+FIELD_SPLITS = (28, 32, 40, 48, 56)
+DEFAULT_FIELDS = 28
 
 
 class ExtractionError(RuntimeError):
@@ -144,7 +155,7 @@ def find_weight_blob(data: bytes) -> tuple[int, int]:
     return off, size
 
 
-def parse_records(blob: bytes, fields: int = 32) -> list[dict]:
+def parse_records(blob: bytes, fields: int = DEFAULT_FIELDS) -> list[dict]:
     """Every tensor record: name, payload offset and length.
 
     The name's length comes from the u32 eight bytes before the name. It has to:
@@ -198,7 +209,7 @@ def check(blob: bytes) -> dict:
         ok = all(
             records_agree(blob, recs, f, i) for i in range(len(recs) - 1))
         fits[f] = (len(recs), ok)
-    recs = parse_records(blob, 40)          # the split the records themselves state
+    recs = parse_records(blob, DEFAULT_FIELDS)
     total = sum(r["byteLength"] for r in recs)
     return {
         "blob_bytes": len(blob),
@@ -211,15 +222,45 @@ def check(blob: bytes) -> dict:
         "payload_total_mib": total / 2 ** 20,
         "table_overhead": len(blob) - total,
         "splits_that_fit_every_record": {k: v[1] for k, v in fits.items()},
-        "field_split_ambiguous": sum(1 for v in fits.values() if v[1]) > 1,
+        # Kept as a record of the degeneracy above, not as a question: every split "fits".
+        "field_split_chain_test_is_degenerate": sum(1 for v in fits.values() if v[1]) > 1,
+        "field_split": DEFAULT_FIELDS,
+        "blend_scale": blend_scale(blob),
     }
+
+
+def blend_scale(blob: bytes) -> dict:
+    """The documented value that pins the payload offset.
+
+    docs/frame.md names one learned constant of the shipped model outside the network's
+    arithmetic: `block70.layer0.blend_scale` is 0.7397. It is two bytes wide, so it says
+    where a payload begins or it says nothing at all — and at 28 bytes after the name it
+    reads 0.73975, which is that constant as f16. At 40 it reads 0.0, which is the first
+    two bytes of the record's trailer.
+    """
+    for fields in FIELD_SPLITS:
+        record = next((r for r in parse_records(blob, fields)
+                       if r["name"] == "block70.layer0.blend_scale"), None)
+        if record is None:
+            return {"error": "no blend_scale record in the table"}
+        payload = blob[record["payload_offset"]:record["payload_offset"] + record["byteLength"]]
+        value = struct.unpack_from("<e", payload + b"\0\0", 0)[0] if len(payload) >= 2 else None
+        if value is not None and abs(value - 0.7397) < 1e-3:
+            return {"fields_that_read_0.7397": fields, "value": value}
+    return {"fields_that_read_0.7397": None,
+            "note": "no candidate split reads the documented 0.7397 — the layout changed, "
+                    "or this is not the same model build as the documentation describes"}
 
 
 def records_agree(blob: bytes, recs: list[dict], fields: int, i: int) -> bool:
     """Does record i's declared payload land exactly where record i+1's name is?
 
-    This is the whole test of the layout: META_BYTES is fixed, so a payload of the
-    declared length followed by the trailer has to end at the next name.
+    NOTE: this test cannot decide the field split, and reporting it as if it could is how
+    the split was read as 40 for a whole model. `record_span` subtracts `fields` from both
+    payload offsets — it has to, to measure name-to-name — so `fields` cancels and the test
+    is the same for every candidate. It is kept because it does check something real (that
+    a payload of the declared length reaches the next record), but the split is pinned by
+    the value in `check()`: a known f16 from the documentation, at a known offset.
     """
     span = record_span(blob, recs, i, fields)
     # The name is part of the span too: next name offset - this name offset is
@@ -287,7 +328,7 @@ def main(argv: list[str]) -> int:
                     help=f"the DLSS-NR runtime carrying the weights "
                          f"(default: {DEFAULT_DLL})")
     ap.add_argument("--out", help="write a model directory here (manifest.json + model/)")
-    ap.add_argument("--fields", type=int, default=40, choices=FIELD_SPLITS,
+    ap.add_argument("--fields", type=int, default=DEFAULT_FIELDS, choices=FIELD_SPLITS,
                     help="bytes of per-record fields before the payload. 40 is the "
                          "reading the records state: the u64 at +0 and the u64 at +8 "
                          "both equal the payload length plus 40, in all 153 of them")
@@ -321,10 +362,15 @@ def main(argv: list[str]) -> int:
     for r in records[:3] + records[-2:]:
         print(f"  {r['name']:28} block {r['block']:>2}  payload {r['byteLength']:>10,}"
               f"  at {r['payload_offset']:>12,}")
-    if info["field_split_ambiguous"]:
-        print("\nNOTE: four field splits fit every record, so the payload's start is "
-              "ambiguous within 24 bytes. The length is not. Resolving it needs the "
-              "fused-layout arithmetic in OpenDLSS-NR's docs/weights.md.")
+    pin = info["blend_scale"]
+    if pin.get("fields_that_read_0.7397") == args.fields:
+        print(f"\nfield split pinned at {args.fields}: block70.layer0.blend_scale reads "
+              f"{pin['value']!r}, the value docs/frame.md names for the shipped model")
+    else:
+        print(f"\nWARNING: the documented blend_scale (0.7397) does not read at "
+              f"{args.fields} bytes of fields — it reads at "
+              f"{pin.get('fields_that_read_0.7397')}. Weights extracted with this split "
+              f"are shifted and the network will diverge on them.")
 
     if args.out:
         manifest = emit(blob, records, args.fields, Path(args.out), args.stages)

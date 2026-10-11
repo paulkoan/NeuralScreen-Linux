@@ -154,6 +154,13 @@ before it bites:
   <dir>` recomputes the hashes and checks the structural claims the manifest makes about
   itself — every tensor inside its stage, the tensors of a stage tiling it exactly — with
   no device involved.
+- **The payload offset is pinned by a value, not by arithmetic.** A record's size fields read
+  `payload + 40`, which is its *whole* metadata — 28 bytes of fields and 12 after — and reading
+  that 40 as the header put every payload twelve bytes late. The pin is
+  `block70.layer0.blend_scale`: docs/frame.md says it is 0.7397 in the shipped model, it is two
+  bytes wide, and it reads 0.73975 exactly 28 bytes after its name. A shifted payload is not a
+  subtler model, it is a diverging one — an output head that comes back two thirds non-finite
+  and a picture that is a flat colour.
 
 Two knobs and one open question:
 

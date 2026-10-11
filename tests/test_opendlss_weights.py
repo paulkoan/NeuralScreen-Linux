@@ -21,24 +21,26 @@ import extract  # noqa: E402
 def build(records, magic=extract.MAGIC):
     """A container in the DLL's format.
 
-    `records` is [(name, payload), ...]. The layout is the (40 fields, 16 trailer)
-    reading of the 56 bytes of per-record metadata: name, a/b/payloadLength and
-    three more u64s, the payload, then the next record's 16 bytes of leading
-    metadata (0, previous payload/2, next name length, 0).
+    `records` is [(name, payload), ...]. The layout is the real one: 28 bytes of fields
+    before the payload (`payloadLength + 40` twice — 40 being the record's total metadata,
+    28 before and 12 after — then the length and a tag), the payload, then the record's
+    12-byte tail and the next record's 8-byte preamble, whose last u32 is the name length
+    the parser reads at `name_start - 8`.
+
+
+    The header used to be written as 40 bytes because that is what the size fields say if
+    they are read as "payload plus the header". They say payload plus the *metadata*, and a
+    fake container built on the wrong reading cannot catch the parser being wrong in the
+    same direction — which is exactly what happened.
     """
     out = bytearray()
     out += struct.pack("<IIII", magic, 0, len(records[0][0]), 0)
     for i, (name, payload) in enumerate(records):
         out += name.encode("latin1")
-        out += struct.pack("<QQQQQ", len(payload) + 40, len(payload) + 40,
-                           len(payload), 0, 0)
+        out += struct.pack("<QQQI", len(payload) + 40, len(payload) + 40, len(payload), 1)
         out += payload
-        # Exactly one 16-byte block of leading metadata separates two records, and
-        # it belongs to the one that follows. Writing it here AND at the top of the
-        # next iteration puts 32 bytes in the gap and breaks the very span the
-        # parser is being tested on.
         if i + 1 < len(records):
-            out += struct.pack("<IIII", 0, len(payload) // 2, len(records[i + 1][0]), 0)
+            out += struct.pack("<IIIIIII", 0, 0, 0, 0, 0, len(records[i + 1][0]), 0)
     return bytes(out)
 
 
@@ -77,7 +79,7 @@ def test_a_missing_dll_is_a_sentence_not_a_traceback(capsys):
 
 def test_records_are_found_with_their_declared_lengths():
     blob = build(SAMPLES)
-    recs = extract.parse_records(blob, 40)
+    recs = extract.parse_records(blob, extract.DEFAULT_FIELDS)
     assert [r["name"] for r in recs] == [n for n, _ in SAMPLES]
     assert [r["byteLength"] for r in recs] == [len(p) for _, p in SAMPLES]
     assert [r["block"] for r in recs] == [0, 1, 70]
@@ -97,46 +99,56 @@ def test_a_name_is_ended_by_its_length_not_by_a_letter():
     overrun = [g for _, g in records if g.endswith(b"h")]
     assert overrun, "the fixture must reproduce the overrun for this test to mean anything"
 
-    names = [r["name"] for r in extract.parse_records(blob, 40)]
+    names = [r["name"] for r in extract.parse_records(blob, extract.DEFAULT_FIELDS)]
     assert names == ["block1.layer0.layer", "block2.layer0.layer"]
     assert not any(n.endswith("h") for n in names)
 
 
-def test_each_record_states_where_its_payload_starts():
-    """The four field splits all fit every offset, so offsets cannot choose.
+def test_the_size_fields_state_the_metadata_total_not_the_header():
+    """`payload + 40` twice over, in all 153 of the real records — and that 40 is a trap.
 
-    The records can. The u64 at +0 and the u64 at +8 both equal the payload length
-    plus 40 — in all 153 of the real ones — which is what makes 40 bytes of fields
-    the reading rather than the best fit. This is the test that would catch a
-    container whose fields meant something else.
+    It is the record's whole metadata: 28 bytes of fields before the payload and 12 after
+    it. Read as the header size, it puts every payload twelve bytes late, and that is what
+    this extractor did for a whole model: the network ran on shifted weights, diverged, and
+    produced a flat picture. The split is pinned by the documented constant instead — see
+    test_the_documented_blend_scale_pins_the_field_split.
     """
     blob = build(SAMPLES)
-    recs = extract.parse_records(blob, 40)
+    recs = extract.parse_records(blob, extract.DEFAULT_FIELDS)
     assert recs
     for r in recs:
-        a, b, c = struct.unpack_from("<QQQ", blob, r["payload_offset"] - 40)
+        a, b, c = struct.unpack_from("<QQQ", blob, r["payload_offset"] - extract.DEFAULT_FIELDS)
         assert a == b == c + 40 == r["byteLength"] + 40, r["name"]
 
+    assert extract.DEFAULT_FIELDS == 28, (
+        "the default has to be the split the payload is actually at")
+    assert extract.DEFAULT_FIELDS in extract.FIELD_SPLITS
     src = (ROOT / "experiments" / "opendlss_weights" / "extract.py").read_text()
-    assert '"--fields", type=int, default=40' in src, (
-        "the default has to be the split the records state, not one of the four")
+    assert '"--fields", type=int, default=DEFAULT_FIELDS' in src
 
 
-def test_every_split_fits_and_that_is_the_ambiguity():
-    """All four field splits reproduce every offset, because they all total 56 and
-    it is the payload's END that the next name pins."""
+def test_the_chain_test_fits_every_split_and_cannot_decide():
+    """Every split reproduces every offset, because `fields` cancels out of the test.
+
+    That is worth pinning: it is the property that made the extractor read the split as
+    the best fit rather than as a question, and reporting it as an answer is how a
+    twelve-byte shift in every weight survived a whole model.
+    """
     blob = build(SAMPLES)
     info = extract.check(blob)
-    assert info["splits_that_fit_every_record"] == {32: True, 40: True, 48: True, 56: True}
-    assert info["field_split_ambiguous"] is True
+    assert all(info["splits_that_fit_every_record"].values()), (
+        "the chain test fits every split — it cannot decide the split, and the test that "
+        "says otherwise is the one that let a 12-byte shift through")
+    assert info["field_split_chain_test_is_degenerate"] is True
+    assert info["field_split"] == extract.DEFAULT_FIELDS
     assert info["records"] == 3 and info["blocks"] == 3
     assert info["payload_total"] == sum(len(p) for _, p in SAMPLES)
 
 
 def test_a_blob_that_is_not_this_table_is_refused():
     with pytest.raises(extract.ExtractionError):
-        extract.parse_records(build(SAMPLES[:-1], magic=0xDEADBEEF), 40)
-    recs = extract.parse_records(build(SAMPLES), 40)
+        extract.parse_records(build(SAMPLES[:-1], magic=0xDEADBEEF), extract.DEFAULT_FIELDS)
+    recs = extract.parse_records(build(SAMPLES), extract.DEFAULT_FIELDS)
     assert recs, "the good container must still parse"
 
 
@@ -154,8 +166,9 @@ def test_emit_writes_a_manifest_open_dlss_nr_would_accept(tmp_path):
     import hashlib
     import json
 
-    manifest = extract.emit(build(SAMPLES), extract.parse_records(build(SAMPLES), 40),
-                            40, tmp_path, stages=2)
+    manifest = extract.emit(build(SAMPLES),
+                            extract.parse_records(build(SAMPLES), extract.DEFAULT_FIELDS),
+                            extract.DEFAULT_FIELDS, tmp_path, stages=2)
     on_disk = json.loads((tmp_path / "manifest.json").read_text())
     assert on_disk["totals"]["blockCount"] == 3      # its loader refuses any other count
     assert on_disk["totals"]["tensorCount"] == 3
@@ -178,3 +191,27 @@ def test_emit_writes_a_manifest_open_dlss_nr_would_accept(tmp_path):
         stage = next(s for s in on_disk["stages"] if s["id"] == t["stage"])
         assert t["stageOffset"] + t["byteLength"] <= stage["packedByteLength"]
     assert manifest["totals"]["blockCount"] == 3
+
+
+def test_the_documented_blend_scale_pins_the_field_split():
+    """The pin, and the test that would have caught the twelve-byte shift.
+
+    docs/frame.md names one learned constant of the shipped model outside the network's
+    arithmetic: `block70.layer0.blend_scale` is 0.7397. It is two bytes wide, so it either
+    says where a payload begins or it says nothing at all. At 28 bytes of fields it reads
+    0.73975; at 40 — the split this extractor used to ship — it reads 0.0, which is the
+    first two bytes of the record's tail.
+
+    Skipped where the DLL is not checked out: it is 158 MiB and deliberately not committed.
+    """
+    dll = extract.DEFAULT_DLL
+    if not dll.is_file():
+        pytest.skip("the DLSS-NR DLL is not in this checkout")
+    data = dll.read_bytes()
+    offset, size = extract.find_weight_blob(data)
+    info = extract.check(data[offset:offset + size])
+    assert info["field_split"] == 28
+    assert info["blend_scale"]["fields_that_read_0.7397"] == 28, (
+        "the documented value does not read at the default split: every weight would be "
+        "shifted and the network would diverge on them")
+    assert abs(info["blend_scale"]["value"] - 0.7397) < 1e-3
