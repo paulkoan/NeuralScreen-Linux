@@ -1,4 +1,4 @@
-From 689b71b907744bb2c3f2012832d60adc99ea55ad Mon Sep 17 00:00:00 2001
+From fc6b4c49ffb4253c28467ada04a5eba8b27fa6b5 Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -50,18 +50,20 @@ Also lands: `--model`/`--shaders`/`--frames` for the mode, the warm record that 
 249-kernel JIT burst on a zero proxy where the log can say what the wait was, and a
 per-frame timing line on stderr.
 ---
- scripts/build_linux.sh       | 161 +++++++++++
- shaders/composite_serve.comp |  69 +++++
- src/kernels.cpp              |  26 +-
- src/kernels.h                |  17 +-
+ scripts/build_linux.sh       | 161 +++++++++
+ shaders/composite_serve.comp |  69 ++++
+ shaders/proxy_expand.comp    |  32 ++
+ src/kernels.cpp              |  39 ++-
+ src/kernels.h                |  22 +-
  src/main.cpp                 |   6 +-
  src/nr_model.h               |   1 +
- src/serve.cpp                | 513 +++++++++++++++++++++++++++++++++++
+ src/serve.cpp                | 652 +++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |  26 +-
  src/vk_context.h             |   3 +
- 9 files changed, 814 insertions(+), 8 deletions(-)
+ 10 files changed, 1003 insertions(+), 8 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
+ create mode 100644 shaders/proxy_expand.comp
  create mode 100644 src/serve.cpp
 
 diff --git a/scripts/build_linux.sh b/scripts/build_linux.sh
@@ -307,8 +309,47 @@ index 0000000..99efd96
 +      bytes.r | (bytes.g << 8u) | (bytes.b << 16u) | (255u << 24u);
 +}
 \ No newline at end of file
+diff --git a/shaders/proxy_expand.comp b/shaders/proxy_expand.comp
+new file mode 100644
+index 0000000..fff90c9
+--- /dev/null
++++ b/shaders/proxy_expand.comp
+@@ -0,0 +1,32 @@
++#version 460
++// RGBA8 in, the f32 proxy out — what preprocess.comp reads.
++//
++// The proxy used to be built on the host: 11M float writes a frame, then 14.7MB uploaded
++// for the network to read. Here the upload is the camera's own 8-bit frame (3.7MB, a
++// quarter of the bytes) and the expansion is one dispatch.
++//
++// No rounding to f16 here on purpose: preprocess.comp rounds the proxy itself
++// (`roundF16(roundF16(roundF16(rgba.r) - 0.5) * 0.125)`), so rounding it here would be the
++// same work done twice, which is what the host loop was doing.
++layout(local_size_x = 8, local_size_y = 8) in;
++
++layout(push_constant) uniform Push {
++  uint width;
++  uint height;
++  uint pad0;
++  uint pad1;
++} pc;
++
++layout(std430, binding = 0) readonly buffer Source { uint pixels[]; };   // RGBA8, little-endian
++layout(std430, binding = 6) writeonly buffer Proxy { vec4 proxy[]; };
++
++void main() {
++  uvec2 id = gl_GlobalInvocationID.xy;
++  if (id.x >= pc.width || id.y >= pc.height) return;
++  const uint packed = pixels[id.y * pc.width + id.x];
++  const float k = 1.0 / 255.0;
++  proxy[id.y * pc.width + id.x] = vec4(float(packed % 256u) * k,
++                                       float((packed / 256u) % 256u) * k,
++                                       float((packed / 65536u) % 256u) * k,
++                                       1.0);
++}
+\ No newline at end of file
 diff --git a/src/kernels.cpp b/src/kernels.cpp
-index 62bb8c3..3cc7970 100644
+index 62bb8c3..da01b39 100644
 --- a/src/kernels.cpp
 +++ b/src/kernels.cpp
 @@ -42,7 +42,8 @@ void check(bool condition, const char* message) {
@@ -317,14 +358,27 @@ index 62bb8c3..3cc7970 100644
    for (const char* name : {"gemm_fp8", "gemm_f16", "ops", "window_normalize", "window_attend", "global_normalize",
 -                           "global_attend", "preprocess", "fused_block32", "qkv_attention", "gemm_mlp", "global_attention", "gemm_reduce"}) {
 +                           "global_attend", "preprocess", "fused_block32", "qkv_attention", "gemm_mlp", "global_attention",
-+                           "gemm_reduce", "composite_serve"}) {
++                           "gemm_reduce", "composite_serve", "proxy_expand"}) {
      modules_[name] = context_.loadShaderModule(shaderDirectory + "/" + name + ".spv");
    }
  }
-@@ -508,6 +509,22 @@ void Kernels::preprocessFromProxy(VkCommandBuffer commands, const vk::Buffer& pr
+@@ -508,6 +509,35 @@ void Kernels::preprocessFromProxy(VkCommandBuffer commands, const vk::Buffer& pr
             (a.fullHeight + 7) / 8, 1);
  }
  
++void Kernels::expandRgba8ToProxy(VkCommandBuffer commands, const vk::Buffer& source,
++                                const vk::Buffer& proxy, uint32_t width, uint32_t height) {
++  struct Push {
++    uint32_t width, height, pad0, pad1;
++  } push{width, height, 0, 0};
++  const vk::Buffer* bindings[vk::kGenericBindings] = {};
++  bindings[0] = &source;
++  bindings[6] = &proxy;
++  dispatchLabel_ = "proxy expand";
++  dispatch(commands, pipeline("proxy_expand", {}, 0), bindings, &push, sizeof(push),
++           (width + 7) / 8, (height + 7) / 8, 1);
++}
++
 +void Kernels::compositeToRgba8(VkCommandBuffer commands, const vk::Buffer& proxy, const Activation& head,
 +                               const vk::Buffer& output, uint32_t proxyWidth, uint32_t headWidth,
 +                               uint32_t validWidth, uint32_t validHeight) {
@@ -344,7 +398,7 @@ index 62bb8c3..3cc7970 100644
  void Kernels::convertF32ToF16(VkCommandBuffer commands, const Activation& input, Activation& output) {
    check(input.format == Format::F32 && output.format == Format::F16, "convert formats");
    uint32_t count = input.rows * input.channels;
-@@ -793,6 +810,13 @@ uint32_t Kernels::ffnRowTiles(uint32_t channels) {
+@@ -793,6 +823,13 @@ uint32_t Kernels::ffnRowTiles(uint32_t channels) {
    return channels == 256 ? 3u : 4u;   // warps = E * rowTiles (<= 32); C=256: 24 warps at .maxnreg 80 keep one workgroup per SM
  }
  
@@ -359,10 +413,10 @@ index 62bb8c3..3cc7970 100644
    check(a.input && a.input->format == Format::E4 && a.output && a.output->format == Format::E4, "PTX FFN formats");
    check(a.channels == 64 || a.channels == 128 || a.channels == 256, "PTX FFN channels");
 diff --git a/src/kernels.h b/src/kernels.h
-index 472bd36..674377e 100644
+index 472bd36..b81d3be 100644
 --- a/src/kernels.h
 +++ b/src/kernels.h
-@@ -81,6 +81,13 @@ class Kernels {
+@@ -81,6 +81,18 @@ class Kernels {
    // Input features from an RGBA f32 proxy image (display code values).
    void preprocessFromProxy(VkCommandBuffer commands, const vk::Buffer& proxy, Activation& features,
                             const PreprocessArgs& args);
@@ -370,13 +424,18 @@ index 472bd36..674377e 100644
 +  // shaders/composite_serve.comp). On the GPU because the host spelling of it is 11M
 +  // pixels of fma, floor and half-truncation a frame, and because it means the finished
 +  // 14.7MB image is read back instead of the head's 60MB of f32.
++  // The serve path's proxy build: the client's RGBA8 frame in, the f32 proxy out (see
++  // shaders/proxy_expand.comp). A quarter of the upload bytes of an f32 proxy and no host
++  // loop at all.
++  void expandRgba8ToProxy(VkCommandBuffer commands, const vk::Buffer& source,
++                          const vk::Buffer& proxy, uint32_t width, uint32_t height);
 +  void compositeToRgba8(VkCommandBuffer commands, const vk::Buffer& proxy, const Activation& head,
 +                        const vk::Buffer& output, uint32_t proxyWidth, uint32_t headWidth,
 +                        uint32_t validWidth, uint32_t validHeight);
    void convertF32ToF16(VkCommandBuffer commands, const Activation& input, Activation& output);
    void quantize(VkCommandBuffer commands, const Activation& input, Activation& output);
    void downsample2x(VkCommandBuffer commands, const Activation& input, Activation& output, uint32_t inWidth,
-@@ -210,13 +217,19 @@ class Kernels {
+@@ -210,13 +222,19 @@ class Kernels {
    // w2 tile-major [e][4][32][32], w3 tile-major [K/32][K][32].
    static bool ptxFfnEnabled();
    static uint32_t ffnRowTiles(uint32_t channels);          // PTX expert FFN: 16-row tiles per workgroup (its chaining signals cover 16 * tiles rows)
@@ -436,10 +495,10 @@ index 867c97e..66f2175 100644
  #include <string>
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..1ed85de
+index 0000000..b7afd3b
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,513 @@
+@@ -0,0 +1,652 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -480,6 +539,9 @@ index 0000000..1ed85de
 +#include <string>
 +#include <vector>
 +
++#include <fcntl.h>
++#include <sys/mman.h>
++#include <sys/stat.h>
 +#include <unistd.h>
 +
 +#include "kernels.h"
@@ -525,7 +587,11 @@ index 0000000..1ed85de
 +constexpr uint32_t kWgcMagic   = 0x57434757u;   // 'WGCW'
 +constexpr uint32_t kWgcAck     = 0x4B414757u;   // 'WGAK'
 +
++constexpr uint32_t kFrameFlagShm = 0x1;        // the frame is in the SHMI mapping
 +constexpr uint32_t kFrameFlagWantPixels = 0x2;
++
++// VideoResultHeader.bytes when the pixels are in the OUTS mapping, not the pipe.
++constexpr uint32_t kOutBytesInShm = 0xFFFFFFFFu;
 +constexpr uint32_t kFrameFlagMotionSmall = 0x4;
 +constexpr uint32_t kFrameFlagNoColor = 0x8;
 +constexpr uint32_t kFrameFlagBypass = 0x10;
@@ -551,6 +617,58 @@ index 0000000..1ed85de
 +// of f32 through the readback instead of the finished 14.7MB image. src/main.cpp keeps its
 +// own copy — parity compares a fixture against that one — and the shader carries the same
 +// arithmetic, so the served picture and the gate still agree.
++
++// --- shared memory ------------------------------------------------------------
++//
++// The client can put the frame in a POSIX shared-memory object and take the pixels back
++// from another one (SHMI/SACK, OUTS/OAK2). It matters now that the network is 12ms of a
++// frame: through a pipe 14.7MB of colour plus 14.7MB of motion go in and 14.7MB comes
++// back, which is the largest single cost left. Through a mapping the same round trip
++// measured ~2ms in Phase A.
++//
++// Both objects are created by the client with `mmap(-1, size, tagname=name)`, which on
++// Linux is /dev/shm/<name> - the namespace this process opens. Under Wine that tagname was
++// a named section and a native worker could not have shared it; this mode exists precisely
++// because there is no Wine in the path.
++
++struct SharedInput {
++  int fd = -1;
++  uint8_t* map = nullptr;
++  size_t bytes = 0;           // the mapping's size
++  size_t colourCapacity = 0;  // what the client said it writes at offset 0
++  size_t motionCapacity = 0;  // and for the motion field after it
++};
++
++// The pixel channel: [0, 8) is the client's seqlock (odd while a frame is being written),
++// the image follows. A torn frame is detected by the reader, so the seqlock is not
++// decoration.
++struct SharedOutput {
++  int fd = -1;
++  uint8_t* map = nullptr;
++  size_t bytes = 0;
++  uint32_t width = 0, height = 0;
++  uint64_t sequence = 0;
++};
++
++int openShared(const char* name, size_t minimum, bool create) {
++  const int fd = create ? ::shm_open(name, O_RDWR | O_CREAT, 0600) : ::shm_open(name, O_RDWR, 0);
++  if (fd < 0) throw std::runtime_error(std::string("shm_open(") + name + "): " + strerror(errno));
++  struct stat info {};
++  if (fstat(fd, &info) != 0) { ::close(fd); throw std::runtime_error("fstat on a shared object"); }
++  if ((size_t)info.st_size < minimum) {
++    ::close(fd);
++    throw std::runtime_error(std::string("shared object ") + name + " holds " +
++                             std::to_string((long long)info.st_size) + " bytes, needs " +
++                             std::to_string((long long)minimum));
++  }
++  return fd;
++}
++
++void* mapShared(int fd, size_t bytes) {
++  void* at = ::mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
++  if (at == MAP_FAILED) throw std::runtime_error(std::string("mmap: ") + strerror(errno));
++  return at;
++}
 +
 +// --- io ------------------------------------------------------------------------
 +
@@ -665,6 +783,30 @@ index 0000000..1ed85de
 +  writeAll(ack, sizeof(ack));
 +}
 +
++// Publishes the image where the client is waiting for it, or down the pipe.
++//
++// The seqlock is the client's: it reads the first eight bytes, refuses an odd value (the
++// writer is mid-frame) and retries, so a torn frame is dropped rather than shown. The
++// writes are therefore ordered - odd, the pixels, then even - and the sequence only grows.
++void publishImage(SharedOutput& out, const std::vector<uint8_t>& pixels,
++                  const std::vector<uint8_t>** inlinePixels, uint32_t* replyBytes) {
++  if (!out.map) {          // the client did not ask for the pixel channel
++    *inlinePixels = &pixels;
++    *replyBytes = (uint32_t)pixels.size();
++    return;
++  }
++  if (out.bytes < pixels.size() + 8) throw std::runtime_error("the pixel channel is too small");
++  const uint64_t writing = ++out.sequence;
++  memcpy(out.map, &writing, 8);
++  __sync_synchronize();
++  memcpy(out.map + 8, pixels.data(), pixels.size());
++  __sync_synchronize();
++  const uint64_t done = ++out.sequence;
++  memcpy(out.map, &done, 8);
++  *inlinePixels = nullptr;
++  *replyBytes = kOutBytesInShm;
++}
++
 +void sendFrame(uint32_t index, uint32_t ok, uint32_t bytes, uint32_t ngxResult, int64_t pts,
 +               const std::vector<uint8_t>* pixels) {
 +  uint8_t header[kOutHeaderBytes];
@@ -745,11 +887,15 @@ index 0000000..1ed85de
 +  // fixed-point fraction: the pipeline's default of 1 is 0.008, i.e. the neutral end.
 +  preprocess.style = (float)startup.style;
 +
++  SharedInput input;
++  SharedOutput output;
++
 +  std::unique_ptr<vk::Context> context;
 +  std::unique_ptr<nr::Model> model;
 +  std::unique_ptr<nr::Kernels> kernels;
 +  std::unique_ptr<nr::Graph> graph;
 +  vk::Buffer proxy{};
++  vk::Buffer colourBuffer{};  // the client's RGBA8 frame, from the pipe or the mapping
 +  vk::Buffer imageBuffer{};      // RGBA8, the composite's output and what leaves the device
 +  nr::Activation* features = nullptr;
 +  uint32_t fullWidth = 0, fullHeight = 0;
@@ -772,6 +918,8 @@ index 0000000..1ed85de
 +                                        nr::Graph::Options{.fusedBlocks = true});
 +    features = graph->allocate("input features", fullWidth * fullHeight, 16, nr::Format::F32);
 +    proxy = context->createBuffer((VkDeviceSize)workWidth * workHeight * 16, false, "proxy");
++    colourBuffer =
++        context->createBuffer((VkDeviceSize)workWidth * workHeight * 4, false, "rgba8 frame");
 +    imageBuffer = context->createBuffer((VkDeviceSize)workWidth * workHeight * 4, false, "rgba8 image");
 +    preprocess.fullWidth = fullWidth;
 +    preprocess.fullHeight = fullHeight;
@@ -779,9 +927,11 @@ index 0000000..1ed85de
 +    // would otherwise pay for 249 launches. Recording once against a zero proxy pays it
 +    // here, where the log says what the wait was.
 +    context->fillZero(proxy);
++    context->fillZero(colourBuffer);
 +    const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
 +    fprintf(stderr, "serve: warming up (the PTX modules are JIT-compiled on first use)\n");
 +    VkCommandBuffer commands = context->beginCommands();
++    kernels->expandRgba8ToProxy(commands, colourBuffer, proxy, workWidth, workHeight);
 +    kernels->preprocessFromProxy(commands, proxy, *features, preprocess);
 +    graph->record(commands, *features);
 +    context->endAndSubmit(commands, true);
@@ -792,7 +942,6 @@ index 0000000..1ed85de
 +
 +  std::vector<uint8_t> colour((size_t)workWidth * workHeight * 4);
 +  std::vector<uint8_t> motion((size_t)workWidth * workHeight * 4);   // 2 x f16 per pixel
-+  std::vector<float> proxyValues((size_t)workWidth * workHeight * 4);
 +
 +  uint32_t frames = 0;
 +  double totalMs = 0;
@@ -806,13 +955,48 @@ index 0000000..1ed85de
 +      const uint32_t magic = le32(magicBytes);
 +
 +      if (magic != kFrameMagic) {
-+        // Commands this worker does not implement. Answering with ok=0 - rather than
-+        // saying nothing - is what keeps the caller from waiting for an acknowledgement
-+        // that will never come; the client reports the refusal, and the MVP never sends
-+        // any of these in the first place (Worker.start passes no shm).
-+        const size_t restBytes = magic == kShmMagic ? kShmBytes - 4 : kAckBytes - 4;
++        // A command. SHMI and OUTS are implemented; everything else is answered ok=0 rather
++        // than ignored, which keeps a caller from waiting for an acknowledgement that will
++        // never come.
++        const size_t restBytes =
++            magic == kShmMagic || magic == kOutsMagic ? kShmBytes - 4 : kAckBytes - 4;
 +        std::vector<uint8_t> rest(restBytes);
 +        if (!readExact(rest.data(), rest.size())) return 0;
++        if (magic == kShmMagic || magic == kOutsMagic) {
++          char name[65] = {0};
++          memcpy(name, rest.data() + 20, 64);
++          try {
++            if (magic == kShmMagic) {
++              input.colourCapacity = le32(rest.data());
++              input.motionCapacity = le32(rest.data() + 4);
++              const size_t want = input.colourCapacity + input.motionCapacity;
++              if (!input.map) {
++                input.bytes = want;
++                input.fd = openShared(name, want, false);
++                input.map = (uint8_t*)mapShared(input.fd, want);
++              }
++              fprintf(stderr, "serve: frame channel open (%.1f MB, %s)\n",
++                      (double)input.bytes / 1e6, name);
++              sendAck(kShmAck, 1);
++            } else {
++              output.width = le32(rest.data());
++              output.height = le32(rest.data() + 4);
++              output.bytes = (size_t)output.width * output.height * 4 + 8;
++              if (!output.map) {
++                output.fd = openShared(name, output.bytes, false);
++                output.map = (uint8_t*)mapShared(output.fd, output.bytes);
++              }
++              fprintf(stderr, "serve: pixel channel open (%ux%u, %.1f MB, %s)\n",
++                      output.width, output.height, (double)output.bytes / 1e6, name);
++              sendAck(kOutsAck, 1);
++            }
++          } catch (const std::exception&error) {
++            // Refusing is not fatal to the caller: it keeps sending down the pipe.
++            fprintf(stderr, "serve: %s - falling back to the pipe\n", error.what());
++            sendAck(magic == kShmMagic ? kShmAck : kOutsAck, 0);
++          }
++          continue;
++        }
 +        uint32_t answer = 0;
 +        switch (magic) {
 +          case kShmMagic:    answer = kShmAck;    break;
@@ -848,39 +1032,50 @@ index 0000000..1ed85de
 +                        "that is the Wine worker's DDA mode and is not implemented here\n");
 +        return 2;
 +      }
-+      if (!readExact(colour.data(), colour.size())) {
-+        fprintf(stderr, "serve: the stream ended inside frame %u's colour\n", index);
-+        return 0;
-+      }
-+      if (!readExact(motion.data(), motion.size())) {
-+        fprintf(stderr, "serve: the stream ended inside frame %u's motion\n", index);
-+        return 0;
++      if ((flags & kFrameFlagShm) && input.map) {
++        // The frame is in the mapping: only its header came down the pipe.
++        if (input.colourCapacity < colour.size() || input.motionCapacity < motion.size()) {
++          fprintf(stderr,
++                  "serve: the frame channel is %zu+%zu bytes, a %ux%u frame needs %zu+%zu\n",
++                  input.colourCapacity, input.motionCapacity, workWidth, workHeight,
++                  colour.size(), motion.size());
++          return 2;
++        }
++        memcpy(colour.data(), input.map, colour.size());
++        memcpy(motion.data(), input.map + input.colourCapacity, motion.size());
++      } else {
++        if (!readExact(colour.data(), colour.size())) {
++          fprintf(stderr, "serve: the stream ended inside frame %u's colour\n", index);
++          return 0;
++        }
++        if (!readExact(motion.data(), motion.size())) {
++          fprintf(stderr, "serve: the stream ended inside frame %u's motion\n", index);
++          return 0;
++        }
 +      }
 +
 +      if (flags & kFrameFlagBypass) {
 +        // NR off: the pipeline still wants its frame back, unprocessed. No device is
 +        // touched for this, which is also what makes the protocol testable without a GPU.
 +        frames++;
-+        sendFrame(index, 1, (uint32_t)colour.size(), 0, pts, &colour);
++        const std::vector<uint8_t>* inlinePixels = nullptr;
++        uint32_t replyBytes = 0;
++        publishImage(output, colour, &inlinePixels, &replyBytes);
++        sendFrame(index, 1, replyBytes, 0, pts, inlinePixels);
 +      } else {
 +        if (!context) startEngine();
 +        const std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now();
 +        if (reset) fprintf(stderr, "serve: frame %u carries reset (no history is kept, so it is a no-op)\n", index);
 +
-+        // The proxy: the frame's code values, alpha 1 — preprocess.comp reads .rgb only.
-+        // No rounding to f16 on the host: preprocess.comp rounds the proxy itself
-+        // (`roundF16(roundF16(roundF16(rgba.r) - 0.5) * 0.125)`), so the 11M roundF16 calls
-+        // a frame that used to be spent here were producing bytes the shader then rounded
-+        // again.
-+        for (size_t i = 0; i < (size_t)workWidth * workHeight; ++i) {
-+          for (int c = 0; c < 3; ++c)
-+            proxyValues[i * 4 + c] = (float)colour[i * 4 + c] * (1.0f / 255.0f);
-+          proxyValues[i * 4 + 3] = 1.0f;
-+        }
-+        context->upload(proxy, proxyValues.data(), (VkDeviceSize)proxyValues.size() * 4);
++        // The proxy, on the GPU: the frame goes up as it was captured (RGBA8, 3.7MB - a
++        // quarter of the f32 proxy, which was 11M float writes a frame down here) and one
++        // dispatch expands it to what preprocess.comp reads. The rounding to f16 is
++        // preprocess's own, so it is not repeated here.
++        context->upload(colourBuffer, colour.data(), (VkDeviceSize)colour.size());
 +        const std::chrono::steady_clock::time_point afterUpload = std::chrono::steady_clock::now();
 +        context->resetDescriptorPool();
 +        VkCommandBuffer commands = context->beginCommands();
++        kernels->expandRgba8ToProxy(commands, colourBuffer, proxy, workWidth, workHeight);
 +        kernels->preprocessFromProxy(commands, proxy, *features, preprocess);
 +        graph->record(commands, *features);
 +        // The composite, on the GPU: the head and the proxy in, RGBA8 out. Two reasons it is
@@ -921,7 +1116,10 @@ index 0000000..1ed85de
 +            context->download(imageBuffer, (VkDeviceSize)workWidth * workHeight * 4);
 +        const std::chrono::steady_clock::time_point afterDownload = std::chrono::steady_clock::now();
 +        frames++;
-+        sendFrame(index, 1, (uint32_t)image.size(), 0, pts, &image);
++        const std::vector<uint8_t>* inlinePixels = nullptr;
++        uint32_t replyBytes = 0;
++        publishImage(output, image, &inlinePixels, &replyBytes);
++        sendFrame(index, 1, replyBytes, 0, pts, inlinePixels);
 +        const std::chrono::steady_clock::time_point afterSend = std::chrono::steady_clock::now();
 +
 +        auto since = [](const std::chrono::steady_clock::time_point& from,

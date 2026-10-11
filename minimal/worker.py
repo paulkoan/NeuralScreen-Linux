@@ -6,10 +6,12 @@ every struct size; tests/test_protocol_sizes.py checks the Python side against
 the same numbers).
 
 This module only owns the *process*: how to start it, when it is ready, and how
-to stop it. The transport is the pipe path (colour and motion inline). Shared
-memory is deliberately not used: SharedFrameBuffer relies on
-`mmap.mmap(..., tagname=...)`, which is a Windows-only keyword, and Wine's
-named-mapping namespace is not POSIX shm — the pipe is the path that works.
+to stop it. The transport is the pipe path (colour and motion inline), and that is still
+what runs by default: it is the one path both workers speak. A POSIX shared
+section is now possible with the native worker - `/dev/shm/<name>`, which is
+what `shm_open` finds and what `mmap(..., tagname=...)` never could, being a
+Windows-only keyword - and `protocol.py` creates one there. Nothing negotiates
+one yet, which is the switch that would take the frame traffic off the pipe.
 """
 
 from __future__ import annotations

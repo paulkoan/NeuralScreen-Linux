@@ -122,7 +122,6 @@ expects `OUT1` — all three already match, so `NS_WORKER_CMD` is the whole inte
 
 Verified without a GPU, on the real protocol (`tests/test_native_serve.py`, and by hand
 against the built binary): the header is parsed and the work size taken from it, two
-bypassed frames came back byte-identical, `SHMI` is refused with `ok=0` (the documented
 fallback — the client keeps sending down the pipe), an unknown command is answered rather
 than ignored, and a closed stream ends the process with exit 0.
 
@@ -130,7 +129,6 @@ What it does **not** do, and says so instead of misbehaving:
 
 - **No NGX upscaling.** `fullWidth`/`fullHeight` must be 0 or the work size, so a
   `--work-scale` run is rejected at the header rather than served wrong-sized frames.
-- **No shared-memory channel.** SHMI is refused; the MVP never asks for it (`Worker.start`
   passes no shm), so frames stay on the pipe and the ~45ms `send` stays until the
   transport itself changes.
 - **No temporal history.** The pipeline sends a zero motion field every frame
@@ -224,3 +222,22 @@ disabled before any measurement means anything.
   the DLL (153 tensors, 71 blocks, 140.84 MiB). Its *lengths* match upstream's documented
   layout exactly, and the port's loader accepts it and runs the whole network — which is
   not the same as the *values* being right, since `bench` never looks at them.
+
+### The shared-memory channels (SHMI / OUTS)
+
+`serve` implements both. `SHMI` gives it the name of a section holding the frame
+(colour at offset 0, motion after it) and then a frame arrives as its 24-byte header with
+`FRAME_FLAG_SHM` set; `OUTS` gives it the name of a section for the result pixels, which are
+published there behind the client's seqlock (odd while writing, even when done) and the
+reply carries `bytes = 0xFFFFFFFF`. Both were written because the pipe became the largest
+cost left in the frame: 14.7MB of colour plus 14.7MB of motion in and 14.7MB back at
+1440p, against ~2ms for the same round trip through a mapping.
+
+Neither side uses Windows named sections any more. The client creates `/dev/shm/<name>`
+(`protocol._open_section`) and this side opens it with `shm_open` — the same object, which
+is why the name is the whole interface. Under Wine the client's `tagname` was a named
+section that only a Windows process could open, which is why the native mode never had a
+shared channel before.
+
+`tests/test_native_serve_shm.py` drives both against a real process with the client's own
+`SharedFrameBuffer` and `send_frame`, in bypass mode so no device is needed.

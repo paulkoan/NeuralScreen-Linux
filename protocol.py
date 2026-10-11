@@ -36,6 +36,35 @@ WORK_MAX_W = 2560
 WORK_MAX_H = 1440
 
 
+def _open_section(name: str, size: int) -> mmap.mmap:
+    """Create a shared section the worker can open by name.
+
+    The name is the whole interface, and the namespace behind it differs by platform:
+    on Windows `mmap(-1, size, tagname=name)` is a named section that a Windows process -
+    Wine included - opens with OpenFileMappingA, while on Linux the same call is not
+    available at all and a native worker opens `/dev/shm/<name>` with shm_open. Both ends
+    now speak the POSIX spelling there, which is what the native `serve` mode does.
+    """
+    if os.name == "nt":
+        return mmap.mmap(-1, size, tagname=name)
+    fd = os.open(f"/dev/shm/{name}", os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        os.ftruncate(fd, size)
+        return mmap.mmap(fd, size)
+    finally:
+        os.close(fd)          # the mapping holds it open; the name lives on until unlinked
+
+
+def _unlink_section(name: str) -> None:
+    """Drop the name once nobody can still want it (the mapping stays usable)."""
+    if os.name == "nt" or not name:
+        return
+    try:
+        os.unlink(f"/dev/shm/{name}")
+    except OSError:
+        pass
+
+
 class SharedFrameBuffer:
     """Shared memory for the worker's input frame (the SHMI command).
 
@@ -59,7 +88,7 @@ class SharedFrameBuffer:
         # The section name: ASCII, unique per process - the worker opens it
         # through OpenFileMappingA in the same Windows session.
         self.name = f"NeuralScreen_{os.getpid()}_{uuid.uuid4().hex[:8]}"
-        self._mm = mmap.mmap(-1, self.size, tagname=self.name)
+        self._mm = _open_section(self.name, self.size)
         self._buf = np.ndarray((self.size,), dtype=np.uint8, buffer=self._mm)
         self.negotiated = False  # set by start_worker after SACK
 
@@ -95,7 +124,7 @@ class SharedFrameBuffer:
         self.gray_w, self.gray_h = w, h
         self.gray_bytes = w * h
         self.gray_name = f"NeuralScreenGray_{os.getpid()}_{uuid.uuid4().hex[:6]}"
-        self._gray_mm = mmap.mmap(-1, self.gray_bytes, tagname=self.gray_name)
+        self._gray_mm = _open_section(self.gray_name, self.gray_bytes)
         self._gray_buf = np.ndarray((self.gray_bytes,), dtype=np.uint8, buffer=self._gray_mm)
 
     def open_out(self, w: int, h: int) -> None:
@@ -112,7 +141,7 @@ class SharedFrameBuffer:
         self.out_w, self.out_h = w, h
         self.out_bytes = w * h * 4 + 8  # + seqlock
         self.out_name = f"NeuralScreenOut_{os.getpid()}_{uuid.uuid4().hex[:6]}"
-        self._out_mm = mmap.mmap(-1, self.out_bytes, tagname=self.out_name)
+        self._out_mm = _open_section(self.out_name, self.out_bytes)
         self._out_buf = np.ndarray((h, w, 4), dtype=np.uint8, buffer=self._out_mm, offset=8)
 
     def read_out(self) -> np.ndarray | None:
@@ -194,6 +223,7 @@ class SharedFrameBuffer:
             self._mm.close()
         except Exception as exc:
             print(f"[main] could not close the shared memory: {exc}", file=sys.stderr)
+        _unlink_section(self.name)
 
 
 def _negotiate_shm(worker: subprocess.Popen, reader: "WorkerReader",
