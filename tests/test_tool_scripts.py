@@ -105,6 +105,14 @@ def test_git_records_the_executable_bit():
         mode, path = parts[0], name.strip()
         if Path(path).name in NOT_COMMANDS:
             continue
+        # The same question _tool_files() asks: what has to be executable is what has a
+        # shebang. A systemd unit, a policy and a Dockerfile are files to install, and
+        # demanding +x of them would only teach people to chmod a .toml.
+        try:
+            if not (REPO / path).open("rb").readline().startswith(b"#!"):
+                continue
+        except OSError:
+            continue
         tracked += 1
         if mode != "100755":
             wrong.append(f"{path} is {mode}")
