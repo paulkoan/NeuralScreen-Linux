@@ -1,5 +1,24 @@
 # The auto-runner, as a service that runs once per pass. Install as root, OUTSIDE the repo:
 #
+# --- the deploy key -------------------------------------------------------------------------
+# Generate it ON THIS MACHINE, as your own user, so the private half never leaves it:
+#
+#   ssh-keygen -t ed25519 -C "neuralscreen-runner@$(hostname)" -f ~/.ssh/neuralscreen-deploy
+#   cat ~/.ssh/neuralscreen-deploy.pub
+#
+# Add that public key at github.com/paulkoan/NeuralScreen-Linux -> Settings -> Deploy keys ->
+# Add deploy key, WITH "Allow write access" ticked. Then install the private half where the
+# service can read it and nobody else can:
+#
+#   sudo install -d -m 0750 -o root -g neuralscreen /etc/neuralscreen-runner
+#   sudo install -m 0640 -o root -g neuralscreen ~/.ssh/neuralscreen-deploy \
+#        /etc/neuralscreen-runner/deploy_key
+#   # the first fetch learns github's host key into the service's own known_hosts:
+#   sudo -u neuralscreen git -c core.sshCommand="ssh -i /etc/neuralscreen-runner/deploy_key" \
+#        ls-remote git@github.com:paulkoan/NeuralScreen-Linux.git results
+#
+# --- the service ----------------------------------------------------------------------------
+#
 #   sudo useradd --system --home /var/lib/neuralscreen-runner --shell /usr/sbin/nologin \
 #        --user-group neuralscreen
 #   # rootless podman needs subordinate ids for the service user:
@@ -13,8 +32,8 @@
 #   sudo systemctl enable --now neuralscreen-runner.timer
 #
 # Note what is root-owned here and not versioned: the executor (/opt/.../auto_runner.py), the
-# policy, and this unit. A commit cannot change what may run, only ask for something the
-# policy already allows.
+# policy, the deploy key and this unit. A commit cannot change what may run, only ask for
+# something the policy already allows.
 #
 # It runs one pass and exits; the timer starts it again. That shape is deliberate: no
 # long-lived process holding a state that drifts, and `systemctl status` shows the last pass.
@@ -35,6 +54,11 @@ StateDirectoryMode=0700
 WorkingDirectory=/var/lib/neuralscreen-runner
 ExecStart=/usr/bin/python3 /opt/neuralscreen-runner/auto_runner.py \
     --policy /etc/neuralscreen-runner/policy.toml --once
+
+# The deploy key and nothing else: no ssh agent, no other identities, and a known_hosts of
+# its own inside the state directory, so the first fetch records github's host key there
+# rather than somewhere the service user cannot write.
+Environment="GIT_SSH_COMMAND=ssh -i /etc/neuralscreen-runner/deploy_key -o IdentitiesOnly=yes -o UserKnownHostsFile=/var/lib/neuralscreen-runner/known_hosts -o StrictHostKeyChecking=accept-new"
 
 # --- the bounds ---------------------------------------------------------------------------
 # These hold no matter what a run request, or the code it runs, tries to do. The policy

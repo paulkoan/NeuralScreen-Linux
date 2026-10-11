@@ -15,7 +15,12 @@
 # execute; a request naming anything else is refused and the refusal is pushed like any
 # other result.
 
-repo_url = "https://github.com/paulkoan/NeuralScreen-Linux.git"
+repo_url = "git@github.com:paulkoan/NeuralScreen-Linux.git"
+# SSH with a deploy key scoped to this one repository, not a token: the runner only ever
+# pushes one branch, and a key can be revoked without touching anything else you have.
+# The key is generated ON THE MACHINE THAT USES IT (the private half never travels) and
+# lives at /etc/neuralscreen-runner/deploy_key, root-owned, readable by the service group.
+# GIT_SSH_COMMAND pointing at it is set in the unit - see neuralscreen-runner.service.
 worktree = "/var/lib/neuralscreen-runner/repo"   # the runner's OWN clone, not your checkout
 request_branch = "main"                          # run requests come from here
 results_branch = "results"                       # results go here, and only the runner writes it

@@ -248,3 +248,31 @@ def test_the_watcher_declares_every_flag_its_body_uses():
     for flag in ("--all", "--check", "--verbose", "--branch"):
         assert flag in source, flag
         assert flag in finished.stdout, f"{flag} is read but not declared:\n{finished.stdout}"
+
+
+def test_the_runner_authenticates_with_a_key_and_never_a_token():
+    """A deploy key scoped to one repository, held on the machine that uses it.
+
+    A token in the policy would be a secret in a versioned file; an ssh key the runner
+    generates for itself is neither, and can be revoked without touching anything else.
+    """
+    unit = (REPO / "tools" / "neuralscreen-runner.service").read_text()
+    policy = (REPO / "tools" / "runner_policy.example.toml").read_text()
+    assert "/etc/neuralscreen-runner/deploy_key" in unit, "the unit must name the key"
+    assert "IdentitiesOnly=yes" in unit, \
+        "without IdentitiesOnly the service would try its own keys as well"
+    assert "UserKnownHostsFile=" in unit
+
+    # Settings, not prose: this file talks about tokens on purpose, and a check that reads
+    # the comments would fail the moment someone explains why there is no token.
+    settings = [line for line in policy.splitlines()
+                if line.strip() and not line.strip().startswith("#")]
+    assert any(line.startswith("repo_url") and "git@github.com:" in line for line in settings), \
+        "the policy should clone over ssh"
+    assert not any("https://" in line for line in settings), \
+        "an https remote needs a token; the key is the point"
+    for pattern in ("github_pat_", "ghp_", "BEGIN OPENSSH PRIVATE KEY"):
+        assert pattern not in policy, f"the policy carries what looks like a credential: {pattern}"
+    for line in settings:
+        lowered = line.lower()
+        assert not any(word in lowered for word in ("token =", "password =", "secret =")), line
