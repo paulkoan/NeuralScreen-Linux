@@ -8,18 +8,6 @@ pass; the test suite green before anything is pushed; never touch /etc or instal
 packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Linux; never edit
 /opt/neuralscreen (policy, executor, key, unit); never queue a run that is not described here.
 
-## 1. Does the cost scale with pixels? (ready - queue it)
-
-serve spends ~22ms a frame: network+composite 12.5, proxy 4-5. The network alone measured
-9.96ms in bench at 2560x1440, so the composite and the proxy expansion share a queue with it.
-Half the work size separates what scales with pixels from what does not.
-
-* id `r2026-10-11-e`, entry `minimal`, args `--source image --input-image
-  fixtures/youtube-1440p.png --headless --size 1280x720 --frames 60 --worker-log --shm
-  --no-motion --send-ahead 2`, artifacts none
-* read it against the 2560x1440 numbers in runs/done/r2026-10-11-c
-* learned: (fill in)
-
 ## 2. Temporal history, step one: let serve keep a frame
 
 Every measurement so far is a single-frame NR: the client sends zero motion and the mode keeps
