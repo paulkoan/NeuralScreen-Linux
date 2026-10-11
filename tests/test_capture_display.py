@@ -94,6 +94,33 @@ def test_display_can_be_created_twice_in_a_row(xvfb_display):
             assert d.frames_shown == 1
 
 
+def test_display_paints_black_before_the_first_frame(xvfb_display, monkeypatch):
+    """The window must not show an undefined surface while it waits for frame 0.
+
+    It is created before the worker has answered anything, and with the native worker
+    the first reply is behind a model load and the JIT of 249 PTX kernels. What the
+    driver's buffer holds in the meantime is not ours to choose — a solid colour across a
+    fullscreen window is exactly what a broken pipeline looks like — so it is cleared and
+    presented once at creation.
+    """
+    from minimal import display as display_module
+    from minimal.display import Display
+
+    presented = []
+    original = display_module.sdl2.SDL_RenderPresent
+
+    def counting(renderer):
+        presented.append(renderer)
+        return original(renderer)
+
+    monkeypatch.setattr(display_module.sdl2, "SDL_RenderPresent", counting)
+    with Display(80, 60) as d:            # not headless: a real (virtual) window
+        assert len(presented) == 1, "the window was not painted at creation"
+        assert d.frames_shown == 0, "painting the window is not showing a frame"
+        d.show(np.zeros((60, 80, 4), dtype=np.uint8))
+        assert len(presented) == 2
+
+
 def test_display_polls_without_events(xvfb_display):
     from minimal.display import Display
     with Display(80, 60, headless=True) as d:

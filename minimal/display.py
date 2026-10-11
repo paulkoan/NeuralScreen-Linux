@@ -72,6 +72,24 @@ class Display:
             raise DisplayError(f"SDL_CreateTexture failed: {sdl2.SDL_GetError()}")
 
         self.frames_shown = 0
+        self.clear()
+
+    def clear(self) -> None:
+        """Paint the window black and present it.
+
+        The window exists from setup, but nothing is drawn into it until the worker
+        answers its first frame — and with the native worker that first frame is a model
+        load plus the JIT of 249 PTX kernels, so the wait is seconds long and worth
+        seeing. Until something is presented the surface holds whatever the driver left
+        in it: on an accelerated renderer that can be a solid colour, and a solid amber
+        or yellow fullscreen window reads as "the pipeline is broken" when it is only
+        waiting for frame 0. Black says the same thing the log does.
+        """
+        if self.headless:
+            return
+        sdl2.SDL_SetRenderDrawColor(self.renderer, 0, 0, 0, 255)
+        sdl2.SDL_RenderClear(self.renderer)
+        sdl2.SDL_RenderPresent(self.renderer)
 
     def show(self, frame_rgba: np.ndarray) -> None:
         """Upload one (H, W, 4) uint8 RGBA frame and present it."""
