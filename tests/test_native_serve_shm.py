@@ -114,3 +114,37 @@ def test_the_native_worker_reads_the_frame_and_returns_it_through_sections():
         code = worker.wait(timeout=30)
         stderr = worker.stderr.read().decode("utf-8", "replace")
     assert code == 0, f"the worker exited {code}: {stderr}"
+
+
+@pytest.mark.skipif(not NATIVE_BIN,
+                    reason="set NS_ODL_NATIVE_BIN to a built dlss5vk to drive the real mode")
+def test_the_pipeline_class_negotiates_both_channels_by_itself():
+    """The switch the pipeline actually uses: --shm, end to end.
+
+    The channels are only worth having if nothing has to remember to open them, so this
+    drives Worker the way minimal/loop.py does and checks the worker's own log for the two
+    channels being open - a silent fall back to the pipe would still return frames.
+    """
+    from minimal.loop import DEFAULT_PARAMS
+    from minimal.worker import Worker
+
+    worker = Worker(width=W, height=H, work_w=W, work_h=H, params=DEFAULT_PARAMS, warmup=0,
+                    cmd=[NATIVE_BIN, "serve", "--model", "/nonexistent-model"],
+                    bypass=True, shm=True)
+    worker.start()
+    try:
+        rgba = (np.arange(W * H * 4, dtype=np.int32) % 251).astype(np.uint8).reshape(H, W, 4)
+        motion = np.zeros((H, W, 2), dtype=np.float16)
+        for index in (0, 1):
+            worker.send(index, rgba, motion, reset=index == 0)
+            got_index, frame = worker.recv_any(timeout=30)
+            assert got_index == index, got_index
+            assert frame is not None and frame.shape == (H, W, 4), frame
+            assert frame.tolist() == rgba.tolist(), "the frame through the section changed"
+        assert worker.shm is not None and worker.shm.negotiated, "SHMI was not negotiated"
+        logs = "\n".join(worker.logs)
+        assert "frame channel open" in logs, logs[-400:]
+        assert "pixel channel open" in logs, (
+            "the pixels came back down the pipe: OUTS was not negotiated:\n" + logs[-400:])
+    finally:
+        worker.stop()

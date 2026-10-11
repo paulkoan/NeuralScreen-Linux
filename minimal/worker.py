@@ -26,6 +26,7 @@ import time
 from pathlib import Path
 
 from paths import NATIVE_DIR
+import protocol
 from protocol import (HEADER_FMT, VIDEO_MAGIC, WorkerReader, send_frame)
 
 # Same caps the original pipeline uses. NGX feature 18 goes silent at 4K
@@ -229,7 +230,7 @@ class Worker:
                  cwd: Path | None = None,
                  full_w: int = 0, full_h: int = 0,
                  nr_small: bool = False, motion_small: bool = False,
-                 no_motion: bool = False,
+                 no_motion: bool = False, shm: bool = False,
                  bypass: bool = False, writev: bool = False,
                  echo_logs: bool = False):
         self.width, self.height = int(width), int(height)
@@ -246,6 +247,12 @@ class Worker:
         # history), so the MVP can leave it out: at 2560x1440 that is 14.7MB of
         # float16 per frame, half of everything the client writes.
         self.no_motion = bool(no_motion)
+        # The shared sections, when asked for: the frame goes into a mapping the worker
+        # reads (instead of 14.7MB down the pipe) and the reply's pixels come back
+        # through another. Both are POSIX sections; a worker that refuses them - the
+        # Wine build, whose sections are its own namespace - leaves the pipe in place.
+        self.use_shm = bool(shm)
+        self.shm = None
         # NR OFF: the worker skips NGX and returns the capture unchanged. Not
         # the same as zeroed strengths — those still run the network, so this is
         # the control that separates the network from the texture path.
@@ -299,12 +306,43 @@ class Worker:
 
         # The reader owns a thread reading the worker's stdout for the life of
         # the process. Its width/height are the *output* frame size.
-        self.reader = WorkerReader(self.proc, self.width, self.height, None)
+        if self.use_shm:
+            self.shm = protocol.SharedFrameBuffer(self.width, self.height, self.work_w,
+                                                  self.work_h)
+        self.reader = WorkerReader(self.proc, self.width, self.height, self.shm)
 
         header = stream_header(self.work_w, self.work_h, self.warmup,
                                self.params, self.full_w, self.full_h)
         self.proc.stdin.write(header)
         self.proc.stdin.flush()
+
+        if self.use_shm:
+            self._open_shared_channels()
+
+    def _open_shared_channels(self) -> None:
+        """Negotiate SHMI and OUTS, and fall back to the pipe if the worker refuses.
+
+        The order matters: the reader must exist (it is what collects SACK and OAK2) and it
+        must have the section object before the first reply can say
+        `OUT_BYTES_IN_SHM` - the copy out of the mapping happens on its thread.
+
+        Neither channel is a promise: a refusal leaves every frame on the pipe, with a line
+        saying so. That is the Wine worker's answer today.
+        """
+        assert self.shm is not None and self.reader is not None
+        try:
+            protocol._negotiate_shm(self.proc, self.reader, self.shm)
+            self.shm.negotiated = True
+            self.shm.open_out(self.width, self.height)
+            protocol.send_out(self.proc, self.width, self.height, self.shm.out_name)
+            self.reader.wait_oak(10.0)
+            print(f"[main] shared memory: frames in and pixels out through "
+                  f"/dev/shm (frame {self.shm.size / 1e6:.1f}MB, pixels {self.shm.out_bytes / 1e6:.1f}MB)",
+                  file=sys.stderr, flush=True)
+        except Exception as exc:                       # noqa: BLE001 - any refusal means the pipe
+            print(f"[main] shared memory refused ({exc}); frames stay on the pipe",
+                  file=sys.stderr, flush=True)
+            self.shm.negotiated = False
 
     def _drain_stderr(self) -> None:
         """Keep the worker's stderr pipe empty or it blocks on a full buffer."""
@@ -334,7 +372,8 @@ class Worker:
         """
         assert self.proc is not None and self.proc.stdin is not None
         try:
-            send_frame(self.proc, index, rgba, motion, reset, pts, None,
+            send_frame(self.proc, index, rgba, motion, reset, pts,
+                       self.shm if (self.shm is not None and self.shm.negotiated) else None,
                        motion_small=self.motion_small, bypass=self.bypass,
                        no_motion=self.no_motion,
                        writev=self.writev)

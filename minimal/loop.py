@@ -78,7 +78,7 @@ class Pipeline:
                  warmup: int = 2, worker_cmd: list[str] | None = None,
                  worker_cwd: Path | None = None, capture=None, display=None,
                  work_scale: float = 1.0, motion_small: bool = False,
-                 no_motion: bool = False,
+                 no_motion: bool = False, shm: bool = False,
                  bypass: bool = False, send_ahead: int = 1,
                  frame_timeout: float = 60.0, writev: bool = False,
                  worker_log: bool = False):
@@ -109,6 +109,7 @@ class Pipeline:
         # cost to what the network receives — our field is all zeros either way.
         self.motion_small = bool(motion_small)
         self.no_motion = bool(no_motion)
+        self.shm = bool(shm)
 
         # Injected sources let the tests drive the loop without a screen or a GPU.
         self.capture = capture if capture is not None else Capture(monitor_idx=monitor)
@@ -139,6 +140,7 @@ class Pipeline:
             nr_small=self.nr_small,
             motion_small=self.motion_small,
             no_motion=self.no_motion,
+            shm=self.shm,
             bypass=self.bypass,
             writev=self.writev,
             echo_logs=worker_log)
