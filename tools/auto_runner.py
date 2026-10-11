@@ -187,7 +187,10 @@ def run_request(request: dict, policy: dict, worktree: Path, run_dir: Path,
     # A policy entry may carry environment of its own: which worker binary to run is a
     # property of the machine, and the policy is where machine properties belong.
     env.update({str(key): str(value) for key, value in (entry.get("env") or {}).items()})
-    env["HOME"] = str(run_dir / "home")
+    # HOME outside the run directory. Inside it, everything a program caches under $HOME -
+    # Wine prefixes, mesa shader caches, GLCache - is published as part of the result: the
+    # first real run committed 179,000 characters of file listing for it.
+    env["HOME"] = str(state_dir(policy, "home") / run_dir.name)
     Path(env["HOME"]).mkdir(parents=True, exist_ok=True)
     env.pop("GIT_ASKPASS", None)          # a run does not need the runner's push credential
     started = time.monotonic()
@@ -243,6 +246,7 @@ def publish(worktree: Path, policy: dict, run_dir: Path, exit_code: int,
         log(f"would publish {run_dir} to {policy['results_branch']}")
         return
     results, request = policy["results_branch"], policy["request_branch"]
+    restore_local_results(policy, worktree)
     revision = git(worktree, "rev-parse", f"origin/{request}").stdout.strip()
     (run_dir / "revision.txt").write_text(revision + "\n")
 
@@ -280,6 +284,37 @@ def publish(worktree: Path, policy: dict, run_dir: Path, exit_code: int,
     log(f"published {run_dir.name} to {results} (on {revision[:12]})")
 
 
+def state_dir(policy: dict, kind: str) -> Path:
+    """Where runs are remembered on this machine, beside the clone but never in it.
+
+    The clone is reset every pass, so it can hold no memory. The results branch can, but only
+    if the push succeeded - and when it does not, a ledger made of remote state says "never
+    ran" about a run that just took four minutes of GPU. So there are two ledgers, and the
+    local one is written before the run rather than after it.
+    """
+    root = Path(policy["worktree"]).expanduser().parent / kind
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def restore_local_results(policy: dict, worktree: Path) -> list[str]:
+    """Put runs that never reached the branch back into the tree, so a refused push is not a
+    lost run: the next pass publishes them along with its own."""
+    local = Path(policy["worktree"]).expanduser().parent / "done"
+    if not local.exists():
+        return []
+    restored = []
+    for entry in sorted(local.iterdir()):
+        target = worktree / "runs" / "done" / entry.name
+        if entry.is_dir() and not target.exists():
+            shutil.copytree(entry, target)
+            restored.append(entry.name)
+    if restored:
+        log(f"publishing {len(restored)} run(s) that a previous push left behind: "
+            f"{', '.join(restored)}")
+    return restored
+
+
 def done_ids(worktree: Path, policy: dict) -> set[str]:
     """The ledger: which ids the results branch already holds.
 
@@ -295,15 +330,45 @@ def done_ids(worktree: Path, policy: dict) -> set[str]:
     return {line.rsplit("/", 1)[-1] for line in listing.stdout.split() if line.strip()}
 
 
+def publish_pending(policy: dict, worktree: Path, already: set[str], dry_run: bool = False) -> None:
+    """Publish results that never reached the branch, whether or not anything is queued.
+
+    A push can be refused - a read-only key, a remote that was briefly unavailable - and the
+    run it belonged to is then sitting in the state directory, done but unpublished. Waiting
+    for a new request to carry it out would mean a paused queue silently loses it, and the
+    rescue would be timed by luck.
+    """
+    local = state_dir(policy, "done")
+    if not local.exists():
+        return
+    pending = [d for d in sorted(local.iterdir()) if d.is_dir() and d.name not in already]
+    if not pending:
+        return
+    log(f"{len(pending)} result(s) never reached the branch: "
+        f"{', '.join(d.name for d in pending)}")
+    restore_local_results(policy, worktree)
+    exit_code = 0
+    try:
+        exit_code = int(json.loads((pending[-1] / "result.json").read_text()).get("exit_code", 0))
+    except (OSError, ValueError):
+        pass
+    publish(worktree, policy, pending[-1], exit_code, dry_run=dry_run)
+
+
 def process(policy: dict, worktree: Path, dry_run: bool = False) -> int:
+    already = done_ids(worktree, policy)
     queue = sorted((worktree / "runs" / "queue").glob("*.json"))
     if not queue:
         log("nothing queued")
-        return 0
-    already = done_ids(worktree, policy)
+    attempted = state_dir(policy, "attempted")
     for request_path in queue:
         run_id = request_path.stem
         run_dir = worktree / "runs" / "done" / run_id
+        if (attempted / run_id).exists():
+            # Written before the run, not after: a pass that dies half way through must not
+            # decide on the next pass that nothing happened.
+            log(f"{run_id}: already attempted on this machine, skipping")
+            continue
         if run_id in already:
             log(f"{run_id}: already on {policy['results_branch']}, skipping")
             continue
@@ -311,6 +376,7 @@ def process(policy: dict, worktree: Path, dry_run: bool = False) -> int:
             log(f"{run_id}: already done, skipping")
             continue
         run_dir.mkdir(parents=True)
+        (attempted / run_id).write_text("")
         try:
             request = json.loads(request_path.read_text())
             shutil.copy2(request_path, run_dir / "request.json")
@@ -331,7 +397,24 @@ def process(policy: dict, worktree: Path, dry_run: bool = False) -> int:
             log(f"{run_id}: the runner itself failed: {error!r}")
             (run_dir / "report.md").write_text(f"# run {run_id}\n\n**The runner failed.** "
                                                f"`{error!r}`\n")
+        # A copy outside the clone, so the result survives the reset that follows it - and so
+        # a push that was refused can be retried by the next pass instead of the run being
+        # repeated.
+        local = state_dir(policy, "done") / run_id
+        if not local.exists():
+            shutil.copytree(run_dir, local)
+        # Whatever ran may have written a home/ into the result before this was fixed; it is
+        # never part of what a result means.
+        stale_home = run_dir / "home"
+        if stale_home.exists():
+            shutil.rmtree(stale_home)
         publish(worktree, policy, run_dir, exit_code, dry_run=dry_run)
+        already.add(run_id)
+
+    # Unconditionally, and after the loop rather than before it: a queue whose only entries
+    # were already attempted would otherwise return here and leave a finished run unpublished
+    # until an unrelated request happened to arrive.
+    publish_pending(policy, worktree, already, dry_run=dry_run)
     return 0
 
 

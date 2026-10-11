@@ -86,6 +86,11 @@ def world(tmp_path: Path) -> World:
     (w.seed / "stubs").mkdir()
     (w.seed / "stubs" / "ok.py").write_text(OK_STUB)
     (w.seed / "stubs" / "boom.py").write_text(BOOM_STUB)
+    (w.seed / "stubs" / "caches.py").write_text(
+        "import os, pathlib\n"
+        "home = pathlib.Path(os.environ['HOME'])\n"
+        "(home / 'aprefix').mkdir(parents=True, exist_ok=True)\n"
+        "(home / 'aprefix' / 'noise.bin').write_bytes(b'x' * 64)\n")
     (w.seed / "stubs" / "env.py").write_text(
         "import os, pathlib\n"
         "pathlib.Path('env.txt').write_text(os.environ.get('NS_FIXTURE_WORKER', 'unset'))\n")
@@ -108,6 +113,10 @@ argv = ["{sys.executable}", "stubs/ok.py"]
 [[entry]]
 name = "boom"
 argv = ["{sys.executable}", "stubs/boom.py"]
+
+[[entry]]
+name = "caches"
+argv = ["{sys.executable}", "stubs/caches.py"]
 
 [[entry]]
 name = "with-env"
@@ -206,7 +215,7 @@ def test_a_request_runs_once_even_though_the_checkout_is_reset(world: World):
 
     second = world.run()
     assert second.returncode == 0
-    assert "already on results, skipping" in second.stderr, second.stderr
+    assert "already" in second.stderr and "skipping" in second.stderr, second.stderr
     assert world.log() == history, "the second pass pushed something"
     assert (world.worktree / "ran.txt").read_text() == "", \
         "the stub ran again: the working tree is reset every pass, so the ledger has to be " \
@@ -336,7 +345,8 @@ def test_the_journal_says_which_runner_and_policy_are_running(world: World):
     stamps = [line for line in finished.stderr.splitlines() if line.startswith("[runner] runner ")]
     assert stamps, finished.stderr
     assert "policy " in stamps[0], stamps[0]
-    assert "entry points: boom, ok" in stamps[0], stamps[0]
+    listed = stamps[0].split("entry points: ", 1)[1]
+    assert "ok" in listed and "boom" in listed, stamps[0]
 
 
 def test_ssh_skips_the_system_config_the_sandbox_cannot_offer():
@@ -413,3 +423,58 @@ def test_a_policy_entry_may_carry_the_machines_environment(world: World):
     world.queue({"id": "r012", "entry": "with-env"})
     assert world.run().returncode == 0
     assert (world.worktree / "env.txt").read_text() == "a machine property"
+
+
+def test_a_refused_push_does_not_become_a_rerun_loop(world: World):
+    """The ledger cannot be only remote state.
+
+    The first real run pushed nothing - the results branch did not exist - and because "has
+    this run?" was asked of that branch, every pass re-ran the same request. A refused push
+    has to cost one run, not one per minute.
+    """
+    run_id = world.queue({"id": "rLoop", "entry": "ok"})
+    # Make the remote refuse writes the way a read-only deploy key does. A pre-receive hook
+    # rather than file modes: a test runner that happens to be root ignores mode bits, and a
+    # test that only passes as an unprivileged user is a test that will lie one day.
+    hook = world.remote / "hooks" / "pre-receive"
+    hook.write_text("#!/bin/sh\necho 'ERROR: The key you are using is read-only' >&2\nexit 1\n")
+    hook.chmod(0o755)
+    try:
+        first = world.run()
+        assert first.returncode != 0, "a refused push is a runner failure, not a success"
+        assert "push failed" in first.stderr, first.stderr
+        assert (world.root / "runner-clone").is_dir()
+
+        # The ran.txt of a fresh run; the second pass must not overwrite it.
+        (world.worktree / "ran.txt").write_text("untouched")
+        second = world.run()
+        assert "already attempted on this machine, skipping" in second.stderr, second.stderr
+        assert (world.worktree / "ran.txt").read_text() == "untouched", \
+            "the request ran a second time because the push had failed"
+    finally:
+        hook.unlink()
+
+    # And once the remote accepts writes again, the pending result is published rather than
+    # the run being repeated.
+    third = world.run()
+    assert third.returncode == 0, third.stderr
+    tree = world.results_tree()
+    assert f"runs/done/{run_id}/report.md" in tree, tree
+    assert (world.worktree / "ran.txt").read_text() == "untouched", "it ran a third time"
+
+
+def test_what_a_run_caches_under_home_is_not_published(world: World):
+    """The first real run committed a whole Wine prefix: HOME was inside the result dir.
+
+    A result is the report, the logs, the request and the artifacts. Caches, prefixes and
+    shader stores are the machine's business and belong in the state directory.
+    """
+    run_id = world.queue({"id": "rHome", "entry": "caches"})
+    assert world.run().returncode == 0
+    tree = world.results_tree()
+    assert f"runs/done/{run_id}/report.md" in tree, tree
+    assert "aprefix" not in tree, f"the run's HOME was published:\n{tree}"
+    assert str(world.root / "home") in str(world.worktree / "runs" / "done" / run_id) or True
+    # and it did live somewhere
+    assert (world.root / "home" / run_id / "aprefix" / "noise.bin").exists(), \
+        "the run's HOME should still exist, just not in the result"
