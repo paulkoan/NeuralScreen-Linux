@@ -1,4 +1,4 @@
-From 8e7d65ded67621c632815113ce3808cf48e9f5bc Mon Sep 17 00:00:00 2001
+From 3feeb1293e5267d130cdb77837b47b5c95d318b4 Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -55,9 +55,10 @@ per-frame timing line on stderr.
  src/kernels.h          |  10 +-
  src/main.cpp           |   6 +-
  src/nr_model.h         |   1 +
- src/serve.cpp          | 516 +++++++++++++++++++++++++++++++++++++++++
- src/vk_context.h       |   1 +
- 7 files changed, 699 insertions(+), 3 deletions(-)
+ src/serve.cpp          | 535 +++++++++++++++++++++++++++++++++++++++++
+ src/vk_context.cpp     |  26 +-
+ src/vk_context.h       |   3 +
+ 8 files changed, 742 insertions(+), 7 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 src/serve.cpp
 
@@ -310,10 +311,10 @@ index 867c97e..66f2175 100644
  #include <string>
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..eb7495c
+index 0000000..f25e48b
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,516 @@
+@@ -0,0 +1,535 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -782,6 +783,25 @@ index 0000000..eb7495c
 +            context->download(graph->head().buffer, (VkDeviceSize)fullWidth * fullHeight * 4 * 4);
 +        const std::chrono::steady_clock::time_point afterDownload = std::chrono::steady_clock::now();
 +        const float* head = reinterpret_cast<const float*>(headBytes.data());
++        // What the network produced, in numbers, because a flat picture cannot say whether
++        // it is a head full of garbage or a composite that throws a good head away. A real
++        // head is small values near zero; garbage is huge, constant, or not finite.
++        if (frames <= 1 || frames % 30 == 0) {
++          const size_t values = (size_t)fullWidth * fullHeight * 4;
++          size_t nonFinite = 0;
++          double sum = 0;
++          float low = INFINITY, high = -INFINITY;
++          for (size_t i = 0; i < values; ++i) {
++            const float v = head[i];
++            if (!std::isfinite(v)) { ++nonFinite; continue; }
++            low = std::fmin(low, v); high = std::fmax(high, v); sum += v;
++          }
++          fprintf(stderr, "serve: head %.4f..%.4f mean %.5f, non-finite %zu of %zu; first 8",
++                  low, high, nonFinite ? sum / (double)(values - nonFinite) : sum / (double)values,
++                  nonFinite, values);
++          for (int i = 0; i < 8; ++i) fprintf(stderr, " %.4f", head[i]);
++          fprintf(stderr, "\n");
++        }
 +        for (uint32_t y = 0; y < workHeight; ++y)
 +          for (uint32_t x = 0; x < workWidth; ++x) {
 +            for (uint32_t c = 0; c < 3; ++c) {
@@ -831,8 +851,52 @@ index 0000000..eb7495c
 +  }
 +}
 \ No newline at end of file
+diff --git a/src/vk_context.cpp b/src/vk_context.cpp
+index 5b02732..a50cd29 100644
+--- a/src/vk_context.cpp
++++ b/src/vk_context.cpp
+@@ -301,6 +301,22 @@ uint32_t Context::findMemoryType(uint32_t typeBits, VkMemoryPropertyFlags requir
+   throw std::runtime_error("no suitable memory type");
+ }
+ 
++// The first type matching `preferred`, or the first matching `fallback`.
++//
++// Requiring HOST_VISIBLE alone lands on the write-combined type, which is what a GPU
++// usually offers first: writes to it are cheap and reads are not, and a 60MB readback
++// through it measured 400ms in the pipeline — 150MB/s, which is the memory type and not
++// the copy. HOST_CACHED is what makes reading a tensor back worth doing; where a device
++// has no cached host type, the old behaviour is kept rather than failing to allocate.
++uint32_t Context::findMemoryTypeOr(uint32_t typeBits, VkMemoryPropertyFlags preferred,
++                                   VkMemoryPropertyFlags fallback) {
++  try {
++    return findMemoryType(typeBits, preferred);
++  } catch (const std::exception&) {
++    return findMemoryType(typeBits, fallback);
++  }
++}
++
+ Buffer Context::createBuffer(VkDeviceSize size, bool hostVisible, const char* label, VkBufferUsageFlags extra) {
+   Buffer result;
+   result.size = std::max<VkDeviceSize>(size, 16);
+@@ -319,10 +335,12 @@ Buffer Context::createBuffer(VkDeviceSize size, bool hostVisible, const char* la
+   VkMemoryAllocateInfo allocateInfo{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+   allocateInfo.pNext = &allocateFlags;
+   allocateInfo.allocationSize = requirements.size;
+-  allocateInfo.memoryTypeIndex = findMemoryType(
+-      requirements.memoryTypeBits,
+-      hostVisible ? (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+-                  : VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
++  const VkMemoryPropertyFlags hostRequired =
++      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
++  allocateInfo.memoryTypeIndex = hostVisible
++      ? findMemoryTypeOr(requirements.memoryTypeBits,
++                         hostRequired | VK_MEMORY_PROPERTY_HOST_CACHED_BIT, hostRequired)
++      : findMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+   VK_CHECK(vkAllocateMemory(device_, &allocateInfo, nullptr, &result.memory));
+   VK_CHECK(vkBindBufferMemory(device_, result.buffer, result.memory, 0));
+   if (hostVisible) VK_CHECK(vkMapMemory(device_, result.memory, 0, VK_WHOLE_SIZE, 0, &result.mapped));
 diff --git a/src/vk_context.h b/src/vk_context.h
-index 13a19e9..28968a3 100644
+index 13a19e9..9560dc6 100644
 --- a/src/vk_context.h
 +++ b/src/vk_context.h
 @@ -7,6 +7,7 @@
@@ -843,6 +907,15 @@ index 13a19e9..28968a3 100644
  #include <stdexcept>
  #include <string>
  #include <vector>
+@@ -146,6 +147,8 @@ class Context {
+ 
+  private:
+   uint32_t findMemoryType(uint32_t typeBits, VkMemoryPropertyFlags required);
++  uint32_t findMemoryTypeOr(uint32_t typeBits, VkMemoryPropertyFlags preferred,
++                            VkMemoryPropertyFlags fallback);
+   VkInstance instance_ = VK_NULL_HANDLE;
+   VkDebugUtilsMessengerEXT messenger_ = VK_NULL_HANDLE;
+   bool validation_ = false;
 -- 
 2.47.3
 
