@@ -261,7 +261,12 @@ def emit(blob: bytes, records: list[dict], fields: int, out: Path,
         (model / f"{sid}.bin").write_bytes(bytes(buf))
         man_stages.append({
             "id": sid, "file": f"{sid}.bin", "packedByteLength": len(buf),
-            "sha256": hashlib.sha256(bytes(buf)).hexdigest(),
+            # UPPERCASE, because that is what the loader produces: src/sha256.h formats
+            # with "0123456789ABCDEF" and Model compares the two strings exactly, so a
+            # lowercase hexdigest never matches. It is not cosmetic — every stage of every
+            # model we extract failed the loader's check until this was the case, and
+            # `parity` and `verify` load with verification on by default.
+            "sha256": hashlib.sha256(bytes(buf)).hexdigest().upper(),
         })
 
     manifest = {

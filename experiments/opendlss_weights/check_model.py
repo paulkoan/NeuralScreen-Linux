@@ -71,9 +71,20 @@ def check(directory: Path, dll: Path | None = None) -> tuple[list[str], list[str
                             f"{stage['packedByteLength']}")
             continue
         digest = sha256_of(path)
-        if digest != stage["sha256"]:
-            problems.append(f"{sid}: {path} does not match its manifest hash "
-                            f"(file {digest[:16]}…, manifest {stage['sha256'][:16]}…)")
+        # The loader's sha256Hex formats with "0123456789ABCDEF" — uppercase — and Model
+        # compares the two strings exactly. So an uppercase manifest is what it accepts, and
+        # a lowercase one (hashlib's hexdigest, which is what extract.py used to write)
+        # describes the bytes correctly and is still rejected with `stage SHA-256 mismatch`.
+        # That message names a stage and no reason, so the checker gives the reason.
+        if digest.upper() != stage["sha256"]:
+            if digest.upper().lower() == stage["sha256"].lower():
+                problems.append(f"{sid}: the manifest stores the hash in lowercase, and the "
+                                f"loader's sha256Hex emits uppercase and compares exactly — "
+                                f"it will reject this stage (re-run extract.py, which writes "
+                                f"uppercase)")
+            else:
+                problems.append(f"{sid}: {path} does not match its manifest hash "
+                                f"(file {digest[:16]}…, manifest {stage['sha256'][:16]}…)")
         else:
             notes.append(f"{sid}: {size:>10d} bytes, sha256 {digest[:16]}… OK")
 

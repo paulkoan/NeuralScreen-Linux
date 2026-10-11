@@ -139,6 +139,22 @@ What it does **not** do, and says so instead of misbehaving:
   reprojected previous output — and the composite is the no-history formula `parity`
   checks a fixture against. Motion is read and ignored, not silently trusted.
 
+The model directory is the one input to this path nobody can look at: it comes out of
+NVIDIA's DLL through `extract.py`, and the port's loader verifies every stage against the
+manifest's `sha256` before it runs anything. Two things about that are worth knowing
+before it bites:
+
+- **The hashes are uppercase.** `src/sha256.h` formats with `0123456789ABCDEF` and `Model`
+  compares the strings exactly, so a manifest written with `hashlib.hexdigest()` describes
+  the bytes correctly and is still rejected with `serve: stage SHA-256 mismatch: stage00` —
+  a message that names a stage and no reason. `extract.py` writes uppercase now (it did
+  not, which is how this was found: turning the check on rejected every model we had ever
+  extracted, and `parity`/`verify` load with verification on by default).
+- **Check the directory before a run, not after.** `experiments/opendlss_weights/check_model.py
+  <dir>` recomputes the hashes and checks the structural claims the manifest makes about
+  itself — every tensor inside its stage, the tensors of a stage tiling it exactly — with
+  no device involved.
+
 Two knobs and one open question:
 
 - `DLSS5VK_SERVE_SEED` (default 0) is the noise seed. Fixed by default: with no history to

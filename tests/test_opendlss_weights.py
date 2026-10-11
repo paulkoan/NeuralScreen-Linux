@@ -165,7 +165,10 @@ def test_emit_writes_a_manifest_open_dlss_nr_would_accept(tmp_path):
     for stage in on_disk["stages"]:
         data = (tmp_path / "model" / stage["file"]).read_bytes()
         assert len(data) == stage["packedByteLength"]
-        assert hashlib.sha256(data).hexdigest() == stage["sha256"], (
+        # Uppercase, and compared exactly: the loader's sha256Hex formats with
+        # "0123456789ABCDEF" (src/sha256.h), so hashlib's own hexdigest — lowercase —
+        # never matches and every stage is refused with `stage SHA-256 mismatch`.
+        assert hashlib.sha256(data).hexdigest().upper() == stage["sha256"], (
             "a stage whose digest disagrees with its manifest entry would be "
             "refused on load, so the manifest has to be written from the bytes")
 
