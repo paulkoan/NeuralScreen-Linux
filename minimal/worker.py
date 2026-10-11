@@ -229,6 +229,7 @@ class Worker:
                  cwd: Path | None = None,
                  full_w: int = 0, full_h: int = 0,
                  nr_small: bool = False, motion_small: bool = False,
+                 no_motion: bool = False,
                  bypass: bool = False, writev: bool = False,
                  echo_logs: bool = False):
         self.width, self.height = int(width), int(height)
@@ -241,6 +242,10 @@ class Worker:
         self.full_w, self.full_h = int(full_w), int(full_h)
         self.nr_small = bool(nr_small)
         self.motion_small = bool(motion_small)
+        # The native worker reads the motion field and discards it (no temporal
+        # history), so the MVP can leave it out: at 2560x1440 that is 14.7MB of
+        # float16 per frame, half of everything the client writes.
+        self.no_motion = bool(no_motion)
         # NR OFF: the worker skips NGX and returns the capture unchanged. Not
         # the same as zeroed strengths — those still run the network, so this is
         # the control that separates the network from the texture path.
@@ -331,6 +336,7 @@ class Worker:
         try:
             send_frame(self.proc, index, rgba, motion, reset, pts, None,
                        motion_small=self.motion_small, bypass=self.bypass,
+                       no_motion=self.no_motion,
                        writev=self.writev)
         except (BrokenPipeError, OSError) as exc:
             raise RuntimeError(

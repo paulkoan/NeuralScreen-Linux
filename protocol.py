@@ -201,17 +201,24 @@ class SharedFrameBuffer:
                 pass
             self._gray_mm = None
 
-    def put(self, rgba: np.ndarray, motion: np.ndarray) -> None:
-        """Put the frame and motion into the mapping (one memcpy each)."""
+    def put(self, rgba: np.ndarray, motion: np.ndarray | None) -> None:
+        """Put the frame and motion into the mapping (one memcpy each).
+
+        motion=None is the no-motion case: the field is skipped entirely rather than
+        copied, since the worker has said it does not read it. The mapping is zeroed at
+        creation, so nothing stale can be mistaken for a field.
+        """
         color = rgba.reshape(-1)
         if color.nbytes > self.color_capacity:
             raise ValueError(f"a frame of {color.nbytes} B does not fit into "
                              f"{self.color_capacity} B of shared memory")
-        mv = motion.reshape(-1).view(np.uint8)
+        mv = np.zeros(1, np.uint8) if motion is None else motion.reshape(-1).view(np.uint8)
         if mv.nbytes > self.motion_capacity:
             raise ValueError(f"motion of {mv.nbytes} B does not fit into "
                              f"{self.motion_capacity} B of shared memory")
         np.copyto(self._buf[:color.nbytes], color)
+        if motion is None:
+            return
         off = self.color_capacity
         np.copyto(self._buf[off:off + mv.nbytes], mv)
 
@@ -318,6 +325,12 @@ DDA_FMT = "<4Iq"        # magic, width, height, flags, pts (24 bytes)
 DDA_ACK_FMT = "<4Iq"    # magic, ok, reserved0, reserved1, pts
 FRAME_FLAG_NO_COLOR = 0x8  # in DDA mode: we send no colour (the worker takes it)
 FRAME_FLAG_BYPASS = 0x10  # NR OFF: skip NGX, show the raw capture
+FRAME_FLAG_NO_MOTION = 0x40  # no motion field follows: this worker does not read it
+#
+# NO_MOTION exists because the motion field is expensive and often waste: at 2560x1440
+# it is 14.7MB of float16 - the same size as the colour - and the MVP sends a field of
+# zeros, which the native worker reads and discards. A worker that wants it (the Wine
+# build derives flow from it) simply must not be sent a frame carrying this flag.
 
 # GRAY: the worker writes luminance (a downsample of the screen, ~320x180)
 # into a reverse mapping for Python - for the guides' optical flow. In DDA
@@ -403,7 +416,7 @@ def send_frame(worker: subprocess.Popen, index: int, rgba: np.ndarray,
                motion: np.ndarray, reset: bool, pts: int,
                shm: "SharedFrameBuffer | None" = None,
                want_pixels: bool = False, motion_small: bool = False,
-               no_color: bool = False, bypass: bool = False,
+               no_color: bool = False, bypass: bool = False, no_motion: bool = False,
                split: float = 0.0, writev: bool = False) -> None:
     """Send a frame to the worker.
 
@@ -422,7 +435,8 @@ def send_frame(worker: subprocess.Popen, index: int, rgba: np.ndarray,
     flags = (FRAME_FLAG_WANT_PIXELS if want_pixels else 0) | \
             (FRAME_FLAG_MOTION_SMALL if motion_small else 0) | \
             (FRAME_FLAG_NO_COLOR if no_color else 0) | \
-            (FRAME_FLAG_BYPASS if bypass else 0)
+            (FRAME_FLAG_BYPASS if bypass else 0) | \
+            (FRAME_FLAG_NO_MOTION if no_motion else 0)
     if split > 0.0:
         # The wipe position rides in the high 16 bits of the same flags field:
         # there is no dedicated field in the header, and widening it for a
@@ -436,13 +450,15 @@ def send_frame(worker: subprocess.Popen, index: int, rgba: np.ndarray,
         worker.stdin.flush()
         return
     if shm is not None and shm.negotiated:
-        shm.put(rgba, motion)
+        shm.put(rgba, None if no_motion else motion)
         worker.stdin.write(struct.pack(FRAME_FMT, FRAME_MAGIC, index, int(reset),
                                        FRAME_FLAG_SHM | flags, pts))
         worker.stdin.flush()
         return
     parts = [struct.pack(FRAME_FMT, FRAME_MAGIC, index, int(reset), flags, pts),
-             as_writable_bytes(rgba), as_writable_bytes(motion)]
+             as_writable_bytes(rgba)]
+    if not no_motion:
+        parts.append(as_writable_bytes(motion))
     if writev:
         _writev_all(worker.stdin, parts)
         return

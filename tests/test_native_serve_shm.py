@@ -96,6 +96,18 @@ def test_the_native_worker_reads_the_frame_and_returns_it_through_sections():
         out = shm.read_out()
         assert out is not None, "the section held a torn frame"
         assert out.tolist() == rgba2.tolist(), "the published frame is not the frame that went in"
+        # 3. A frame that declares no motion field, followed by one that does not: the
+        #    worker must skip exactly that many bytes, or it reads the next frame's header
+        #    as the tail of this frame's motion. Nothing in this mode reads a motion field,
+        #    which is what makes leaving it out safe - and a worker that wants one must not
+        #    be sent a frame carrying the flag.
+        send_frame(worker, 2, rgba, motion, False, 0, shm=shm, bypass=True, no_motion=True)
+        index, body_bytes, pixels = reply(worker)
+        assert index == 2, index
+        send_frame(worker, 3, rgba2, motion, False, 0, shm=shm, bypass=True)
+        index, body_bytes, pixels = reply(worker)
+        assert index == 3, "the frame after a no-motion frame was misread"
+        assert shm.read_out().tolist() == rgba2.tolist(), "the stream lost its alignment"
     finally:
         shm.close()
         worker.stdin.close()

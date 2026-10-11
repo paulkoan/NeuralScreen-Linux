@@ -1,4 +1,4 @@
-From fc6b4c49ffb4253c28467ada04a5eba8b27fa6b5 Mon Sep 17 00:00:00 2001
+From ea90414e2b0055cd1e7477c260e98faf3bb84571 Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -57,10 +57,10 @@ per-frame timing line on stderr.
  src/kernels.h                |  22 +-
  src/main.cpp                 |   6 +-
  src/nr_model.h               |   1 +
- src/serve.cpp                | 652 +++++++++++++++++++++++++++++++++++
+ src/serve.cpp                | 662 +++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |  26 +-
  src/vk_context.h             |   3 +
- 10 files changed, 1003 insertions(+), 8 deletions(-)
+ 10 files changed, 1013 insertions(+), 8 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/proxy_expand.comp
@@ -495,10 +495,10 @@ index 867c97e..66f2175 100644
  #include <string>
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..b7afd3b
+index 0000000..5869f2f
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,652 @@
+@@ -0,0 +1,662 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -595,6 +595,9 @@ index 0000000..b7afd3b
 +constexpr uint32_t kFrameFlagMotionSmall = 0x4;
 +constexpr uint32_t kFrameFlagNoColor = 0x8;
 +constexpr uint32_t kFrameFlagBypass = 0x10;
++// No motion field follows this header: nothing in this mode reads one, and at
++// 2560x1440 the field is 14.7MB of float16 - as much as the colour.
++constexpr uint32_t kFrameFlagNoMotion = 0x40;
 +
 +constexpr size_t kHeaderBytes = 64;        // HEADER_FMT  "<10I4f2I"
 +constexpr size_t kFrameHeaderBytes = 24;   // FRAME_FMT   "<4Iq"
@@ -887,6 +890,8 @@ index 0000000..b7afd3b
 +  // fixed-point fraction: the pipeline's default of 1 is 0.008, i.e. the neutral end.
 +  preprocess.style = (float)startup.style;
 +
++  bool motionSaidNothing = false;
++
 +  SharedInput input;
 +  SharedOutput output;
 +
@@ -1032,6 +1037,11 @@ index 0000000..b7afd3b
 +                        "that is the Wine worker's DDA mode and is not implemented here\n");
 +        return 2;
 +      }
++      const bool noMotion = (flags & kFrameFlagNoMotion) != 0;
++      if (noMotion && !motionSaidNothing) {
++        motionSaidNothing = true;
++        fprintf(stderr, "serve: the caller declared no motion field (nothing here reads one)\n");
++      }
 +      if ((flags & kFrameFlagShm) && input.map) {
 +        // The frame is in the mapping: only its header came down the pipe.
 +        if (input.colourCapacity < colour.size() || input.motionCapacity < motion.size()) {
@@ -1042,13 +1052,13 @@ index 0000000..b7afd3b
 +          return 2;
 +        }
 +        memcpy(colour.data(), input.map, colour.size());
-+        memcpy(motion.data(), input.map + input.colourCapacity, motion.size());
++        if (!noMotion) memcpy(motion.data(), input.map + input.colourCapacity, motion.size());
 +      } else {
 +        if (!readExact(colour.data(), colour.size())) {
 +          fprintf(stderr, "serve: the stream ended inside frame %u's colour\n", index);
 +          return 0;
 +        }
-+        if (!readExact(motion.data(), motion.size())) {
++        if (!noMotion && !readExact(motion.data(), motion.size())) {
 +          fprintf(stderr, "serve: the stream ended inside frame %u's motion\n", index);
 +          return 0;
 +        }

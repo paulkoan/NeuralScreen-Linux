@@ -126,6 +126,10 @@ def build_parser() -> argparse.ArgumentParser:
                         "Sleep(8), and the loop pays a fixed ~45ms a frame in "
                         "send at every frame size — while the worker's own "
                         "timestamps say it delivers a 64KB frame in 0.21ms")
+    p.add_argument("--no-motion", action="store_true",
+                   help="do not send the motion field: the native worker reads it and "
+                        "discards it, and at 2560x1440 it is 14.7MB of the frame. The Wine "
+                        "worker derives flow from it, so leave this off there"),
     p.add_argument("--motion-small", action="store_true",
                    help="send the motion field at the optical-flow size "
                         "(320x180) and let the worker upscale it. NOT USABLE in "
@@ -203,6 +207,7 @@ def main(argv: list[str] | None = None) -> int:
                         motion_small=args.motion_small,
                         bypass=args.bypass,
                         send_ahead=args.send_ahead,
+                        no_motion=args.no_motion,
                         frame_timeout=args.frame_timeout,
                         writev=args.writev,
                         worker_log=args.worker_log)
