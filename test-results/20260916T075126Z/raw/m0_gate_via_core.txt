@@ -1,0 +1,18 @@
+==============================================================
+ M0 — environment gate
+==============================================================
+
+--- prerequisites ---
+  [31m✗[0m wine is not installed
+      Arch:   sudo pacman -S wine
+      Debian: sudo apt install wine wine64
+  [31m✗[0m nvidia-smi not found — no NVIDIA driver visible
+  [33m![0m no NVIDIA Vulkan ICD found — D3D12 over VKD3D will likely fail
+  [32m✓[0m nvngx.dll (156K)
+  [32m✓[0m nvngx_dlssnr.dll (159M)
+  [32m✓[0m SpoutDX.dll (212K)
+  [32m✓[0m Spout.dll (280K)
+
+==============================================================
+ RESULT: BLOCKED — fix the prerequisites above first
+==============================================================

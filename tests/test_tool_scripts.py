@@ -39,8 +39,22 @@ NOT_COMMANDS: set[str] = {
 
 
 def _tool_files() -> list[Path]:
-    return sorted(p for p in TOOLS.iterdir()
-                  if p.is_file() and p.name not in NOT_COMMANDS)
+    """The commands in tools/: the ones with a shebang.
+
+    Not everything in here is a command - there are systemd units to install and a policy
+    example to copy - and demanding +x of a `.toml` would only teach people to chmod it
+    away. What is a command is decided by the shebang, so that is what this asks.
+    """
+    files = []
+    for path in sorted(TOOLS.iterdir()):
+        if not path.is_file() or path.name in NOT_COMMANDS:
+            continue
+        try:
+            if path.open("rb").readline().startswith(b"#!"):
+                files.append(path)
+        except OSError:
+            continue
+    return files
 
 
 def test_there_are_tools_to_check():

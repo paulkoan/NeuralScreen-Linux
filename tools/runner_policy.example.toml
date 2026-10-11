@@ -1,0 +1,55 @@
+# The auto-runner's policy. Install this OUTSIDE the repository, root-owned:
+#
+#   sudo install -d -m 0755 /etc/neuralscreen-runner
+#   sudo install -m 0644 tools/runner_policy.example.toml /etc/neuralscreen-runner/policy.toml
+#   sudo $EDITOR /etc/neuralscreen-runner/policy.toml        # worktree, repo_url
+#   sudo install -m 0644 tools/neuralscreen-runner.service tools/neuralscreen-runner.timer \
+#        /etc/systemd/system/
+#   sudo systemctl enable --now neuralscreen-runner.timer
+#
+# It has to live here rather than in the repo because it is the thing that decides what may
+# run: if it were versioned, a commit could name a new entry point and grant itself the
+# machine. Root-owned, it cannot.
+#
+# Everything below is a starting point. The entries are the whole of what this runner will
+# execute; a request naming anything else is refused and the refusal is pushed like any
+# other result.
+
+repo_url = "https://github.com/paulkoan/NeuralScreen-Linux.git"
+worktree = "/var/lib/neuralscreen-runner/repo"   # the runner's OWN clone, not your checkout
+request_branch = "main"                          # run requests come from here
+results_branch = "results"                       # results go here, and only the runner writes it
+max_timeout_s = 900
+default_timeout_s = 300
+pause_file = "/etc/neuralscreen-runner/PAUSE"    # touch this and nothing runs
+
+# Run entries in a container by default. The image is yours, built once from a Dockerfile
+# outside the repo, so the toolchain cannot be swapped by a commit either.
+container = true
+image = "localhost/neuralscreen-runner:1"
+device = "nvidia.com/gpu=all"
+
+# Everything the runner is allowed to run. argv is a prefix; a request supplies the rest as
+# a list of strings and they go to execve as they are - there is no shell at any point.
+[[entry]]
+name = "minimal"
+argv = ["uv", "run", "python", "-m", "minimal"]
+description = "the MVP pipeline; feed it a fixture with --input-image and --headless"
+
+[[entry]]
+name = "pytest"
+argv = ["uv", "run", "pytest", "tests/", "-q"]
+description = "the test suite"
+
+[[entry]]
+name = "m1-gate"
+argv = ["bash", "tools/m1_pipeline_gate.sh"]
+description = "the M1 gate; needs the screen-cast dialog, so it is not for unattended runs"
+
+# A fixture-driven run looks like this (see runs/README.md):
+#
+#   {"id": "r2026-10-12-a", "entry": "minimal",
+#    "args": ["--input-image", "fixtures/youtube-1440p.png", "--headless",
+#             "--frames", "60", "--worker-log", "--shm", "--no-motion", "--send-ahead", "2"],
+#    "timeout_s": 300, "artifacts": ["before.png", "after.png"],
+#    "note": "does the loop now sit under 60ms?"}

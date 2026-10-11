@@ -1,0 +1,234 @@
+"""The auto-runner's guardrails, against a real git remote and fake entries.
+
+The runner executes whatever the policy names, on a machine with the GPU. These tests are
+about the things that must stay true no matter what a run request says: that an entry the
+policy does not name is refused and never executed, that arguments are arguments and never
+a shell, that a request runs once, and that a refusal is written down and pushed rather than
+swallowed. There is no GPU here and none is needed: the entries are stubs.
+"""
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+REPO = Path(__file__).resolve().parents[1]
+RUNNER = REPO / "tools" / "auto_runner.py"
+
+OK_STUB = """\
+import pathlib, sys
+pathlib.Path("ran.txt").write_text(" ".join(sys.argv[1:]))
+pathlib.Path("before.png").write_bytes(b"PNG from the stub")
+print("the stub ran")
+"""
+
+BOOM_STUB = """\
+import sys
+print("about to fail")
+sys.exit(3)
+"""
+
+
+def git(*args: str, cwd: Path | None = None, check: bool = True):
+    return subprocess.run(["git", *args], cwd=str(cwd) if cwd else None,
+                          capture_output=True, text=True, check=check)
+
+
+def commit(cwd: Path, message: str) -> None:
+    git("-c", "user.name=seed", "-c", "user.email=seed@example.invalid", "add", "-A", cwd=cwd)
+    git("-c", "user.name=seed", "-c", "user.email=seed@example.invalid", "commit", "-m", message,
+        cwd=cwd)
+
+
+class World:
+    def __init__(self, root: Path):
+        self.root = root
+        self.remote = root / "remote.git"
+        self.seed = root / "seed"
+        self.worktree = root / "runner-clone"
+        self.policy = root / "policy.toml"
+        self.pause = root / "PAUSE"
+
+    def queue(self, request: dict) -> str:
+        """Queue a request the way the loop does: commit it to main and push."""
+        (self.seed / "runs" / "queue" / f"{request['id']}.json").write_text(
+            json.dumps(request, indent=2))
+        commit(self.seed, f"queue {request['id']}")
+        git("push", "origin", "HEAD:main", cwd=self.seed)
+        return request["id"]
+
+    def run(self, *extra: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(RUNNER), "--policy", str(self.policy), "--once", *extra],
+            capture_output=True, text=True)
+
+    def done_dir(self, run_id: str) -> Path:
+        return self.worktree / "runs" / "done" / run_id
+
+    def results_tree(self) -> str:
+        return git("ls-tree", "-r", "--name-only", "results",
+                   cwd=self.remote, check=False).stdout
+
+    def log(self) -> str:
+        return git("log", "--oneline", "results", cwd=self.remote, check=False).stdout
+
+
+@pytest.fixture
+def world(tmp_path: Path) -> World:
+    w = World(tmp_path)
+    git("init", "--bare", str(w.remote))
+    git("clone", str(w.remote), str(w.seed))
+    (w.seed / "runs" / "queue").mkdir(parents=True)
+    (w.seed / "runs" / "queue" / ".gitkeep").write_text("")
+    (w.seed / "stubs").mkdir()
+    (w.seed / "stubs" / "ok.py").write_text(OK_STUB)
+    (w.seed / "stubs" / "boom.py").write_text(BOOM_STUB)
+    commit(w.seed, "seed the queue")
+    git("push", "origin", "HEAD:main", cwd=w.seed)
+    w.policy.write_text(f"""
+repo_url = "{w.remote}"
+worktree = "{w.worktree}"
+request_branch = "main"
+results_branch = "results"
+max_timeout_s = 60
+default_timeout_s = 20
+pause_file = "{w.pause}"
+container = false
+
+[[entry]]
+name = "ok"
+argv = ["{sys.executable}", "stubs/ok.py"]
+
+[[entry]]
+name = "boom"
+argv = ["{sys.executable}", "stubs/boom.py"]
+""")
+    return w
+
+
+def test_a_request_runs_and_lands_on_the_results_branch(world: World):
+    run_id = world.queue({"id": "r001", "entry": "ok", "args": ["--frames", "60"],
+                          "artifacts": ["before.png"], "note": "the happy path"})
+    finished = world.run()
+    assert finished.returncode == 0, finished.stderr
+
+    done = world.done_dir(run_id)
+    result = json.loads((done / "result.json").read_text())
+    assert result["exit_code"] == 0, result
+    assert result["argv"][-2:] == ["--frames", "60"], result["argv"]
+    assert "the stub ran" in (done / "report.md").read_text()
+    assert (done / "before.png").read_bytes() == b"PNG from the stub", "the artifact was not collected"
+    assert (done / "request.json").exists(), "the request should be kept with its result"
+    assert (world.worktree / "ran.txt").read_text() == "--frames 60"
+    assert not (world.worktree / "runs" / "queue" / f"{run_id}.json").exists(), \
+        "the request is still queued: it would run again"
+
+    tree = world.results_tree()
+    assert f"runs/done/{run_id}/report.md" in tree, tree
+    assert f"runs/done/{run_id}/before.png" in tree, tree
+    # The results branch is a snapshot of the tree the run happened on - the point of it is
+    # that a result can be read next to the code that produced it - so the queue's own
+    # .gitkeep is along for the ride. What must not be there is the request itself.
+    assert f"runs/queue/{run_id}.json" not in tree, "the request was published with the result"
+    assert world.log().strip(), "nothing was pushed"
+
+
+def test_an_entry_the_policy_does_not_name_is_refused_and_never_runs(world: World):
+    run_id = world.queue({"id": "r002", "entry": "root-shell", "args": ["-c", "touch pwned"]})
+    finished = world.run()
+    assert finished.returncode == 0, finished.stderr
+
+    report = (world.done_dir(run_id) / "report.md").read_text()
+    assert "Refused" in report, report
+    assert "root-shell" in report
+    assert json.loads((world.done_dir(run_id) / "result.json").read_text())["exit_code"] == 126
+    assert not (world.worktree / "ran.txt").exists(), "the stub ran, so something executed"
+    assert not list(world.root.rglob("pwned")), "the argument was interpreted somewhere"
+    assert f"runs/done/{run_id}/report.md" in world.results_tree(), \
+        "a refusal nobody can see is the failure mode worth engineering against"
+
+
+def test_arguments_are_arguments_and_never_a_shell(world: World):
+    """execve, not a shell: every one of these is a string that reaches the program."""
+    hostile = ["$(touch pwned)", "; touch pwned2", "`touch pwned3`", "&& touch pwned4"]
+    run_id = world.queue({"id": "r003", "entry": "ok", "args": hostile})
+    assert world.run().returncode == 0
+
+    assert (world.worktree / "ran.txt").read_text() == " ".join(hostile), \
+        "the arguments did not arrive as arguments"
+    assert not list(world.root.rglob("pwned*")), "something interpreted them after all"
+    assert json.loads((world.done_dir(run_id) / "result.json").read_text())["exit_code"] == 0
+
+
+def test_a_timeout_beyond_the_policy_is_refused(world: World):
+    run_id = world.queue({"id": "r004", "entry": "ok", "timeout_s": 100000})
+    assert world.run().returncode == 0
+    report = (world.done_dir(run_id) / "report.md").read_text()
+    assert "Refused" in report and "timeout" in report, report
+    assert not (world.worktree / "ran.txt").exists()
+
+
+def test_an_artifact_path_cannot_leave_the_repo(world: World):
+    run_id = world.queue({"id": "r005", "entry": "ok", "artifacts": ["../../etc/passwd"]})
+    assert world.run().returncode == 0
+    assert "Refused" in (world.done_dir(run_id) / "report.md").read_text()
+    assert not (world.done_dir(run_id) / "passwd").exists()
+
+
+def test_a_failing_run_is_recorded_not_hidden(world: World):
+    run_id = world.queue({"id": "r006", "entry": "boom"})
+    assert world.run().returncode == 0, "a failing run is a result, not a runner failure"
+    result = json.loads((world.done_dir(run_id) / "result.json").read_text())
+    assert result["exit_code"] == 3, result
+    report = (world.done_dir(run_id) / "report.md").read_text()
+    assert "about to fail" in report and "exit **3**" in report
+    assert f"runs/done/{run_id}/result.json" in world.results_tree()
+
+
+def test_a_request_runs_once_even_though_the_checkout_is_reset(world: World):
+    """The dedupe has to survive the reset, or every pass re-runs every request forever."""
+    run_id = world.queue({"id": "r007", "entry": "ok"})
+    assert world.run().returncode == 0
+    first = (world.done_dir(run_id) / "result.json").read_text()
+    history = world.log()
+
+    second = world.run()
+    assert second.returncode == 0
+    assert "already on results, skipping" in second.stderr, second.stderr
+    assert world.log() == history, "the second pass pushed something"
+    assert (world.worktree / "ran.txt").read_text() == "", \
+        "the stub ran again: the working tree is reset every pass, so the ledger has to be " \
+        "the results branch"
+    assert json.loads(first)["exit_code"] == 0
+
+
+def test_the_pause_file_stops_everything(world: World):
+    run_id = world.queue({"id": "r008", "entry": "ok"})
+    world.pause.write_text("")
+    finished = world.run()
+    assert finished.returncode == 0
+    assert "paused" in finished.stderr
+    assert not (world.worktree / "ran.txt").exists(), "something ran while paused"
+    assert f"runs/done/{run_id}" not in world.results_tree()
+
+
+def test_a_missing_policy_is_a_clear_refusal(tmp_path: Path):
+    finished = subprocess.run(
+        [sys.executable, str(RUNNER), "--policy", str(tmp_path / "nope.toml"), "--once"],
+        capture_output=True, text=True)
+    assert finished.returncode != 0
+    assert "no policy at" in finished.stderr
+
+
+def test_the_example_policy_names_only_what_the_runner_may_run():
+    """The shipped example is what people copy to /etc; it must not be a wildcard."""
+    text = (REPO / "tools" / "runner_policy.example.toml").read_text()
+    names = [line for line in text.splitlines() if line.startswith("name =")]
+    assert len(names) >= 3, names
+    for line in names:
+        assert "bash -c" not in line and "/bin/sh" not in line, line
+    assert "pause_file" in text and "results_branch" in text
+    assert "container = true" in text, "the runs should start inside the sandbox"

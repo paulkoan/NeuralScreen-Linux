@@ -1,0 +1,7 @@
+==============================================================
+ Wine NGX setup — /opt/data/home/.neuralscreen/wine
+==============================================================
+
+The prefix does not exist yet: /opt/data/home/.neuralscreen/wine
+Creating it with wineboot (this takes a moment)...
+  [31m✗[0m could not create the prefix — is wine installed?

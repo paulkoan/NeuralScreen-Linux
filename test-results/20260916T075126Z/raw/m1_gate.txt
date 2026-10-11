@@ -1,0 +1,12 @@
+==============================================================
+ M1 — live pipeline gate (MVP end to end)
+==============================================================
+
+  [31m✗[0m wine is not installed
+  [32m✓[0m worker: nvngx.dll (156K)
+  [32m✓[0m NR runtime: nvngx_dlssnr.dll (159M)
+  [33m![0m neither DISPLAY nor WAYLAND_DISPLAY is set — screen capture will fail
+
+==============================================================
+ RESULT: BLOCKED — fix the prerequisites above first
+==============================================================

@@ -1,0 +1,81 @@
+# The auto-runner, as a service that runs once per pass. Install as root, OUTSIDE the repo:
+#
+#   sudo useradd --system --home /var/lib/neuralscreen-runner --shell /usr/sbin/nologin \
+#        --user-group neuralscreen
+#   # rootless podman needs subordinate ids for the service user:
+#   sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 neuralscreen
+#   sudo install -d -m 0755 /opt/neuralscreen-runner
+#   sudo install -m 0644 tools/auto_runner.py /opt/neuralscreen-runner/auto_runner.py
+#   sudo install -m 0644 tools/runner_policy.example.toml /etc/neuralscreen-runner/policy.toml
+#   sudo install -m 0644 tools/neuralscreen-runner.service tools/neuralscreen-runner.timer \
+#        /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now neuralscreen-runner.timer
+#
+# Note what is root-owned here and not versioned: the executor (/opt/.../auto_runner.py), the
+# policy, and this unit. A commit cannot change what may run, only ask for something the
+# policy already allows.
+#
+# It runs one pass and exits; the timer starts it again. That shape is deliberate: no
+# long-lived process holding a state that drifts, and `systemctl status` shows the last pass.
+
+[Unit]
+Description=NeuralScreen auto-runner (run requests in, results out)
+Documentation=file:/etc/neuralscreen-runner/policy.toml
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=neuralscreen
+Group=neuralscreen
+# Its own directory, its own clone. It never touches your working tree.
+StateDirectory=neuralscreen-runner
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/neuralscreen-runner
+ExecStart=/usr/bin/python3 /opt/neuralscreen-runner/auto_runner.py \
+    --policy /etc/neuralscreen-runner/policy.toml --once
+
+# --- the bounds ---------------------------------------------------------------------------
+# These hold no matter what a run request, or the code it runs, tries to do. The policy
+# decides what is *asked for*; this section decides what is *possible*.
+
+# Nothing setuid, no new privileges, no kernel surfaces a run has any business touching.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/neuralscreen-runner
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+# NOT PrivateDevices: podman needs to create device nodes for the container. The GPU is
+# granted explicitly below instead, which is the narrower knob.
+DeviceAllow=char-nvidia rw
+DeviceAllow=char-drm rw
+# Writable-executable stays on: the driver JITs and the PTX modules are compiled at run time.
+MemoryDenyWriteExecute=no
+
+# --- the network --------------------------------------------------------------------------
+# GitHub for the fetch and the push, and nothing else. A run's own network access is decided
+# inside the container (policy: `network = "none"`), not here.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressAllow=github.com
+IPAddressDeny=any
+
+# --- the bounds on a runaway --------------------------------------------------------------
+# A run that goes wrong should be a failed run, not a machine you have to reboot.
+CPUQuota=400%
+MemoryMax=12G
+RuntimeMaxSec=1800
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+
+[Install]
+WantedBy=multi-user.target
