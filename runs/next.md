@@ -8,42 +8,6 @@ pass; the test suite green before anything is pushed; never touch /etc or instal
 packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Linux; never edit
 /opt/neuralscreen (policy, executor, key, unit); never queue a run that is not described here.
 
-## 1. Re-measure the history, once the port has been rebuilt
-
-The `port-build` entry is installed and the rebuild is queued as `r2026-10-12-a`. Read its
-journal line first:
-
-    stamp: port 9d08f41 (12 modified) patch c2c4279a9623
-
-That is the binary's own answer; if it names the previous patch the build did not take, and
-the measurement below would be another `g`.
-
-r2026-10-11-g ran on the previous binary. Its own report says so:
-
-    worker built from patch ea90414e2b00 at port 9d08f41 · OUT OF SYNC - the worker was
-    built from patch ea90414e2b00, this checkout has c2c4279a9623
-
-So the history change (4d3b7ec, patch c2c4279a9623) has never been measured, and g's
-`network+composite 12.2ms` is the number for the code *before* it. The fix is in the tree:
-`experiments/opendlss_port/rebuild.sh` applies the current patch to the staged copy and
-rebuilds, and fails if the new binary does not report that patch (verified here: 78 PTX
-kernels, stamp `patch c2c4279a9623`, `in sync`).
-
-Then queue the measurement - the same shape as `r2026-10-11-g`, which is the same shape as
-`c` - and read `network+composite` against c's 12.5ms:
-
-    {"id": "r2026-10-12-b", "entry": "minimal",
-     "args": ["--source", "image", "--input-image", "fixtures/youtube-1440p.png",
-              "--headless", "--frames", "60", "--worker-log", "--shm", "--no-motion",
-              "--send-ahead", "2"],
-     "timeout_s": 300, "artifacts": ["before.png", "after.png"],
-     "note": "the history feed's cost, against c's network+composite 12.5ms"}
-
-How to know it worked: the report's `worker:` line carries no `OUT OF SYNC`, and the per-frame
-`network+composite` is the number to compare. A large rise means the history buffer is being
-rebuilt when it need not be; a small one means the feed is nearly free and the next step is
-real motion vectors rather than a zero field.
-
 ## 2. Ask first - do not start these alone
 
 * Decided (2026-10-11): the fixture keeps the whole frame. No crop.
@@ -76,3 +40,5 @@ real motion vectors rather than a zero field.
   features are the first-frame ones it always compared. That is why this did not need handing back.
 * The patch commit is c2c4279a9623; the composite still does not blend the history, so the
   temporal half of the loop (the blend, and motion) is the next step after item 1.
+* Re-measure the history (retired here, r2026-10-12-b): the port rebuild landed - r2026-10-12-a exited 0 in 7.2s and stamped `port 9d08f41 (12 modified) patch c2c4279a9623`, the binary answering for itself, so the staged port matches the checkout. b is queued, the same shape as c: read its per-frame `network+composite` against c at 13.1ms and check the `worker:` line carries no OUT OF SYNC.
+  The plan block for b omitted the --save-before/--save-after flags that c learned are what make the declared before/after artifacts actually appear, so the queued args carry them; that does not touch the timing.
