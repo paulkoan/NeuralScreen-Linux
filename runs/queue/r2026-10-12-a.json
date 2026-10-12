@@ -1,0 +1,8 @@
+{
+  "id": "r2026-10-12-a",
+  "entry": "port-build",
+  "args": [],
+  "timeout_s": 780,
+  "artifacts": [],
+  "note": "Rebuild the staged port from the current patch. r2026-10-11-g ran on the previous binary and said so itself (worker built from patch ea90414e2b00, checkout has c2c4279a9623), so the history feed has never been measured. No arguments: rebuild.sh defaults to /opt/neuralscreen/port, which is what NS_WORKER_CMD points at. The line to read in the journal is 'stamp: port 9d08f41 (12 modified) patch c2c4279a9623' - the binary's own answer, and the script fails if it does not match the patch it applied. The build is 15 shaders + 78 PTX kernels + the host binary, so the timeout is generous on purpose."
+}
