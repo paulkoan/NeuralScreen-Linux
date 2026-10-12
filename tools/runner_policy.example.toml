@@ -50,12 +50,28 @@ description = "the MVP pipeline, fed a fixture: --source image requires --input-
 # Machine properties belong here rather than in a commit. Point this at the native port built
 # on this machine; leave it out to run the Wine worker instead.
 [entry.env]
-NS_WORKER_CMD = "/home/paul/dev/OpenDLSS-NR/build/dlss5vk serve --model /home/paul/dev/odl-model"
+# Both paths are staged copies under /opt/neuralscreen, not the developer's dev tree - which
+# is what lets the unit say ProtectHome=yes and stops a run reading the home directory.
+# Install the policy only AFTER the copies exist:
+#   cp -a /home/paul/dev/OpenDLSS-NR /opt/neuralscreen/port
+#   cp -a /home/paul/dev/odl-model   /opt/neuralscreen/model
+NS_WORKER_CMD = "/opt/neuralscreen/port/build/dlss5vk serve --model /opt/neuralscreen/model"
 
 [[entry]]
 name = "pytest"
 argv = ["uv", "run", "pytest", "tests/", "-q"]
 description = "the test suite"
+
+# Apply the current patch to the staged port and rebuild the worker. This is what keeps a
+# run from reporting OUT OF SYNC: a port change is a patch plus a build, and the rebuild
+# script ends by asking the new binary which patch it carries. It defaults to
+# /opt/neuralscreen/port - the staged copy, which is what NS_WORKER_CMD points at - so the
+# entry takes no arguments and the runner's own sandbox (ReadWritePaths=/opt/neuralscreen)
+# is the whole of what it can touch.
+[[entry]]
+name = "port-build"
+argv = ["bash", "experiments/opendlss_port/rebuild.sh"]
+description = "apply the port patch to the staged copy and rebuild dlss5vk"
 
 [[entry]]
 name = "m1-gate"

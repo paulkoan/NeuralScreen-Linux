@@ -65,9 +65,33 @@ Nothing in `src/` needed a behavioural change. The patch is `linux-port.patch`.
 
 ```
 git clone https://github.com/maanHimself/OpenDLSS-NR /home/paul/dev/OpenDLSS-NR
-bash /path/to/NeuralScreen-Linux/experiments/opendlss_port/apply_to_port.sh /home/paul/dev/OpenDLSS-NR
-(cd /home/paul/dev/OpenDLSS-NR && bash scripts/build_linux.sh)   # fetches tools/, then shaders + PTX + host
-(cd /home/paul/dev/OpenDLSS-NR && ./build/dlss5vk stamp)          # what that binary was built from
+bash /path/to/NeuralScreen-Linux/experiments/opendlss_port/rebuild.sh /home/paul/dev/OpenDLSS-NR
+```
+
+`rebuild.sh` is `apply_to_port.sh` + `scripts/build_linux.sh`, and then **one check**:
+it runs `build/dlss5vk stamp` and fails if the binary does not report the patch that was
+just applied. That check is the reason the script exists as one thing. A run once came
+back marked
+
+```
+version: ... OUT OF SYNC — the worker was built from patch ea90414e2b00, this checkout
+has c2c4279a9623: re-apply the patch and rebuild, the run below is not the code in this
+checkout
+```
+
+because the apply and the build were two commands and only the first one ran. The apply
+script is idempotent, so nothing complained; the number the run produced was from the
+previous binary. Doing the three steps in one script, and asking the *binary* rather than
+trusting the build's exit status, is what makes that visible at the point it happens.
+
+Its default port directory is `/opt/neuralscreen/port`, the staged copy the runs point
+`NS_WORKER_CMD` at — not the developer's checkout, which a sandboxed run cannot read and
+should not be rewriting anyway. The two steps on their own are still there:
+
+```
+bash /path/to/NeuralScreen-Linux/experiments/opendlss_port/apply_to_port.sh /path/to/OpenDLSS-NR
+(cd /path/to/OpenDLSS-NR && bash scripts/build_linux.sh)   # fetches tools/, then shaders + PTX + host
+(cd /path/to/OpenDLSS-NR && ./build/dlss5vk stamp)          # what that binary was built from
 ```
 
 **Use the script, not a hand-typed `git apply`.** It is idempotent, and that is not a
