@@ -8,6 +8,46 @@ pass; the test suite green before anything is pushed; never touch /etc or instal
 packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Linux; never edit
 /opt/neuralscreen (policy, executor, key, unit); never queue a run that is not described here.
 
+## 1. Rebuild the port, then measure the blend
+
+The composite now blends the history - `weight = clamp(sigmoid(head.a) * blend_scale, 0, 1)`,
+`neural = lerp(proxy + head.rgb / 4, history, weight)`, docs/frame.md's composition - and the
+developer asked for it before any motion work. `r2026-10-12-c` (port-build) is queued. Read the
+journal line first:
+
+    stamp: port 9d08f41 (12 modified) patch 08e297c8a802f2642dadf402dcfd25ae7ae58d70
+
+If it names `c2c4279a9623` instead, the rebuild did not take and the measurement below would be
+of the blend-free binary. Then queue this - the same shape as `r2026-10-12-b`:
+
+    {"id": "r2026-10-12-d", "entry": "minimal",
+     "args": ["--source", "image", "--input-image", "fixtures/youtube-1440p.png",
+              "--headless", "--frames", "60", "--worker-log", "--shm", "--no-motion",
+              "--send-ahead", "2", "--save-before", "before.png", "--save-after", "after.png"],
+     "timeout_s": 300, "artifacts": ["before.png", "after.png"],
+     "note": "the blend's cost and what it does to a still picture, against b's 12.2/12.0ms"}
+
+What to read, in order:
+
+1. `serve: blend scale 0.7397 (block70.layer0.blend_scale)` in the worker log. If it says
+   "absent - defaulted to 1.0" the weight is not the model's and the numbers mean something
+   else.
+2. The per-frame `network+composite` against b's 12.2/12.0ms and c's 13.1/13.1ms. The blend is
+   one fma and one exp2 per pixel inside the dispatch that already exists, so anything beyond
+   noise means something is wrong with the claim that it is free.
+3. Whether a still picture drifts. Every frame of this fixture is the same image, so the
+   history the blend reads is very nearly the frame it is blending into, and the result should
+   land close to the unblended one. Compare its `after.png` with b's -
+   `git show origin/results:runs/done/r2026-10-12-b/after.png > /tmp/b-after.png` and
+   `uv run python tools/frame_diff.py` - and say the mean absolute difference in the report. A
+   large difference means the blend is doing something structural rather than a mild temporal
+   filter, which is worth knowing before any motion vectors exist.
+
+Also on the record: the blend keeps parity by construction (`main.cpp` passes no history, so it
+cannot see the blend) and the arithmetic is checked by
+`uv run python experiments/opendlss_port/check_composite.py` - 4000 random cases, the shader
+against `src/main.cpp`'s `composed()` with no history and against the demo's composite with one.
+
 ## 2. Ask first - do not start these alone
 
 * Decided (2026-10-11): the fixture keeps the whole frame. No crop.
@@ -16,29 +56,34 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* The blend (2026-10-12, patch 08e297c8a802): the composite takes a history binding, a
+  `blendScale` and a `historyValid`, and the truncation to the half grid became one publication
+  point after the blend (`history' = truncate_to_half(neural)`) instead of inside it. With no
+  history the expression main.cpp truncates is unchanged, byte for byte, which is why the gate
+  cannot see any of it. `blend_scale` is read from the model (block70.layer0.blend_scale) and
+  printed at startup rather than written into the source.
+* Verified here: `bash experiments/opendlss_port/rebuild.sh /opt/data/tmp/odl-verify3` against a
+  pristine clone of 9d08f41 - 15 shaders, 78 PTX kernels, `stamp: ... patch 08e297c8a802`, in
+  sync. `uv run pytest tests/ -q` 313 passed / 11 skipped with `GLSLANG` and
+  `NS_ODL_NATIVE_BIN` set to the freshly rebuilt binary, so the native-serve tests drove it.
+* Two new tests guard the pieces this change could silently break: the shader's push-constant
+  list against `kernels.cpp`'s `struct Push` (a field added on one side only compiles, and the
+  kernel then reads its neighbour's value), and `check_composite.py`'s own ability to fail - the
+  blend line is stripped from a copy of the patch and the checker has to refuse it.
 * `rebuild.sh` (2026-10-12, commit 7b9d4dd): one script for apply + build + stamp check,
-  defaulting to the staged copy. It exists because the apply and the build were two commands and, when only the
-  first ran, nothing failed - the apply script is idempotent - and the run used the previous
-  binary. The check asks `build/dlss5vk stamp`, not the build's exit status, so a build that
-  "succeeded" on a stale tree cannot pass it. Verified end to end here against a pristine
-  clone of 9d08f41: 15 shaders, 78 PTX kernels, stamp `patch c2c4279a9623`, no GPU needed for
-  the stamp itself.
-* Verified: `uv run pytest tests/ -q` 306 passed / 15 skipped; with
-  `NS_ODL_NATIVE_BIN=/opt/data/tmp/odl-verify3/build/dlss5vk` (the freshly rebuilt binary)
-  and `GLSLANG` set, 311 passed / 11 skipped - the native-serve tests drive the new binary.
+  defaulting to the staged copy. It exists because the apply and the build were two commands
+  and, when only the first ran, nothing failed - the apply script is idempotent - and the run
+  used the previous binary. The check asks `build/dlss5vk stamp`, not the build's exit status.
 * The policy entry is checked by a test now (`test_the_example_policy_can_rebuild_the_port`):
   the entry has to be in the example, its argv has to name a file that exists in the repo and
   is executable, and the default port directory has to be the staged copy. The silent failure
   this guards is the one that produced `g`.
-* Temporal history, step one (retired here, commit 4d3b7ec): serve now feeds the frame it published last back
-  as lanes 7-9. It is `expandRgba8ToProxy` of `imageBuffer` into a `historyProxy` buffer at the
-  top of the frame - one dispatch, no host bytes - and `preprocess.comp` gained a history
-  binding plus a `historyValid` push field: with a history it samples lanes 7-9 from it, without
-  one it repeats the current proxy, which is what it always did. The reprojection is the
-  identity because this path is handed no motion; a reset and a bypass frame drop the history.
+* The history re-measure (retired here, r2026-10-12-b): exit 0, 7.7s, `in sync` on patch
+  c2c4279a9623; per-frame `network+composite` 12.2/12.0ms (frames 29/59) against c's 13.1/13.1ms
+  without any history - the feed is free, as designed. A still fixture with the same shape as c.
+* Temporal history, step one (commit 4d3b7ec): serve expands the frame it published last into a
+  `historyProxy` (`expandRgba8ToProxy`, one dispatch, no host bytes) and `preprocess.comp` samples
+  it for lanes 7-9; a reset and a bypass frame drop it, and the reprojection is the identity
+  because this path is handed no motion.
 * Parity is untouched by construction, not by argument: `main.cpp` passes no history, so its
-  features are the first-frame ones it always compared. That is why this did not need handing back.
-* The patch commit is c2c4279a9623; the composite still does not blend the history, so the
-  temporal half of the loop (the blend, and motion) is the next step after item 1.
-* Re-measure the history (retired here, r2026-10-12-b): the port rebuild landed - r2026-10-12-a exited 0 in 7.2s and stamped `port 9d08f41 (12 modified) patch c2c4279a9623`, the binary answering for itself, so the staged port matches the checkout. b is queued, the same shape as c: read its per-frame `network+composite` against c at 13.1ms and check the `worker:` line carries no OUT OF SYNC.
-  The plan block for b omitted the --save-before/--save-after flags that c learned are what make the declared before/after artifacts actually appear, so the queued args carry them; that does not touch the timing.
+  features are the first-frame ones it always compared.

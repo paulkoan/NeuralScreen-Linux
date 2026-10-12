@@ -1,10 +1,10 @@
-From c2c4279a962366602b95e04afef9ee4ed8662adc Mon Sep 17 00:00:00 2001
+From 08e297c8a802f2642dadf402dcfd25ae7ae58d70 Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
  `serve` mode that speaks our worker protocol
 
-gcc 14 / glslang 16.6.0 build the whole thing: 13/13 shaders to SPIR-V, all 78 PTX
+gcc 14 / glslang 16.6.0 build the whole thing: 15/15 shaders to SPIR-V, all 78 PTX
 kernels, a dlss5vk that runs the network on the GPU box (9.960 ms median at 2560x1440
 on a 4080 SUPER, 249 dispatches, PTX route).
 
@@ -38,15 +38,32 @@ It speaks the wire format native/dlss5-feed-host64.cpp speaks, byte for byte, so
 pointing NS_WORKER_CMD at it is the whole integration - the startup header, FRAME_MAGIC
 with colour and motion inline, OUT_MAGIC with the pixels back. No upscaling (the header's
 full size must be 0 or the work size), no shared-memory channel (SHMI is refused with
-ok=0, the documented fallback). The history is kept: serve expands the frame it published
-last into a proxy of its own and hands it to preprocess.comp, which samples it for lanes
-7-9 where the demo's nr_preprocess.comp samples its own history surface. With the zero
-motion field the pipeline sends the reprojection is the identity, so that sample is the
-pixel itself rather than a motion-compensated one, and one extra dispatch - no host bytes
-moved - is the whole cost. A frame that carries a reset, or one served in bypass, has no
-history and falls back to the current proxy, the first-frame input. The composite is
-still the no-history one: it does not blend the history, so what changed here is the
-network's input, and nothing claims the picture is better.
+ok=0, the documented fallback).
+
+The temporal loop, both halves. serve expands the frame it published last into a proxy of
+its own and hands it to preprocess.comp, which samples it for lanes 7-9 where the demo's
+nr_preprocess.comp samples its own history surface; composite_serve.comp then blends it
+in, which is docs/frame.md's composition:
+
+    weight = clamp(sigmoid(head.a) * blend_scale, 0, 1)          # the head's blend logit
+    neural = lerp(proxy + head.rgb / 4, history, weight)
+
+with the demo's own expression for the weight - 1 / (1 + exp2(-x * 1.442695)), constant
+included, because the two have to agree bit for bit - and blend_scale read out of the
+model (block70.layer0.blend_scale, printed at startup rather than written into the
+source: a hard-coded weight would quietly disagree with the next model file).
+
+Two things this half still leaves out, and neither is dishonest while the motion field is
+a zero one: the reprojection, and the five-tap Catmull-Rom history filter the demo uses.
+With zero motion the reprojection is the identity and that filter is the centre tap, so
+the history sample here is the pixel itself. A reset frame, and a frame served in bypass,
+have no history at all: the blend is skipped and the residual is published alone - which
+is why the parity gate (src/main.cpp passes no history) cannot see any of this.
+
+One extra dispatch for the history expand and no host bytes moved is the loop's whole
+cost. The truncation to the half grid is now a single publication point after the blend,
+`history' = truncate_to_half(neural)` as docs/frame.md has it; with no history that is
+the same expression main.cpp's `composed()` truncates, so no published byte moves.
 
 With FRAME_FLAG_BYPASS the pixels come back untouched and no device is created, which is
 what lets the framing, the header parse, the refusals and the end-of-stream handshake be
@@ -57,17 +74,17 @@ Also lands: `--model`/`--shaders`/`--frames` for the mode, the warm record that 
 per-frame timing line on stderr.
 ---
  scripts/build_linux.sh       | 161 ++++++++
- shaders/composite_serve.comp |  69 ++++
+ shaders/composite_serve.comp |  92 +++++
  shaders/preprocess.comp      |  26 +-
  shaders/proxy_expand.comp    |  32 ++
- src/kernels.cpp              |  45 ++-
- src/kernels.h                |  27 +-
+ src/kernels.cpp              |  50 ++-
+ src/kernels.h                |  32 +-
  src/main.cpp                 |   6 +-
  src/nr_model.h               |   1 +
- src/serve.cpp                | 686 +++++++++++++++++++++++++++++++++++
+ src/serve.cpp                | 717 +++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |  26 +-
  src/vk_context.h             |   3 +
- 11 files changed, 1069 insertions(+), 13 deletions(-)
+ 11 files changed, 1133 insertions(+), 13 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/proxy_expand.comp
@@ -242,10 +259,10 @@ index 0000000..e16bc4d
 +echo "built $root/build/dlss5vk"
 diff --git a/shaders/composite_serve.comp b/shaders/composite_serve.comp
 new file mode 100644
-index 0000000..99efd96
+index 0000000..7b32374
 --- /dev/null
 +++ b/shaders/composite_serve.comp
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,92 @@
 +#version 460
 +// The serve path's composite: the network's head and the proxy image in, RGBA8 out.
 +//
@@ -269,9 +286,14 @@ index 0000000..99efd96
 +  uint headWidth;     // the head's stride: rows are padded to a multiple of 64
 +  uint validWidth;
 +  uint validHeight;
++  float blendScale;   // block70.layer0.blend_scale: the learned cap on the blend weight
++  uint historyValid;  // 1: blend with the previous published frame; 0: publish the residual alone
 +} pc;
 +
 +layout(std430, binding = 0) readonly buffer Proxy { vec4 proxy[]; };
++// The previous frame, through the same proxy transform, at the source's own stride (the serve
++// path builds it with proxy_expand.comp). Always bound; pc.historyValid says whether it is read.
++layout(std430, binding = 1) readonly buffer History { vec4 history[]; };
 +layout(std430, binding = 6) readonly buffer Head { vec4 head[]; };
 +layout(std430, binding = 7) writeonly buffer Out { uint pixels[]; };   // RGBA8, little-endian
 +
@@ -293,9 +315,12 @@ index 0000000..99efd96
 +  return unpackHalf2x16(halfBits).x;
 +}
 +
++// proxy + head / 4, unclamped to the half grid: the truncation is a publication step and happens
++// once, after the blend (docs/frame.md's `history' = truncate_to_half(neural)`). With no history
++// the blend is skipped and this is the whole of it, exactly as before.
 +float composeChannel(float headValue, float centredProxy) {
 +  const float inner = fma(headValue, 0.03125, centredProxy);       // head / 32 + centred
-+  return truncateHalf(clamp(inner * 8.0 + 0.5, 0.0, 1.0));         // proxy + head / 4
++  return clamp(inner * 8.0 + 0.5, 0.0, 1.0);                       // proxy + head / 4
 +}
 +
 +uint toByte(float value) {
@@ -305,12 +330,27 @@ index 0000000..99efd96
 +void main() {
 +  uvec2 id = gl_GlobalInvocationID.xy;
 +  if (id.x >= pc.validWidth || id.y >= pc.validHeight) return;
-+  vec4 source = proxy[id.y * pc.proxyWidth + id.x];
++  uint index = id.y * pc.proxyWidth + id.x;
++  vec4 source = proxy[index];
 +  vec4 neural = head[id.y * pc.headWidth + id.x];
 +  vec3 centred = fma(source.rgb, vec3(0.125), vec3(-0.0625));
 +  vec3 value = vec3(composeChannel(neural.r, centred.r),
 +                    composeChannel(neural.g, centred.g),
 +                    composeChannel(neural.b, centred.b));
++  if (pc.historyValid != 0u) {
++    // docs/frame.md's composition: weight = clamp(sigmoid(head.a) * blendScale, 0, 1), then
++    // value = lerp(value, history, weight). The sigmoid is the demo's own expression, constant
++    // and all: 1 / (1 + exp2(-x * 1.442695)), i.e. 1 / (1 + e^-x) written as the demo writes it.
++    // The history is the previous published frame at the same pixel - this path is handed no
++    // motion, so the reprojection is the identity (see the header).
++    float scale = clamp(pc.blendScale, 0.0, 1.0);
++    float weight = clamp((1.0 / (1.0 + exp2(neural.a * uintBitsToFloat(0xbfb8aa3bu)))) * scale,
++                         0.0, 1.0);
++    vec3 historyValue = history[index].rgb;
++    value = fma(vec3(weight), historyValue - value, value);
++  }
++  // The publication point, once, after the blend.
++  value = vec3(truncateHalf(value.r), truncateHalf(value.g), truncateHalf(value.b));
 +  uvec3 bytes = uvec3(toByte(value.r), toByte(value.g), toByte(value.b));
 +  pixels[id.y * pc.validWidth + id.x] =
 +      bytes.r | (bytes.g << 8u) | (bytes.b << 16u) | (255u << 24u);
@@ -410,7 +450,7 @@ index 0000000..fff90c9
 +}
 \ No newline at end of file
 diff --git a/src/kernels.cpp b/src/kernels.cpp
-index 62bb8c3..9bab820 100644
+index 62bb8c3..b19a6e8 100644
 --- a/src/kernels.cpp
 +++ b/src/kernels.cpp
 @@ -42,7 +42,8 @@ void check(bool condition, const char* message) {
@@ -423,7 +463,7 @@ index 62bb8c3..9bab820 100644
      modules_[name] = context_.loadShaderModule(shaderDirectory + "/" + name + ".spv");
    }
  }
-@@ -498,16 +499,49 @@ void Kernels::preprocessFromProxy(VkCommandBuffer commands, const vk::Buffer& pr
+@@ -498,16 +499,54 @@ void Kernels::preprocessFromProxy(VkCommandBuffer commands, const vk::Buffer& pr
    struct Push {
      uint32_t fullWidth, fullHeight, validWidth, validHeight, sourceWidth, sourceHeight, seed;
      float autoMask, localTone, localStructure, skinStructure, style;
@@ -457,13 +497,18 @@ index 62bb8c3..9bab820 100644
 +
 +void Kernels::compositeToRgba8(VkCommandBuffer commands, const vk::Buffer& proxy, const Activation& head,
 +                               const vk::Buffer& output, uint32_t proxyWidth, uint32_t headWidth,
-+                               uint32_t validWidth, uint32_t validHeight) {
++                               uint32_t validWidth, uint32_t validHeight, const vk::Buffer* history,
++                               float blendScale) {
 +  check(head.format == Format::F32 && head.channels == 4, "the composite takes the f32 head");
 +  struct Push {
 +    uint32_t proxyWidth, headWidth, validWidth, validHeight;
-+  } push{proxyWidth, headWidth, validWidth, validHeight};
++    float blendScale;
++    uint32_t historyValid;
++  } push{proxyWidth, headWidth, validWidth, validHeight, blendScale, history ? 1u : 0u};
 +  const vk::Buffer* bindings[vk::kGenericBindings] = {};
 +  bindings[0] = &proxy;
++  // Always bound: with no history the shader is told so (historyValid) and never reads it.
++  bindings[1] = history ? history : &proxy;
 +  bindings[6] = &head.buffer;
 +  bindings[7] = &output;
 +  dispatchLabel_ = "composite serve";
@@ -474,7 +519,7 @@ index 62bb8c3..9bab820 100644
  void Kernels::convertF32ToF16(VkCommandBuffer commands, const Activation& input, Activation& output) {
    check(input.format == Format::F32 && output.format == Format::F16, "convert formats");
    uint32_t count = input.rows * input.channels;
-@@ -793,6 +827,13 @@ uint32_t Kernels::ffnRowTiles(uint32_t channels) {
+@@ -793,6 +832,13 @@ uint32_t Kernels::ffnRowTiles(uint32_t channels) {
    return channels == 256 ? 3u : 4u;   // warps = E * rowTiles (<= 32); C=256: 24 warps at .maxnreg 80 keep one workgroup per SM
  }
  
@@ -489,10 +534,10 @@ index 62bb8c3..9bab820 100644
    check(a.input && a.input->format == Format::E4 && a.output && a.output->format == Format::E4, "PTX FFN formats");
    check(a.channels == 64 || a.channels == 128 || a.channels == 256, "PTX FFN channels");
 diff --git a/src/kernels.h b/src/kernels.h
-index 472bd36..bf27ba9 100644
+index 472bd36..e1c8be5 100644
 --- a/src/kernels.h
 +++ b/src/kernels.h
-@@ -77,10 +77,27 @@ class Kernels {
+@@ -77,10 +77,32 @@ class Kernels {
      uint32_t fullWidth, fullHeight, validWidth, validHeight, sourceWidth, sourceHeight, seed;
      bool autoMask;
      float localTone, localStructure, skinStructure, style;
@@ -509,6 +554,10 @@ index 472bd36..bf27ba9 100644
 +  // shaders/composite_serve.comp). On the GPU because the host spelling of it is 11M
 +  // pixels of fma, floor and half-truncation a frame, and because it means the finished
 +  // 14.7MB image is read back instead of the head's 60MB of f32.
++  // `history` is the previous published frame as a proxy of its own (the same surface
++  // preprocess reads for lanes 7-9). Null means the blend is skipped and the residual is
++  // published alone: the first frame after a reset, and every mode that keeps no history.
++  // `blendScale` is the model's block70.layer0.blend_scale, the learned cap on the weight.
 +  // The serve path's proxy build: the client's RGBA8 frame in, the f32 proxy out (see
 +  // shaders/proxy_expand.comp). A quarter of the upload bytes of an f32 proxy and no host
 +  // loop at all.
@@ -516,11 +565,12 @@ index 472bd36..bf27ba9 100644
 +                          const vk::Buffer& proxy, uint32_t width, uint32_t height);
 +  void compositeToRgba8(VkCommandBuffer commands, const vk::Buffer& proxy, const Activation& head,
 +                        const vk::Buffer& output, uint32_t proxyWidth, uint32_t headWidth,
-+                        uint32_t validWidth, uint32_t validHeight);
++                        uint32_t validWidth, uint32_t validHeight,
++                        const vk::Buffer* history = nullptr, float blendScale = 1.0f);
    void convertF32ToF16(VkCommandBuffer commands, const Activation& input, Activation& output);
    void quantize(VkCommandBuffer commands, const Activation& input, Activation& output);
    void downsample2x(VkCommandBuffer commands, const Activation& input, Activation& output, uint32_t inWidth,
-@@ -210,13 +227,19 @@ class Kernels {
+@@ -210,13 +232,19 @@ class Kernels {
    // w2 tile-major [e][4][32][32], w3 tile-major [K/32][K][32].
    static bool ptxFfnEnabled();
    static uint32_t ffnRowTiles(uint32_t channels);          // PTX expert FFN: 16-row tiles per workgroup (its chaining signals cover 16 * tiles rows)
@@ -580,10 +630,10 @@ index 867c97e..66f2175 100644
  #include <string>
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..8ff74f5
+index 0000000..abd4d32
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,686 @@
+@@ -0,0 +1,717 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -603,13 +653,19 @@ index 0000000..8ff74f5
 +//   * No shared-memory channel. SHMI is answered ok=0, which is the documented
 +//     fallback: the client stays on sending frames down the pipe. (Worker.start passes
 +//     no shm at all, so the MVP never asks; this is for everything else that might.)
-+//   * A history, and no reprojection. serve keeps the frame it published last and feeds it
-+//     back as lanes 7-9, which is what the network's temporal input is. With the zero motion
-+//     field the MVP sends ("The MVP has no real motion vectors", minimal/loop.py) the
-+//     reprojection is the identity, so that sample is the pixel itself, not a
-+//     motion-compensated one - one frame, one surface, and a reset drops it. The composite is
-+//     still the no-history formula: it does not blend the history, so what changed here is the
-+//     network's input and nothing claims the picture is better until a run measures it.
++//   * A history, and no reprojection. serve keeps the frame it published last, feeds it back
++//     as lanes 7-9 (the network's temporal input) and blends it in the composite:
++//
++//       weight = clamp(sigmoid(head.a) * block70.layer0.blend_scale, 0, 1)
++//       neural = lerp(proxy + head.rgb / 4, history, weight)      # docs/frame.md
++//
++//     With the zero motion field the MVP sends ("The MVP has no real motion vectors",
++//     minimal/loop.py) the reprojection is the identity, so the sample is the pixel itself,
++//     not a motion-compensated one - one frame, one surface, and a reset drops it. The blend
++//     weight is the network's own, per pixel; blend_scale is read from the model rather than
++//     assumed. What is NOT here: the reprojection, the five-tap history filter the demo uses
++//     (the identity needs none), and the demo's style / tone-upgrade / display path, which is
++//     this pipeline's display stage and not NR.
 +//
 +// The proxy is the incoming frame's code values, f16-rounded. The network sees a
 +// display proxy (docs/frame.md) and an SDR video frame is already display-referred, so
@@ -993,6 +1049,10 @@ index 0000000..8ff74f5
 +  nr::Activation* features = nullptr;
 +  uint32_t fullWidth = 0, fullHeight = 0;
 +  bool haveHistory = false;      // a frame has been served, so lanes 7-9 have one to read
++  // The model's learned cap on the blend weight (block70.layer0.blend_scale, a single f16).
++  // Read from the model, not written into the source: it is a weight, and a hard-coded one
++  // would silently disagree with the next model file.
++  float blendScale = 1.0f;
 +
 +  auto startEngine = [&]() {
 +    context = std::make_unique<vk::Context>();
@@ -1003,6 +1063,27 @@ index 0000000..8ff74f5
 +    // truncated or half-written is otherwise silent, and the model directory is the one
 +    // input to this whole path that nobody can look at. It costs a few seconds, once.
 +    model = std::make_unique<nr::Model>(*context, modelDir, true);
++    // The temporal blend's learned cap, out of the model the way the demo reads it
++    // (demo/nr_pass.cpp): one f16 at the front of block 70's blend_scale tensor. Absent or
++    // short, the demo's own fallback of 1.0 stands - and it is printed either way, so a
++    // weight that did not arrive is visible in the log before a picture is questioned.
++    {
++      bool found = false;
++      try {
++        const nr::Tensor& blend = model->tensor(70, 0, "blend_scale");
++        if (blend.byteLength >= 2) {
++          blendScale = num::f16ToF32(nr::auxHalf(blend, 0, 0));
++          found = true;
++        }
++      } catch (...) {
++        // Model::tensor throws on a missing tensor, and a model without this weight is a
++        // model this path can still serve: 1.0 is the demo's own fallback. Catch-all on
++        // purpose - the only thing that can come out of here is the lookup above, and
++        // refusing to serve over it would be a hard failure for a soft reason.
++      }
++      fprintf(stderr, "serve: blend scale %.4f (%s)\n", blendScale,
++              found ? "block70.layer0.blend_scale" : "absent - defaulted to 1.0, the demo's fallback");
++    }
 +    kernels = std::make_unique<nr::Kernels>(*context, shaderDir);
 +    kernels->setSiluTable(ref::siluTable());
 +    const nr::Geometry geometry = nr::Geometry::fromValid(workWidth, workHeight);
@@ -1200,7 +1281,7 @@ index 0000000..8ff74f5
 +        // frame there, and publishing it here means the readback is the finished 14.7MB
 +        // image rather than the head's 60MB of f32.
 +        kernels->compositeToRgba8(commands, proxy, graph->head(), imageBuffer, workWidth, fullWidth,
-+                                  workWidth, workHeight);
++                                  workWidth, workHeight, haveHistory ? &historyProxy : nullptr, blendScale);
 +        context->endAndSubmit(commands, true);
 +        checkChainTimeouts(*kernels);
 +        const std::chrono::steady_clock::time_point afterRecord = std::chrono::steady_clock::now();

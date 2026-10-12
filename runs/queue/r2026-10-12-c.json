@@ -1,0 +1,8 @@
+{
+  "id": "r2026-10-12-c",
+  "entry": "port-build",
+  "args": [],
+  "timeout_s": 780,
+  "artifacts": [],
+  "note": "Rebuild the staged port with the temporal blend in the composite. The journal line to read is 'stamp: port 9d08f41 (12 modified) patch 08e297c8a802f2642dadf402dcfd25ae7ae58d70'; if it names the previous patch (c2c4279a9623) the build did not take and the blend measurement would be of the old binary. No arguments: rebuild.sh defaults to /opt/neuralscreen/port, which is what NS_WORKER_CMD points at. Same build as r2026-10-12-a: 15 shaders, 78 PTX kernels, the host binary."
+}

@@ -15,7 +15,7 @@ Windows at all (`demo/crash_report.cpp`, and `find_vcvars.ps1`). It builds on Li
 | step | result |
 |---|---|
 | glslang 16.6.0 | built from source for this test (`cmake -DENABLE_OPT=OFF`) |
-| shaders | **13/13 compile** to SPIR-V, `-V --target-env vulkan1.3` |
+| shaders | **15/15 compile** to SPIR-V, `-V --target-env vulkan1.3` |
 | PTX kernels | **78 generated** by `scripts/ptx/*.py` (pure Python, portable as-is) |
 | host | **compiles and links** — `src/*.cpp` + `volk.c`, gcc/g++ 14.2, `-std=c++20` |
 | artifact | `build/dlss5vk`, 600 KB |
@@ -117,7 +117,7 @@ version: repo 616c258 (clean) · worker built from patch e17393354d6e at port 9d
 and, when they disagree, a second line that says `OUT OF SYNC` and names both patches.
 `dlss5vk stamp` prints the same thing on its own, with no device and no model.
 
-It prints three counts, and all three matter: `shaders -> build/shaders (13 modules)`,
+It prints three counts, and all three matter: `shaders -> build/shaders (15 modules)`,
 `PTX -> build/ptx (78 kernels)`, `built .../build/dlss5vk`. A PTX count below 78 now stops
 the build (see fix 6) instead of surfacing later as `cannot read PTX kernel`.
 
@@ -155,15 +155,35 @@ What it does **not** do, and says so instead of misbehaving:
   `--work-scale` run is rejected at the header rather than served wrong-sized frames.
   passes no shm), so frames stay on the pipe and the ~45ms `send` stays until the
   transport itself changes.
-- **A history, and no reprojection.** `serve` keeps the frame it published last, expands it into a
-  proxy of its own (`proxy_expand.comp`, one dispatch, no host bytes) and hands it to
-  `preprocess.comp` as lanes 7-9 — where the demo's `nr_preprocess.comp` samples its history
-  surface. The pipeline sends a zero motion field every frame (`minimal/loop.py`: "The MVP has
-  no real motion vectors"), so the reprojection is the identity and that sample is the pixel
-  itself, not a motion-compensated one; a frame carrying a reset, or one served in bypass, has
-  no history and falls back to the current proxy. Motion is read and ignored, not silently
-  trusted — and the composite still does not blend the history, so the network's input is what
-  changed and nothing claims the picture is better.
+- **A history, blended, and no reprojection.** The temporal loop, both halves. `serve` keeps the
+  frame it published last, expands it into a proxy of its own (`proxy_expand.comp`, one dispatch,
+  no host bytes) and hands it to `preprocess.comp` as lanes 7-9 — where the demo's
+  `nr_preprocess.comp` samples its history surface — and `composite_serve.comp` then blends it
+  into what it publishes, which is `docs/frame.md`'s composition:
+
+  ```
+  weight = clamp(sigmoid(head.a) * blend_scale, 0, 1)
+  neural = lerp(proxy + head.rgb / 4, history, weight)
+  ```
+
+  `blend_scale` is read out of the model (`block70.layer0.blend_scale`, printed at startup)
+  rather than written into the source, and the weight is the demo's own expression, constant
+  included, because the two have to agree bit for bit. The pipeline sends a zero motion field
+  every frame (`minimal/loop.py`: "The MVP has no real motion vectors"), so the reprojection is
+  the identity and the history sample is the pixel itself — the reprojection and the demo's
+  five-tap Catmull-Rom filter are what this half still leaves out, and neither is dishonest while
+  the motion field is a zero one. A frame carrying a reset, or one served in bypass, has no
+  history: the blend is skipped and the residual is published alone, which is why the parity gate
+  (`src/main.cpp` passes no history) cannot see any of this. Motion is read and ignored, not
+  silently trusted.
+
+  The arithmetic is checked rather than asserted —
+  `uv run python experiments/opendlss_port/check_composite.py` transliterates the shader, the
+  demo's composite and `src/main.cpp`'s `composed()`, and compares them over 4000 random cases
+  including the saturated and ±60-logit extremes: with no history the published byte does not
+  move, and with one the value is the demo's, formula for formula. It reads the shader out of
+  `linux-port.patch`, so it cannot drift from what ships, and it refuses (exit 2) if the shader
+  stops saying what it transliterates.
 
 The model directory is the one input to this path nobody can look at: it comes out of
 NVIDIA's DLL through `extract.py`, and the port's loader verifies every stage against the
