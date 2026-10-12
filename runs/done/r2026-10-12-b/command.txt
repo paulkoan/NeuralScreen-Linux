@@ -1,0 +1,1 @@
+uv run python -m minimal --source image --input-image fixtures/youtube-1440p.png --headless --frames 60 --worker-log --shm --no-motion --send-ahead 2 --save-before before.png --save-after after.png
