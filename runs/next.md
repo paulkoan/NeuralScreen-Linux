@@ -8,46 +8,6 @@ pass; the test suite green before anything is pushed; never touch /etc or instal
 packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Linux; never edit
 /opt/neuralscreen (policy, executor, key, unit); never queue a run that is not described here.
 
-## 1. Rebuild the port, then measure the blend
-
-The composite now blends the history - `weight = clamp(sigmoid(head.a) * blend_scale, 0, 1)`,
-`neural = lerp(proxy + head.rgb / 4, history, weight)`, docs/frame.md's composition - and the
-developer asked for it before any motion work. `r2026-10-12-c` (port-build) is queued. Read the
-journal line first:
-
-    stamp: port 9d08f41 (12 modified) patch 08e297c8a802f2642dadf402dcfd25ae7ae58d70
-
-If it names `c2c4279a9623` instead, the rebuild did not take and the measurement below would be
-of the blend-free binary. Then queue this - the same shape as `r2026-10-12-b`:
-
-    {"id": "r2026-10-12-d", "entry": "minimal",
-     "args": ["--source", "image", "--input-image", "fixtures/youtube-1440p.png",
-              "--headless", "--frames", "60", "--worker-log", "--shm", "--no-motion",
-              "--send-ahead", "2", "--save-before", "before.png", "--save-after", "after.png"],
-     "timeout_s": 300, "artifacts": ["before.png", "after.png"],
-     "note": "the blend's cost and what it does to a still picture, against b's 12.2/12.0ms"}
-
-What to read, in order:
-
-1. `serve: blend scale 0.7397 (block70.layer0.blend_scale)` in the worker log. If it says
-   "absent - defaulted to 1.0" the weight is not the model's and the numbers mean something
-   else.
-2. The per-frame `network+composite` against b's 12.2/12.0ms and c's 13.1/13.1ms. The blend is
-   one fma and one exp2 per pixel inside the dispatch that already exists, so anything beyond
-   noise means something is wrong with the claim that it is free.
-3. Whether a still picture drifts. Every frame of this fixture is the same image, so the
-   history the blend reads is very nearly the frame it is blending into, and the result should
-   land close to the unblended one. Compare its `after.png` with b's -
-   `git show origin/results:runs/done/r2026-10-12-b/after.png > /tmp/b-after.png` and
-   `uv run python tools/frame_diff.py` - and say the mean absolute difference in the report. A
-   large difference means the blend is doing something structural rather than a mild temporal
-   filter, which is worth knowing before any motion vectors exist.
-
-Also on the record: the blend keeps parity by construction (`main.cpp` passes no history, so it
-cannot see the blend) and the arithmetic is checked by
-`uv run python experiments/opendlss_port/check_composite.py` - 4000 random cases, the shader
-against `src/main.cpp`'s `composed()` with no history and against the demo's composite with one.
-
 ## 2. Ask first - do not start these alone
 
 * Decided (2026-10-11): the fixture keeps the whole frame. No crop.
@@ -87,3 +47,5 @@ against `src/main.cpp`'s `composed()` with no history and against the demo's com
   because this path is handed no motion.
 * Parity is untouched by construction, not by argument: `main.cpp` passes no history, so its
   features are the first-frame ones it always compared.
+* The blend, queued to be measured (retired here, r2026-10-12-d): the rebuild landed - r2026-10-12-c exited 0 in 7.3s and stamped `port 9d08f41 (12 modified) patch 08e297c8a802f2642dadf402dcfd25ae7ae58d70` (15 shader modules, 78 PTX kernels), so the staged binary carries the blend, and d is queued in the shape of b, save flags included.
+* Still to read when d lands: the worker-log line `serve: blend scale 0.7397 (block70.layer0.blend_scale)` - a value reported as absent, defaulted to 1.0, means the weight did not come from the model; its per-frame `network+composite` against the 12.2/12.0ms of b (frames 29/59) and the 13.1/13.1ms of c - the blend is one fma and one exp2 inside a dispatch that already exists, so anything past noise refutes the claim that it is free; and its `after.png` against the one of b, `git show origin/results:runs/done/r2026-10-12-b/after.png > /tmp/b-after.png` then `uv run python tools/frame_diff.py`, quoting the mean absolute difference - a large one means the blend is structural rather than a mild temporal filter.
