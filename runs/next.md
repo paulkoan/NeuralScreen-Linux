@@ -8,21 +8,30 @@ pass; the test suite green before anything is pushed; never touch /etc or instal
 packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Linux; never edit
 /opt/neuralscreen (policy, executor, key, unit); never queue a run that is not described here.
 
-## 2. Let the loop rebuild the port (needs the staged copy first)
+## 1. Rebuild the staged port, then re-measure the history
 
-The port and the model are being staged under /opt/neuralscreen, which makes the worker a
-pinned artefact rather than whatever is in the dev tree. The follow-up is a policy entry the
-developer installs:
+r2026-10-11-g ran on the previous binary. Its own report says so:
 
-    [[entry]]
-    name = "port-build"
-    argv = ["bash", "experiments/opendlss_port/rebuild.sh"]
+    worker built from patch ea90414e2b00 at port 9d08f41 · OUT OF SYNC - the worker was
+    built from patch ea90414e2b00, this checkout has c2c4279a9623
 
-so a tick can apply the current patch to the staged port, rebuild it, and leave the worker
-matching the patch id the runs report. Until that entry exists, a port change still needs the
-developer to rebuild by hand.
+So the history change (4d3b7ec, patch c2c4279a9623) has never been measured, and g's
+`network+composite 12.2ms` is the number for the code *before* it. The fix is in the tree:
+`experiments/opendlss_port/rebuild.sh` applies the current patch to the staged copy and
+rebuilds, and fails if the new binary does not report that patch (verified here: 78 PTX
+kernels, stamp `patch c2c4279a9623`, `in sync`).
 
-## 3. Ask first - do not start these alone
+What has to happen on the box, in this order:
+
+1. The developer adds the `port-build` entry to /opt/neuralscreen/policy.toml - it is in
+   `tools/runner_policy.example.toml` now, so the change is a copy of that block.
+   Until it is installed a request naming it is refused, which is the intended behaviour.
+2. Queue `port-build`. The runner rebuilds /opt/neuralscreen/port from the patch in its own
+   clone, and the journal prints the stamp line.
+3. Then re-queue the history measurement - same shape as r2026-10-11-g - and read the
+   `network+composite` against c's 12.5ms. That number is what prices the feed.
+
+## 2. Ask first - do not start these alone
 
 * Decided (2026-10-11): the fixture keeps the whole frame. No crop.
 * The container: it needs nvidia-container-toolkit, a system package. The developer's call.
@@ -30,19 +39,23 @@ developer to rebuild by hand.
 
 ## Learned
 
-* Measure the history change: r2026-10-11-g is queued - the same shape as c, a still 2560x1440 fixture with no motion, but with serve feeding the previous frame back as lanes 7-9, so the next result prices the feed against c at 13.1ms.
+* `rebuild.sh` (this pass): one script for apply + build + stamp check, defaulting to the
+  staged copy. It exists because the apply and the build were two commands and, when only the
+  first ran, nothing failed - the apply script is idempotent - and the run used the previous
+  binary. The check asks `build/dlss5vk stamp`, not the build's exit status, so a build that
+  "succeeded" on a stale tree cannot pass it. Verified end to end here against a pristine
+  clone of 9d08f41: 15 shaders, 78 PTX kernels, stamp `patch c2c4279a9623`, no GPU needed for
+  the stamp itself.
+* Verified: `uv run pytest tests/ -q` 306 passed / 15 skipped; with
+  `NS_ODL_NATIVE_BIN=/opt/data/tmp/odl-verify3/build/dlss5vk` (the freshly rebuilt binary)
+  and `GLSLANG` set, 310 passed / 11 skipped - the native-serve tests drive the new binary.
 * Temporal history, step one (retired here, commit 4d3b7ec): serve now feeds the frame it published last back
   as lanes 7-9. It is `expandRgba8ToProxy` of `imageBuffer` into a `historyProxy` buffer at the
   top of the frame - one dispatch, no host bytes - and `preprocess.comp` gained a history
   binding plus a `historyValid` push field: with a history it samples lanes 7-9 from it, without
   one it repeats the current proxy, which is what it always did. The reprojection is the
   identity because this path is handed no motion; a reset and a bypass frame drop the history.
-* Verified here: `uv run pytest tests/ -q` 305 passed / 14 skipped, the port's 15 shaders compile
-  with glslang 16.6.0, a pristine clone of 9d08f41 + the new patch builds 78 PTX kernels and
-  `dlss5vk` (stamp: port 9d08f41 (12 modified) patch c2c4279a9623), and the six native-serve
-  tests pass against that binary with NS_ODL_NATIVE_BIN set.
 * Parity is untouched by construction, not by argument: `main.cpp` passes no history, so its
   features are the first-frame ones it always compared. That is why this did not need handing back.
 * The patch commit is c2c4279a9623; the composite still does not blend the history, so the
-  temporal half of the loop (the blend, and motion) is the next step, and `r2026-10-11-f` is
-  queued for this one's cost.
+  temporal half of the loop (the blend, and motion) is the next step after item 1.

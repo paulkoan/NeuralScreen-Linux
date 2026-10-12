@@ -149,6 +149,40 @@ def test_the_apply_script_exists_and_is_the_documented_route():
     assert "dlss5vk stamp" in readme, "and the binary has to say what it was built from"
 
 
+def test_the_rebuild_script_is_the_two_steps_then_a_check():
+    """A port change is apply + build, and doing that by hand is how a run came back
+    OUT OF SYNC: the worker was built from the previous patch and the run's numbers
+    were from that binary. So the rebuild is one script, and it ends by asking the
+    binary what it was built from rather than trusting the build's exit status.
+    """
+    script = PORT / "rebuild.sh"
+    assert script.exists(), "the loop has to be able to rebuild the port itself"
+    assert os.access(script, os.X_OK), "it should be runnable, not just present"
+    subprocess.run(["bash", "-n", str(script)], check=True)
+
+    text = script.read_text()
+    assert "apply_to_port.sh" in text, "apply first"
+    assert "build_linux.sh" in text, "then build"
+    assert text.index("apply_to_port.sh") < text.index("scripts/build_linux.sh"), (
+        "building before applying rebuilds the previous patch")
+    # The stamp check is the point of the script: it is the binary's answer, not ours.
+    assert "stamp" in text and "OUT OF SYNC" in text
+    assert "exit 5" in text, "a stamp that does not match has to fail the script"
+    # The build script is written by the patch, so its absence means the apply did not
+    # do what the script assumed - and the next command would fail with a message that
+    # says nothing, leaving the previous binary looking current.
+    assert "no such file or directory" in text.lower()
+    assert "/opt/neuralscreen/port" in text, "the default is the staged copy, not the dev tree"
+
+
+def test_the_rebuild_does_not_default_to_the_developers_checkout():
+    """The runs execute under a sandbox that cannot read the home directory, and a
+    rebuild that silently rewrote the tree someone is editing would be worse than the
+    manual step it replaces."""
+    text = (PORT / "rebuild.sh").read_text()
+    assert "/home/paul" not in text, "the developer's checkout must not be a path in here"
+
+
 def test_the_stamp_reaches_the_binary_and_the_mode_reports_it():
     """`stamp` is a mode, the build writes the header it includes, and serve logs it."""
     patch = PATCH.read_text()

@@ -62,6 +62,17 @@ name = "pytest"
 argv = ["uv", "run", "pytest", "tests/", "-q"]
 description = "the test suite"
 
+# Apply the current patch to the staged port and rebuild the worker. This is what keeps a
+# run from reporting OUT OF SYNC: a port change is a patch plus a build, and the rebuild
+# script ends by asking the new binary which patch it carries. It defaults to
+# /opt/neuralscreen/port - the staged copy, which is what NS_WORKER_CMD points at - so the
+# entry takes no arguments and the runner's own sandbox (ReadWritePaths=/opt/neuralscreen)
+# is the whole of what it can touch.
+[[entry]]
+name = "port-build"
+argv = ["bash", "experiments/opendlss_port/rebuild.sh"]
+description = "apply the port patch to the staged copy and rebuild dlss5vk"
+
 [[entry]]
 name = "m1-gate"
 argv = ["bash", "tools/m1_pipeline_gate.sh"]

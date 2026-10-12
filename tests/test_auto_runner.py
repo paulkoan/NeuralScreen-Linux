@@ -9,6 +9,8 @@ swallowed. There is no GPU here and none is needed: the entries are stubs.
 from __future__ import annotations
 
 import json
+import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -255,6 +257,38 @@ def test_the_example_policy_names_only_what_the_runner_may_run():
     # outside /opt/neuralscreen. The policy should say so rather than leave it implied.
     assert "container = false" in text, "the default should need no system packages"
     assert "nvidia-container-toolkit" in text, "if the container is off, say what it would need"
+
+
+def test_the_example_policy_can_rebuild_the_port():
+    """The port is a patch plus a build, and the runs have to be able to do both.
+
+    Until this entry exists, a port change needs the developer by hand - and the failure
+    mode is not a loud one: `r2026-10-11-g` ran to completion on the previous binary and
+    said `OUT OF SYNC` in the middle of its own report. The entry point has to be in the
+    repository (the runner resolves it inside its own clone) and it has to default to the
+    staged copy, since a request carries arguments and the runner's sandbox cannot read
+    the home directory anyway.
+    """
+    text = (REPO / "tools" / "runner_policy.example.toml").read_text()
+    assert 'name = "port-build"' in text, "the loop cannot rebuild the worker without this"
+
+    # The argv it names, as a path that exists in the repository.
+    entry = text[text.index('name = "port-build"'):]
+    entry = entry[:entry.index("[[entry]]") if "[[entry]]" in entry else len(entry)]
+    argv = re.search(r'argv = \[(.*)\]', entry)
+    assert argv is not None, f"no argv line in:\n{entry}"
+    script = REPO / argv.group(1).split(",")[-1].strip().strip('"')
+    assert script.exists(), f"{script} does not exist"
+    assert os.access(script, os.X_OK), "an entry point that is not executable is not one"
+
+    body = script.read_text()
+    settings = [line for line in entry.splitlines()
+                if line.strip() and not line.strip().startswith("#")]
+    assert not any("/opt/neuralscreen" in line for line in settings), (
+        "no arguments: the arguments come from the request, and the default has to live in "
+        "the script")
+    assert 'port="${1:-/opt/neuralscreen/port}"' in body, (
+        "the default port directory must be the staged copy, not a dev tree")
 
 
 def test_the_watcher_declares_every_flag_its_body_uses():
