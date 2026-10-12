@@ -1,0 +1,19 @@
+warning: The `native-tls` setting is deprecated and will be removed in a future release. Use `system-certs` instead.
+[worker] serve: 2560x1440, model /opt/neuralscreen/model, shaders /opt/neuralscreen/port/build/shaders, seed 0
+[worker] serve: built from port 9d08f41 (12 modified) patch 08e297c8a802f2642dadf402dcfd25ae7ae58d70
+[worker] serve: frame channel open (29.5 MB, NeuralScreen_993512_96428c13)
+[worker] serve: pixel channel open (2560x1440, 14.7 MB, NeuralScreenOut_993512_86a506)
+[main] shared memory: frames in and pixels out through /dev/shm (frame 29.5MB, pixels 14.7MB)
+[worker] serve: the caller declared no motion field: the history is sampled at the pixel
+[worker] serve: itself, which is what zero motion means
+[worker] serve: device NVIDIA GeForce RTX 4080 SUPER
+[worker] serve: blend scale 0.7397 (block70.layer0.blend_scale)
+[worker] serve: warming up (the PTX modules are JIT-compiled on first use)
+[worker] serve: warm-up 3069 ms
+[worker] serve: frame 0 carries reset: no history for this frame, and this frame primes the next
+[worker] serve: head -8.7188..0.7407 mean -1.05684, non-finite 0 of 15073280; first 8 0.0334 0.0340 0.0328 -4.8047 0.0280 0.0312 0.0285 -4.6172
+[worker] serve frame 0: 145.4 ms (proxy 4.0, network+composite 77.3, readback 58.4, reply 5.7)
+[worker] serve frame 1: 78.4 ms (proxy 4.7, network+composite 65.9, readback 6.0, reply 1.8)
+[worker] serve frame 2: 77.6 ms (proxy 5.0, network+composite 66.1, readback 4.7, reply 1.8)
+[worker] serve frame 29: 23.3 ms (proxy 4.8, network+composite 12.7, readback 3.8, reply 2.0)
+[worker] serve frame 59: 21.3 ms (proxy 3.9, network+composite 12.2, readback 3.3, reply 1.9)
