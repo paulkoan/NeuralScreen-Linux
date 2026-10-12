@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -123,7 +124,7 @@ def test_the_readme_keeps_its_evidence():
     """The claims that matter are the measured ones; the README is where they live
     for whoever picks this up next."""
     readme = (PORT / "README.md").read_text()
-    assert "13/13" in readme and "78" in readme, "the verified build counts"
+    assert "15/15" in readme and "78" in readme, "the verified build counts"
     assert "VK_ERROR_INCOMPATIBLE_DRIVER" in readme, (
         "the boundary: it builds here, it needs a GPU to run")
     assert "GL_EXT_float_e4m3" in readme, (
@@ -147,6 +148,77 @@ def test_the_apply_script_exists_and_is_the_documented_route():
     assert "git apply /path/to/linux-port.patch" not in readme, (
         "the hand-typed apply is what failed; it should not still be the documented route")
     assert "dlss5vk stamp" in readme, "and the binary has to say what it was built from"
+
+
+def patch_adds(patch_text: str, path: str) -> str:
+    """The added lines of one file in a git format-patch, as source."""
+    start = patch_text.index(f"diff --git a/{path}")
+    body = patch_text[start:]
+    following = body.find("\ndiff --git ", 10)
+    diff = body if following < 0 else body[:following]
+    return "".join(line[1:] + "\n" for line in diff.splitlines()
+                   if line.startswith("+") and not line.startswith("+++"))
+
+
+def test_the_composite_push_constants_are_the_same_list_on_both_sides():
+    """A push constant block and its host struct are two declarations of one layout.
+
+    Nothing checks this at any layer: a field added on one side only, or in a different
+    order, compiles — both languages are happy — and the kernel reads its neighbour's
+    value. The shader and the C++ that fills it are both in the patch, so they can be
+    compared here, in order, by name.
+    """
+    patch = PATCH.read_text()
+    shader = patch_adds(patch, "shaders/composite_serve.comp")
+    host = patch_adds(patch, "src/kernels.cpp")
+
+    block = shader[shader.index("layout(push_constant)"):shader.index("} pc;")]
+    declared = re.findall(r"^\s*(?:u?int|float)\s+([A-Za-z_][A-Za-z0-9_]*)\s*;", block, re.M)
+
+    # kernels.cpp declares several `struct Push`; the composite's is the one inside its body.
+    host = host[host.index("void Kernels::compositeToRgba8"):]
+    struct = host[host.index("struct Push {"):host.index("} push{")]
+    struct = re.sub(r"//.*", "", struct)
+    pushed = []
+    for declaration in re.findall(r"^\s*(?:uint32_t|float|int)\s+([^;]+);", struct, re.M):
+        pushed.extend(name.strip() for name in declaration.split(","))
+
+    assert declared, "no push constants found in the shader"
+    assert declared == pushed, f"shader {declared} vs host {pushed}"
+
+
+def test_the_composite_blend_is_checked_against_its_two_authorities():
+    """The blend has two things to match and they pull in opposite directions.
+
+    With no history the published byte must not move, because that is what the parity gate
+    compares (src/main.cpp's `composed()`); with a history the value must be the demo's
+    `nr_composite.comp`, formula for formula. check_composite.py transliterates all three
+    and compares them on random input, reading the shader out of the patch rather than out
+    of a copy that can drift.
+    """
+    script = PORT / "check_composite.py"
+    assert script.exists(), "the blend's arithmetic is checked, not asserted"
+    pytest.importorskip("numpy")
+    source = script.read_text()
+    assert "linux-port.patch" in source, "it has to read the shader that ships"
+    assert "nr_composite.comp" in source and "composed()" in source, "both authorities, named"
+
+    finished = subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
+    assert finished.returncode == 0, finished.stdout + finished.stderr
+    assert finished.stdout.count("agree") == 2, finished.stdout
+
+    # And it has to be able to fail: a checker that passes on a shader missing the blend is
+    # not checking anything. Strip the one line the blend is and watch it refuse.
+    patch = PATCH.read_text()
+    line = "    value = fma(vec3(weight), historyValue - value, value);\n"
+    assert line in patch, "the blend line moved; update this test with it"
+    with tempfile.TemporaryDirectory() as tmp:
+        broken = Path(tmp) / "linux-port.patch"
+        broken.write_text(patch.replace(line, ""))
+        finished = subprocess.run([sys.executable, str(script), str(broken)],
+                                  capture_output=True, text=True)
+    assert finished.returncode == 2, finished.stdout + finished.stderr
+    assert "no longer contains" in finished.stdout, finished.stdout
 
 
 def test_the_rebuild_script_is_the_two_steps_then_a_check():
