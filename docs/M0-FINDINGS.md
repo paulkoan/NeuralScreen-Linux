@@ -2198,3 +2198,219 @@ Two lessons, both about the instrument rather than the code:
 - **The worker's own clock settles arguments our clock cannot.** Its timestamps
   know nothing of our timing, and every time the two disagreed the disagreement
   was the finding. It is now printed beside the timing line in every run.
+
+---
+
+# Round 32 — the compositor's rate is not the capture ceiling, and a window source cannot raise it at 2560x1440
+
+**The question.** Rounds 13/14 read a 125-375ms grab as "the capture is the
+ceiling", took the `wait` half for the compositor's share, and inferred the
+compositor bills by area — so capturing the game window instead of the desktop
+should raise the ceiling in proportion to the pixels removed. Rounds 16-19
+retracted that mechanism without replacing it. This round puts every split ever
+reported beside a fresh measurement of our copy, and reads KWin's own screencast
+source for what a window source actually does.
+
+## 1. Every split ever recorded, in one place
+
+32 grabs at 2560x1440, 18 runs, all `--source auto` (the portal). One is round
+14's broken split (`20260916T204919Z`, `read 0.0ms` — the buffered read), leaving
+**31 valid grabs in 17 runs**:
+
+| half | what it is | measured |
+|---|---|---|
+| `read` | our copy out of the pipe | **9.2-20.2ms**, median 12.5, mean 12.9 |
+| `wait` ≤0.2ms | the frame was already arriving | **16 of 31** |
+| `wait` 10.8-357.8ms | the compositor was late | 12 of 31 |
+| `wait` ≥1118ms | the whole run was in slow mode | 3 of 31 |
+
+```
+wait <=0.2ms : 16 grabs    wait <400ms : 10.8 11.1 21.1 32.4 38.5 45.2 106.1
+                                        139.8 225.3 230.3 303.3 357.8
+wait >=400ms : 1118.0 3229.0 3970.3
+               (193052Z capturens, 193052Z capture, 181109Z capture)
+```
+
+`read` does not move with the compositor. 31 grabs, 17 runs, three days of runs
+(16, 18 and 19 September), and every one of them is between 9.2 and 20.2ms.
+
+## 2. Re-measured: our copy, with a script behind it
+
+Round 14's "13-19ms to copy a 14.7MB frame out of a stocked pipe (1108 MB/s)" has
+had no script behind it since it was written. `experiments/pipe_copy/bench.py` is
+now that script: a writer thread keeps an `os.pipe` full of one frame and the
+reader drains it with the same `read1` loop `minimal/capture_wayland.py` uses. Two
+runs of 9 rounds, 2026-10-13, the analysis box:
+
+```
+2560x1440  14.75 MB  median 10.17ms then 11.08ms   (every round 6.08-17.74ms)
+1280x720    3.69 MB  median  2.85ms then  2.95ms
+128x128     0.07 MB  median  0.03ms then  0.03ms
+```
+
+~0.7ms per MB, 1250-1450 MB/s. So the GPU box's 9.2-20.2ms, this bench, and round
+14's 13-19ms are the same number, and it is the pipe's: the copy runs at memory
+speed and costs the frame's bytes, whatever the compositor is doing.
+
+## 3. The compositor's share is the `wait` — and in half the grabs there isn't one
+
+In **16 of 31 grabs the wait is ≤0.2ms**: the frame's first byte was already in
+the pipe before we asked for it. That is the compositor ahead of us, at
+2560x1440, on the same code that measured 375ms in round 13 and 238ms in round 16.
+
+Two consequences, and the second is the one that has been missing.
+
+**A large mean wait is a statement about the run, not a delivery rate.** In
+`20260919T181109Z` the capture variant's mean wait was 3970.3ms over a run that
+took 123.75s for 30 frames — 4.1s a frame — and the worker's own clock read
+4211ms/frame for the same run. `20260919T193052Z` is the same shape (101.81s, wait
+3229.0ms). In those runs the whole loop was slow, not the capture leg alone.
+Round 31's lesson applies unchanged: the split only prints means, and a mean over
+a run is not a measurement until the distribution is printed.
+
+**The one measurement of the compositor's own rate cannot separate the halves.**
+Round 17's probe, twice, at 2560x1440 with the screen verifiably changing:
+12.8ms/frame (78.3 fps) and 13.4ms/frame (74.6 fps). The probe's grab *is*
+wait+read, and `read` alone is 9.2-20.2ms — so a 12.8ms grab against a 12.5ms
+median read means the wait was ~0.3ms, i.e. **the probe was copy-bound, not
+compositor-bound.** The honest pair is:
+
+* our copy: **9.2-20.2ms per grab**, 31 grabs over 17 runs — the number that has
+  never moved;
+* the compositor's delivery interval: **≤12.8ms, so ≥75-78 fps, and never
+  measured on its own.** It could be four times faster; 75fps and 166fps produce
+  the same 12.6ms grab.
+
+(Round 17's probe output is quoted in that round's text and is not in
+`test-results/`. It is the only direct measurement of the compositor's rate and
+it should be a report rather than a sentence.)
+
+## 4. The third cost is ours, and it is larger than the grab
+
+`capture cpu:` appeared in 18 runs at 2560x1440: **0.31s to 2.58s of CPU per
+30-frame run — 1% to 43% of one core while the run lasted.**
+
+```
+132847Z capture   1.25s/3.81s = 33%   132847Z capturebp  1.57s/4.78s = 33%
+173602Z capture   1.55s/5.40s = 29%   173602Z capturens  1.72s/7.01s = 25%
+073843Z capture   2.58s/5.96s = 43%   073843Z capturens  2.18s/5.56s = 39%
+074818Z capture   1.80s/4.79s = 38%   074818Z capturens  1.79s/4.74s = 38%
+075517Z capture   1.86s/4.93s = 38%   075517Z capturens  2.11s/5.13s = 41%
+181109Z capture   0.63s/123.75s = 1%  181109Z capturens  0.74s/10.79s = 7%
+193052Z capture   0.58s/101.81s = 1%  193052Z capturens  0.89s/38.26s = 2%
+201242Z capture   1.11s/5.41s = 20%   201242Z capturens  0.31s/15.46s = 2%
+212245Z capture   0.88s/6.62s = 13%   212245Z capturens  0.73s/7.78s = 9%
+```
+
+The runs where the compositor kept up (wait ≤0.2ms) are the top of that range:
+25-43% of a core. Round 25 read this as "~42ms of CPU per frame"; that is total
+CPU divided by frames *delivered*, and it is an upper bound rather than a
+per-frame cost, because `queue max-size-buffers=1 leaky=downstream` lets the chain
+process frames we never take. What stands as a measurement is the CPU per second
+of run: **up to 43% of a core, spent in our own chain** — pipewiresrc's copy out
+of KWin's buffer, `videoconvert`, `videoscale`, the 14.75MB write into the pipe —
+while the worker works on the same box. Round 21 saw its shadow: the same
+2560x1440 frame cost `send` **114.2ms through the portal against 67.3ms produced
+synthetically in the same run**, and round 22 saw the same direction at +18ms in
+the next run. Neither number is large enough to survive on its own; the direction
+has now been seen twice.
+
+## 5. What a window source actually does — read from KWin, not from the name
+
+From KWin master, `src/plugins/screencast/`, fetched 2026-10-13; the box's shipped
+KWin may differ, and every line reference is to those files.
+
+**Both source types advertise the same ceiling.** `buildFormats()` sets the
+stream's advertised `maxFramerate` to `SPA_FRACTION(m_source->refreshRate(),
+1000)` (screencaststream.cpp:766), and `refreshRate()` is `m_output->refreshRate()`
+for a screen (outputscreencastsource.cpp:112-114) and
+`m_windows[0]->output()->refreshRate()` for a window
+(windowscreencastsource.cpp:147-149) — the same output, since a window lives on
+one. The client can only lower it (`framerate()`, screencaststream.cpp:411-418),
+and the stream is paced off vblank (:530 arms the vsync source on damage, :373-378
+records on vblank). **A window source cannot deliver more frames per second than a
+screen source; the ceiling is the display's refresh rate for both.**
+
+**The area is priced — on KWin's side by the window, on ours by our own caps.**
+The stream's size is KWin's: `m_resolution` starts as `source->textureSize()`
+(:342) — the output's pixel size for a screen, the window's bounding rect × scale
+for a window (windowscreencastsource.cpp:92-95) — and because `followsStreamSize()`
+is false for a window, KWin re-pins the stream to the window's size after each
+record (:679-681). So a window smaller than the screen really does put fewer
+pixels through KWin's render and readback and through PipeWire. **What does not
+shrink is our end:** our pipeline's caps fix the frame at 2560x1440, so
+`videoscale` converts the saving straight back into a 14.75MB frame, and the pipe
+write and our 12.5ms `read` are what they were.
+
+**The window path is not obviously cheaper even at equal area.**
+`WindowScreenCastSource::render()` clears the whole target and renders the
+window's quad over `Region::infinite()` every frame
+(windowscreencastsource.cpp:135-138), where the screen source paints only the
+damaged region into its layer (outputscreencastsource.cpp:93-105); and the window
+source calls `window->refOffscreenRendering()` when it starts watching
+(windowscreencastsource.cpp:77), which the screen source never does — a window
+KWin would otherwise scan out directly now has to be kept in an offscreen
+texture. Both do take the same GPU→CPU readback when the buffers are shared
+memory rather than dma-buf: `render(QImage*)` allocates a `GLTexture` of the
+target's size and then `grabTexture()`, which is
+`glReadnPixels(0, 0, size.width(), size.height(), ...)` (screencastutils.h).
+Whether `pipewiresrc ! videoconvert` negotiates memfd or dma-buf is the one part
+of this not verified here — `videoconvert` cannot consume dma-buf memory, so memfd
+and a full-frame readback per frame is the likely path — and GStreamer's own
+negotiation log says which, rather than leaving it to be guessed.
+
+## 6. The answer
+
+* **The portal leg's irreducible cost at 2560x1440 is 9.2-20.2ms: our copy out of
+  the pipe.** Median 12.5ms over 31 grabs in 17 runs; median 10.17/11.08ms in a
+  standalone benchmark that is now in the repo. Nothing else in the split is
+  stable.
+* **The compositor's delivery rate is ≤12.8ms per frame (≥75-78fps) and is not the
+  binding constraint.** The frame that matters costs 117-223ms end to end in these
+  runs, the worker's own clock at this size is 32.6-41.1ms (24-31fps) in the
+  newest gate runs, and round 31's 240-frame runs put the worker at the ceiling
+  with the client at parity. When the compositor keeps up, the capture leg is
+  11.4-20.4ms of that frame — **8-11%**, and the rest is `send`/`recv`, which the
+  worker sets. **Capture does not outrank the network, the worker does.**
+* **The capture leg's real cost is the 25-43% of a core our chain spends, plus
+  what that contention takes off the worker** (+18 to +47ms on `send`, measured
+  both ways in two runs). That is the only capture-side lever with a number
+  behind it, and it is priced by the bytes the chain moves.
+* **`--source window` does not raise the ceiling at 2560x1440.** The stream's
+  advertised maximum is the output's refresh rate for both source types; a
+  fullscreen 2560x1440 window removes no pixels; and the pipe write and our read
+  are set by our own caps, not by the window. The card's premise — "the compositor
+  bills by area, so removing the desktop pixels should raise the ceiling in
+  proportion" — aims at the wrong half: the area-priced work is *our* chain and
+  *our* copy, and a window source reaches them only by shrinking `videoscale`'s
+  input.
+* Window source is still right for the GeForce Now target for the reason it was
+  always right — do not capture the desktop — and if the game window is smaller
+  than the screen it takes KWin's and PipeWire's share down in proportion. (The
+  caveats the docs already carry stand: a window stream reports no size, so
+  `--size` is required, the picker decides which window, and KDE allows one
+  screencast session at a time.) It is not a fix for the frame rate.
+
+## 7. What is left, and what would settle it
+
+1. **The compositor's own rate — one line.** Print `last_wait`/`last_read` per
+   frame in `tools/wayland_probe.py`: `PortalCapture` already times both
+   (`minimal/capture_wayland.py`, `read1`-based since round 14), the probe already
+   holds the object, and until it prints them the only instrument with nothing
+   else in the way keeps measuring our copy and reporting it as the portal's rate.
+   With a video playing fullscreen so the screen is verifiably changing, the same
+   12 frames would say whether the compositor's interval is 12ms or 2ms — and
+   whether 75fps is a ceiling or a floor. Save the report this time.
+2. **Window versus screen at 2560x1440, with a window smaller than the screen** (a
+   fullscreen window should show nothing, and showing nothing is the answer).
+   `python -m minimal --source window --size 2560x1440 --frames 60 ...` against the
+   same `--source auto` run. Read: both halves of the split, the `capture cpu:`
+   line, and the portal's marginal cost on `send` against the synthetic rows in the
+   same run.
+3. **Whether the chain has to run flat out at all.** The 43% of a core is paid
+   because `queue leaky=downstream` sits at the *end* of the chain, so
+   `videoconvert` and `videoscale` process every frame the compositor produces
+   while we take 30. Moving the leaky queue to just after `pipewiresrc` would let
+   the expensive elements see only the frames we actually take. That is a
+   hypothesis with a one-line change and a checkable prediction: `capture cpu:`
+   falls while the frame time does not rise.
