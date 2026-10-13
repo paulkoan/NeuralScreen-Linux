@@ -145,16 +145,14 @@ NS_WORKER_CMD="/home/paul/dev/OpenDLSS-NR/build/dlss5vk serve --model /home/paul
 expects `OUT1` — all three already match, so `NS_WORKER_CMD` is the whole integration.
 
 Verified without a GPU, on the real protocol (`tests/test_native_serve.py`, and by hand
-against the built binary): the header is parsed and the work size taken from it, two
-fallback — the client keeps sending down the pipe), an unknown command is answered rather
-than ignored, and a closed stream ends the process with exit 0.
+against the built binary): the header is parsed and the work size taken from it, `SHMI` and
+`OUTS` are negotiated and the frame and the result come off the pipe, an unknown command is
+answered rather than ignored, and a closed stream ends the process with exit 0.
 
 What it does **not** do, and says so instead of misbehaving:
 
 - **No NGX upscaling.** `fullWidth`/`fullHeight` must be 0 or the work size, so a
   `--work-scale` run is rejected at the header rather than served wrong-sized frames.
-  passes no shm), so frames stay on the pipe and the ~45ms `send` stays until the
-  transport itself changes.
 - **A history, blended, and no reprojection.** The temporal loop, both halves. `serve` keeps the
   frame it published last, expands it into a proxy of its own (`proxy_expand.comp`, one dispatch,
   no host bytes) and hands it to `preprocess.comp` as lanes 7-9 — where the demo's
@@ -303,3 +301,17 @@ shared channel before.
 
 `tests/test_native_serve_shm.py` drives both against a real process with the client's own
 `SharedFrameBuffer` and `send_frame`, in bypass mode so no device is needed.
+
+The pipeline's own runs use them. Every 1440p run since `r2026-10-11-b` negotiates `SHMI`
+(`[main] shared memory agreed: 29.5 MB, the frame does not go through the pipe`), opens the frame
+channel (29.5MB in) and the pixel channel (14.7MB out), and ends with worker exit 0. The numbers,
+from `r2026-10-12-b` (2560x1440, `--shm --no-motion`, 60 frames, exit 0): `send` min 1.7 / median
+1.9 / max 5.6ms — the max is frame 0, the worker's warm-up — and `network+composite` 12.2ms at
+frame 29 and 12.0ms at frame 59. `r2026-10-12-d`, the same fixture and flags against the blend
+build, repeats it: 1.8ms, 12.7/12.2ms. The one run where the negotiation did not land is
+`r2026-10-11-a`: the client timed out on `SHMI`, kept sending down the pipe as documented, and the
+Wine worker then died of NGX being unavailable (exit 3) — a Wine problem, not the transport's.
+
+What is still not measured is the other way: no 1440p run has gone down the pipe since the channels
+landed, so the pipe's own per-frame `send` at 1440p, beside these runs on the same fixture and
+flags, is still owed one.
