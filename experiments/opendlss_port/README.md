@@ -153,7 +153,7 @@ What it does **not** do, and says so instead of misbehaving:
 
 - **No NGX upscaling.** `fullWidth`/`fullHeight` must be 0 or the work size, so a
   `--work-scale` run is rejected at the header rather than served wrong-sized frames.
-- **A history, blended, and no reprojection.** The temporal loop, both halves. `serve` keeps the
+- **A history, reprojected and filtered, and blended.** The temporal loop, both halves. `serve` keeps the
   frame it published last, expands it into a proxy of its own (`proxy_expand.comp`, one dispatch,
   no host bytes) and hands it to `preprocess.comp` as lanes 7-9 — where the demo's
   `nr_preprocess.comp` samples its history surface — and `composite_serve.comp` then blends it
@@ -167,20 +167,40 @@ What it does **not** do, and says so instead of misbehaving:
   `blend_scale` is read out of the model (`block70.layer0.blend_scale`, printed at startup)
   rather than written into the source, and the weight is the demo's own expression, constant
   included, because the two have to agree bit for bit. The pipeline sends a zero motion field
-  every frame (`minimal/loop.py`: "The MVP has no real motion vectors"), so the reprojection is
-  the identity and the history sample is the pixel itself — the reprojection and the demo's
-  five-tap Catmull-Rom filter are what this half still leaves out, and neither is dishonest while
-  the motion field is a zero one. A frame carrying a reset, or one served in bypass, has no
-  history: the blend is skipped and the residual is published alone, which is why the parity gate
-  (`src/main.cpp` passes no history) cannot see any of this. Motion is read and ignored, not
-  silently trusted.
+  every frame (`minimal/loop.py`: "The MVP has no real motion vectors").
+
+  The history it blends is the demo's. The client's motion field (2 × f16 per pixel, current →
+  previous, work-resolution pixels — `guides.py`'s units, "NGX consumes current-to-previous motion
+  in pixel units") is bound to the composite as it arrives and the sample is the demo's five-tap
+  Catmull-Rom reconstruction at the reprojected position: the four axis taps and the centre with
+  the bilinear-weight trick, clamped to the valid rectangle, combined and normalized exactly as
+  `demo/shaders/nr_common.glsl` combines them. The history is a buffer rather than a sampled image,
+  so the bilinear a texture unit does for the demo's `textureLod` is written out in the shader.
+
+  The port carries the position in pixels where the demo divides out to uv and multiplies back, and
+  that is deliberate: with the zero field the pipeline sends, the position is the pixel's own
+  centre, the weights collapse to the centre tap, and the published byte is the one the blend was
+  measured at (r2026-10-12-d) — a property no uv round trip would hold, since `(x / valid) * valid`
+  is not `x`. A frame carrying a reset, or one served in bypass, has no history: the blend is
+  skipped and the residual is published alone, which is why the parity gate (`src/main.cpp` passes
+  no history) cannot see any of this.
+
+  What the field does not carry is the demo's per-pixel "is there a history at that previous
+  position" flag (`motionTex.z`); the wire's field has no room for it, and the one case readable
+  from the position — a reprojection that leaves the valid rectangle — skips the blend, which is
+  the demo's treatment of a pixel whose previous position was off screen. Still the identity:
+  `preprocess.comp`'s lanes 7-9, which the demo also reprojects and filters, and which want the
+  same treatment before real motion is worth measuring.
 
   The arithmetic is checked rather than asserted —
   `uv run python experiments/opendlss_port/check_composite.py` transliterates the shader, the
-  demo's composite and `src/main.cpp`'s `composed()`, and compares them over 4000 random cases
-  including the saturated and ±60-logit extremes: with no history the published byte does not
-  move, and with one the value is the demo's, formula for formula. It reads the shader out of
-  `linux-port.patch`, so it cannot drift from what ships, and it refuses (exit 2) if the shader
+  demo's composite, `src/main.cpp`'s `composed()` and `nr_common.glsl`'s reprojection and five-tap,
+  and compares them over 4000 random cases including the saturated and ±60-logit extremes: with no
+  history the published byte does not move; with one the value is the demo's, formula for formula;
+  the filter agrees with an independently built Catmull-Rom to f32 rounding, where a version of it
+  that lost its normalize is 1.4e-2 out, so the bound is checking something; and at zero motion it
+  is the centre tap exactly, every pixel of a small field, edges included. It reads the shader out
+  of `linux-port.patch`, so it cannot drift from what ships, and it refuses (exit 2) if the shader
   stops saying what it transliterates.
 
 The model directory is the one input to this path nobody can look at: it comes out of

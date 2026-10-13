@@ -187,38 +187,50 @@ def test_the_composite_push_constants_are_the_same_list_on_both_sides():
     assert declared == pushed, f"shader {declared} vs host {pushed}"
 
 
-def test_the_composite_blend_is_checked_against_its_two_authorities():
-    """The blend has two things to match and they pull in opposite directions.
+def test_the_composite_is_checked_against_its_authorities():
+    """The composite has three things to match and they pull in different directions.
 
     With no history the published byte must not move, because that is what the parity gate
     compares (src/main.cpp's `composed()`); with a history the value must be the demo's
-    `nr_composite.comp`, formula for formula. check_composite.py transliterates all three
-    and compares them on random input, reading the shader out of the patch rather than out
-    of a copy that can drift.
+    `nr_composite.comp`, formula for formula; and the history sample itself must be the
+    demo's `nr_common.glsl` reprojection and five-tap Catmull-Rom, at zero motion the centre
+    tap the fixture's bytes depend on. check_composite.py transliterates all of it and
+    compares it on random input — the filter against an independent build of the same filter,
+    so that agreeing is not the transliteration agreeing with itself — reading the shader out
+    of the patch rather than out of a copy that can drift.
     """
     script = PORT / "check_composite.py"
-    assert script.exists(), "the blend's arithmetic is checked, not asserted"
+    assert script.exists(), "the composite's arithmetic is checked, not asserted"
     pytest.importorskip("numpy")
     source = script.read_text()
     assert "linux-port.patch" in source, "it has to read the shader that ships"
     assert "nr_composite.comp" in source and "composed()" in source, "both authorities, named"
+    assert "nr_common.glsl" in source and "historySample" in source, (
+        "the reprojection and the filter come from the demo's nr_common.glsl; the checker has "
+        "to say so rather than reinventing them")
 
     finished = subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
     assert finished.returncode == 0, finished.stdout + finished.stderr
-    assert finished.stdout.count("agree") == 2, finished.stdout
+    # One line per comparison: no history, the blend, the five-tap at zero motion, the
+    # five-tap against the independent build, the reprojection's units, the history flag.
+    assert finished.stdout.count("agree") == 6, finished.stdout
+    assert "DIFFER" not in finished.stdout, finished.stdout
 
     # And it has to be able to fail: a checker that passes on a shader missing the blend is
-    # not checking anything. Strip the one line the blend is and watch it refuse.
+    # not checking anything, and the same goes for the terms the history half added. Strip the
+    # line and watch it refuse — the blend's own, the filter's normalize, and a tap.
     patch = PATCH.read_text()
-    line = "    value = fma(vec3(weight), historyValue - value, value);\n"
-    assert line in patch, "the blend line moved; update this test with it"
-    with tempfile.TemporaryDirectory() as tmp:
-        broken = Path(tmp) / "linux-port.patch"
-        broken.write_text(patch.replace(line, ""))
-        finished = subprocess.run([sys.executable, str(script), str(broken)],
-                                  capture_output=True, text=True)
-    assert finished.returncode == 2, finished.stdout + finished.stderr
-    assert "no longer contains" in finished.stdout, finished.stdout
+    for line in ("    value = fma(vec3(weight), historyValue - value, value);\n",
+                 "  return value * (1.0 / (e + (d + (c + (a + b)))));\n",
+                 "  vec3 right = historyFetch(vec2(high.x, center.y));\n"):
+        assert line in patch, f"a line the checker names moved: {line!r}"
+        with tempfile.TemporaryDirectory() as tmp:
+            broken = Path(tmp) / "linux-port.patch"
+            broken.write_text(patch.replace(line, ""))
+            finished = subprocess.run([sys.executable, str(script), str(broken)],
+                                      capture_output=True, text=True)
+        assert finished.returncode == 2, finished.stdout + finished.stderr
+        assert "no longer contains" in finished.stdout, finished.stdout
 
 
 def test_the_rebuild_script_is_the_two_steps_then_a_check():
