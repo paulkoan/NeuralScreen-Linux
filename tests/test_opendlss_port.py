@@ -309,3 +309,70 @@ def test_the_composite_shader_compiles():
                                  "-o", str(Path(tmp) / "out.spv")],
                                 capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_the_blend_scale_readout_is_the_models_weight_and_not_the_default():
+    """The one line a run's blend claim rests on, checked against the model itself.
+
+    `serve: blend scale 0.7397 (block70.layer0.blend_scale)` is the only evidence that the
+    temporal blend's learned cap came out of the model. Absent or short, the readout falls
+    back to the demo's own 1.0 — and a run with the default looks like every other run, so
+    nothing else here would notice. check_blend_scale.py reads the readout out of the patch
+    and the value out of the DLL's weight table and refuses (exit 2) if the read does not
+    land on docs/frame.md's 0.7397, or if the bytes one half along read the same thing.
+    """
+    script = PORT / "check_blend_scale.py"
+    assert script.exists(), "the readout's value is checked, not asserted"
+    dll = ROOT / "native" / "nvngx_dlssnr.dll"
+    if not dll.is_file():
+        pytest.skip("the DLSS-NR DLL is not in this checkout, so there is no model to read")
+
+    finished = subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
+    assert finished.returncode == 0, finished.stdout + finished.stderr
+    assert "nvngx_dlssnr.dll" in finished.stdout, "it has to read the model, not restate a constant"
+    # One agree per authority: the read's coordinates, the three that are not them, and the
+    # fallback's own string. A count rather than a substring, so losing one of them shows.
+    assert finished.stdout.count("agree") == 5, finished.stdout
+    assert "0.73974609375" in finished.stdout, "the f16 in the model, as the readout would print it"
+
+
+def test_the_blend_scale_guard_refuses_a_read_that_moved():
+    """And it has to be able to fail, or it is a checker that passes on anything.
+
+    Three ways the readout could stop being the model's weight without anyone seeing it:
+    the read removed (the fallback stands and prints its own string), the read pointed at a
+    different half of the tensor, and the read pointed at a different tensor. The first is
+    refused from the source alone; the other two need the model, because what makes the
+    offset wrong is the value it lands on.
+    """
+    script = PORT / "check_blend_scale.py"
+    patch = PATCH.read_text()
+    read = '        const nr::Tensor& blend = model->tensor(70, 0, "blend_scale");\n'
+    aux = "nr::auxHalf(blend, 0, 0)"
+    for line in (read, aux):
+        assert line in patch, "the readout moved; update this test with it"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        broken = Path(tmp) / "linux-port.patch"
+
+        # The read removed: the source is what moved, so this needs no model.
+        broken.write_text(patch.replace(read, ""))
+        finished = subprocess.run([sys.executable, str(script), str(broken)],
+                                  capture_output=True, text=True)
+        assert finished.returncode == 2, finished.stdout + finished.stderr
+        assert "no longer contains" in finished.stdout, finished.stdout
+
+        # A read pointed at a different offset: only the model can refuse this one.
+        dll = ROOT / "native" / "nvngx_dlssnr.dll"
+        if not dll.is_file():
+            return
+        for label, old, new in (("the next half", aux, "nr::auxHalf(blend, 2, 0)"),
+                                ("column 1", aux, "nr::auxHalf(blend, 0, 1)"),
+                                ("another tensor", read, read.replace("(70, 0,", "(69, 0,"))):
+            broken.write_text(patch.replace(old, new))
+            finished = subprocess.run([sys.executable, str(script), str(broken)],
+                                      capture_output=True, text=True)
+            assert finished.returncode == 2, f"{label}: " + finished.stdout + finished.stderr
+            assert "REFUSED" in finished.stdout or "no longer contains" in finished.stdout, (
+                f"{label}: " + finished.stdout)
+

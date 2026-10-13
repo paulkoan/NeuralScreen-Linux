@@ -210,6 +210,17 @@ before it bites:
   bytes wide, and it reads 0.73975 exactly 28 bytes after its name. A shifted payload is not a
   subtler model, it is a diverging one — an output head that comes back two thirds non-finite
   and a picture that is a flat colour.
+- **The readout's value is read from the model, not defaulted to.** `serve` prints
+  `serve: blend scale 0.7397 (block70.layer0.blend_scale)` once at startup, and a run whose weight
+  did not arrive prints the same line with `absent - defaulted to 1.0, the demo's fallback` — the
+  frame, the timings and the parity gate are all the same either way. So the value is checked
+  against the model it comes from rather than asserted: `experiments/opendlss_port/check_blend_scale.py`
+  takes the readout out of `linux-port.patch`'s `src/serve.cpp` (the tensor, the half inside it, the
+  width guard, and the two strings that make "read" and "defaulted" different lines) and the value
+  out of the DLL's table — `block70.layer0.blend_scale` is `eb 39`, which as f16 is 0.73974609375.
+  Point the read at the next half, or at column 1, or at another tensor, or remove it, and it
+  refuses with exit 2. Its second argument is the container, so it needs the DLL: without it the
+  source half still runs, but nothing can verify the value.
 
 Two knobs and one open question:
 
