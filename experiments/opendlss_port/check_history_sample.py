@@ -3,11 +3,13 @@
 
     uv run python experiments/opendlss_port/check_history_sample.py [checkout] [patch]
 
-`serve`'s composite samples the history at the pixel itself and says why in the patch's own
-header: "this path is handed no motion, so the reprojection is the identity". That is only
-honest while the demo's reprojection and filter reduce to it when the motion field is zero, and
-this is where that reduction is checked rather than asserted. The definition is read from the
-original, named and hash-pinned:
+`serve`'s composite sampled the history at the pixel itself while the path was handed no motion,
+and the patch's own header said why: "this path is handed no motion, so the reprojection is the
+identity". That was honest only while the demo's reprojection and filter reduce to it when the
+motion field is zero, and this is where that reduction is checked rather than asserted. (The
+history half has since landed: shaders/composite_serve.comp carries the two, and
+check_composite.py is where that rendering of them is compared with the demo's.) The definition
+is read from the original, named and hash-pinned:
 
   * demo/shaders/velocity_unpack.comp and demo/shaders/nr_common.glsl of
     github.com/maanHimself/OpenDLSS-NR at 9d08f41 — the commit the port's stamp names. Quoted:

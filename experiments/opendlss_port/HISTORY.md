@@ -1,10 +1,11 @@
 # The demo's reprojection and its five-tap Catmull-Rom history filter
 
-`serve`'s composite samples the history at the pixel itself, and the patch's own header says why:
-"this path is handed no motion, so the reprojection is the identity". That is only honest while the
-demo's reprojection and filter **reduce to that** when the motion field is zero. This file is the
-definition, taken from the original rather than reinvented, and
-`check_history_sample.py` is where the arithmetic is checked rather than asserted.
+`serve`'s composite sampled the history at the pixel itself while the path was handed no motion,
+and the patch's own header said why: "this path is handed no motion, so the reprojection is the
+identity". The history half itself has since landed (commit `3f3d63b`, §5). What made the simpler
+version honest is that the demo's reprojection and filter **reduce to it** when the motion field
+is zero — and that reduction is what this file writes down, taken from the original rather than
+reinvented. `check_history_sample.py` is where its arithmetic is checked rather than asserted.
 
 ## Where it comes from
 
