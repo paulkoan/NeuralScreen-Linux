@@ -10,8 +10,9 @@ reinvented. `check_history_sample.py` is where its arithmetic is checked rather 
 ## Where it comes from
 
 OpenDLSS-NR (MIT), `github.com/maanHimself/OpenDLSS-NR`, at **9d08f41** — the commit the port's own
-stamp names (`stamp: port 9d08f41 (12 modified)`). Read from a clone of it; the port's single commit
-touches `shaders/`, `src/` and `scripts/` only, so everything below is untouched by the port:
+stamp names (`stamp: port 9d08f41 (12 modified)`). Read from a clone of it; the port's commits — the
+one clone on this box carries one, `08e297c` — touch `shaders/`, `src/` and `scripts/` only, and
+`grep '^+++' linux-port.patch` lists no path under `demo/` either, so nothing below is the port's:
 
 | what | where | sha256 (of the file as read) |
 |---|---|---|
