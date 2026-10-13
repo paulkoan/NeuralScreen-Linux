@@ -199,7 +199,10 @@ before it bites:
 - **Check the directory before a run, not after.** `experiments/opendlss_weights/check_model.py
   <dir>` recomputes the hashes and checks the structural claims the manifest makes about
   itself — every tensor inside its stage, the tensors of a stage tiling it exactly — with
-  no device involved.
+  no device involved. It reads the *values* too: the pinned `blend_scale` always, and with
+  `--dll native/nvngx_dlssnr.dll` all 153 tensors byte for byte against the DLL's own weight
+  table. Structure cannot see a payload cut at the wrong offset — such a directory tiles and
+  hashes perfectly — so the value checks are the only ones that catch it before a run.
 - **The payload offset is pinned by a value, not by arithmetic.** A record's size fields read
   `payload + 40`, which is its *whole* metadata — 28 bytes of fields and 12 after — and reading
   that 40 as the header put every payload twelve bytes late. The pin is
