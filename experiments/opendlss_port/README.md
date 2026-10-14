@@ -275,10 +275,14 @@ VK_NV_cuda_kernel_launch         extension revision 2
 
 Two caveats before trusting that: an advertised extension is not an enabled feature, so
 what needs checking is the *features and properties* — that FP8 works with E4M3/E5M2
-components and f16 accumulation at this network's shapes. And `vkBasalt` is loaded as an
-implicit layer on this box (twice, from two json files — the loader warns about the
-duplicate); it injects a post-processing pass into every Vulkan app, so it should be
-disabled before any measurement means anything.
+components and f16 accumulation at this network's shapes. And `vkBasalt` is installed as
+an implicit layer on this box (twice, from two json files — the loader warns about the
+duplicate), but an implicit layer is only *loaded* here: its manifest gates it behind
+`enable_environment` (`ENABLE_VKBASALT=1`), and that variable is set nowhere on the box —
+not the shell, `/etc/environment`, `profile.d`, the fish config, `environment.d`, or the
+user manager. So the layer is never activated, adds no pass to a measurement, and the
+duplicate file is a cosmetic loader warning rather than a poisoned benchmark.
+(Checked 2026-10-14.)
 
 ## What is still unverified
 

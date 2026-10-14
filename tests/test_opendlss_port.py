@@ -129,7 +129,9 @@ def test_the_readme_keeps_its_evidence():
         "the boundary: it builds here, it needs a GPU to run")
     assert "GL_EXT_float_e4m3" in readme, (
         "the glslang version constraint, which a distro glslang can fail on")
-    assert "vkBasalt" in readme, "the implicit layer that would poison a measurement"
+    assert "vkBasalt" in readme, "the implicit layer, and why it does not poison a run"
+    assert "ENABLE_VKBASALT" in readme, (
+        "the gate that keeps the layer off: installed, but enabled nowhere")
 
 
 def test_the_apply_script_exists_and_is_the_documented_route():
