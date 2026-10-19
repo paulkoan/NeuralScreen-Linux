@@ -65,9 +65,11 @@ after the NGX feature-18 evaluate plus the composite dispatch.** It is:
 | 3 | **12.7 ms** | same | frame 29 of 60 | same | same | same | `origin/results:runs/done/r2026-10-12-d/stderr.log:18` |
 | 4 | **12.2 ms** | same | frame 59 of 60 | same | same | same | `origin/results:runs/done/r2026-10-12-d/stderr.log:19` |
 | 5 | **13.1 ms** | same | frames 29 and 59 | same | same | same | `origin/results:runs/done/r2026-10-11-c/stderr.log:16-17` |
-| 6 | **12.5 ms** | "the plan" comparison figure — **not a measurement** | — | — | — | — | `runs/queue/r2026-10-11-f.json:20` |
+| 6 | **5.5 ms** | worker per-frame `network+composite` | frame 29 of 60 | 1280x720 | `fixtures/youtube-720p.png`, still, `--no-motion` | RTX 4080 SUPER 615.71.09, Arch/KDE | `origin/results:runs/done/r2026-10-11-f/stderr.log:16` |
+| 7 | **4.5 ms** | same | frame 59 of 60 | same | same | same | `origin/results:runs/done/r2026-10-11-f/stderr.log:17` |
+| 8 | **12.5 ms** | "the plan" comparison figure — **not a measurement** | — | — | — | — | `runs/queue/r2026-10-11-f.json:20` |
 
-The same four numbers are quoted in prose at these places:
+The same numbers are quoted in prose at these places:
 
 | Value | Quoted at |
 |---|---|
@@ -83,14 +85,19 @@ The same four numbers are quoted in prose at these places:
 | `r2026-10-12-b` | `dc44bf7e57d8` | port 9d08f41 | `c2c4279a9623` | `origin/results:runs/done/r2026-10-12-b/report.md:8` | 0 |
 | `r2026-10-12-d` | `17ea04efdc36` | port 9d08f41 | `08e297c8a802` | `origin/results:runs/done/r2026-10-12-d/report.md:8` | 0 |
 | `r2026-10-11-c` | `af52854a7e61` | port 9d08f41 | `ea90414e2b00` | `origin/results:runs/done/r2026-10-11-c/report.md:8` | 0 |
+| `r2026-10-11-f` | `5b056de0129c` | port 9d08f41 | `ea90414e2b00` | `origin/results:runs/done/r2026-10-11-f/report.md:8` | 0 |
 
-All three ran the identical command (`origin/results:runs/done/<run>/command.txt`):
+All three 1440p runs ran the identical command (`origin/results:runs/done/<run>/command.txt`):
 `uv run python -m minimal --source image --input-image fixtures/youtube-1440p.png
 --headless --frames 60 --worker-log --shm --no-motion --send-ahead 2
 --save-before before.png --save-after after.png`
+`r2026-10-11-f` differs only in the fixture — `fixtures/youtube-720p.png` — and in
+omitting the save flags (`origin/results:runs/done/r2026-10-11-f/command.txt`).
 
-Fixture: `fixtures/youtube-1440p.png`, sha256
-`433847df0701176e548a24fbdd6c7a86b43a8bf473593effa2850f68af94c10f`.
+Fixtures: `fixtures/youtube-1440p.png`, sha256
+`433847df0701176e548a24fbdd6c7a86b43a8bf473593effa2850f68af94c10f`
+(b, c, d, e); `fixtures/youtube-720p.png`, sha256
+`c0553b3a86a6f86587d96d93f8daf9b39a881baafc251226f378fc23259c6daa` (f).
 
 ### Hardware and OS
 
@@ -108,17 +115,22 @@ Fixture: `fixtures/youtube-1440p.png`, sha256
    lines in d and c) — dominated by `recv`. Quoting "12.2 ms" as "the frame
    costs 12.2 ms" would understate it by ~7x.
 2. **Not network-only.** See the definition above; the composite dispatch is inside.
-3. **Not a comparison of two runtimes.** All three runs load the same bundled
+3. **Not a comparison of two runtimes.** All the runs load the same bundled
    `native/nvngx_dlssnr.dll`, described in the repo as the leaked **310.8.0**
    runtime (`README.md:260`, `README.md:264`, `TECHNICAL.md:376`,
    `docs/MVP-PLAN.md:39`). The only difference between the runs is the port's own
    patch: c = no history, b = history feed, d = history feed + blend. Nothing
    here varies the DLL.
-4. **Not a 720p number.** The only other resolution figure in the repo is the
-   whole-pipeline fps table, a different metric: `docs/M0-FINDINGS.md:462`
-   (`1280x720 | 51.1ms (19.6 fps) | 78.6ms (12.7 fps) | 27.5ms`) and
-   `docs/M0-FINDINGS.md:463` (`2560x1440 | 85.5ms (11.7 fps) | 98.6ms (10.1 fps)
-   | 5-13ms`).
+4. **Not only 1440p — but the quoted baselines are.** The 12.2/12.0 and 12.7/12.2
+   baselines are 2560x1440 only. A 1280x720 `network+composite` value does exist
+   for the same port on the previous patch: `r2026-10-11-f` (1280x720,
+   `fixtures/youtube-720p.png`, patch `ea90414e2b00` — the same patch as c) reads
+   **5.5 ms at frame 29 and 4.5 ms at frame 59**
+   (`origin/results:runs/done/r2026-10-11-f/stderr.log:16-17`). So the network's
+   own cost scales steeply with resolution — ~12 ms at 1440p vs ~5 ms at 720p —
+   but there is no 720p number for the blend build b/d carry. The other
+   resolution figure in the repo, the whole-pipeline fps table at
+   `docs/M0-FINDINGS.md:462-463`, is a different metric.
 
 ## Verdict on "310.8.16.0 is more performant"
 
@@ -127,10 +139,11 @@ Fixture: `fixtures/youtube-1440p.png`, sha256
 1. No measurement in the repo compares two runtime versions. The only quoted
    baselines (12.2/12.0 ms, 12.7/12.2 ms, 13.1/13.1 ms) all measure the port's
    worker running the **same** bundled DLL.
-2. "More performant" is undefined. The port's only quotable per-frame metric is
-   `network+composite` ms at 2560x1440 on `fixtures/youtube-1440p.png`, on an
-   RTX 4080 SUPER under Arch/KDE. A performance claim without a metric,
-   resolution, frame and fixture cannot be evaluated.
+2. "More performant" is undefined. The port's quotable per-frame metric is
+   `network+composite` ms at a stated work resolution — 2560x1440 for the b/d
+   baselines, 1280x720 for f — on the same fixture and box (RTX 4080 SUPER under
+   Arch/KDE). A performance claim without a metric, resolution, frame and fixture
+   cannot be evaluated.
 3. Even if `310.8.16.0` is a distinct build (sibling `t_057cec57` decides this),
    there is no way to produce a comparable number today: the port's PTX kernels
    are extracted from the bundled DLL, so a different DLL would have to be
@@ -156,9 +169,18 @@ If someone later wants to make the claim checkable, the minimum is: the
   number is a single run with no repeat count, error bar or variance. The gap
   between 12.2 and 12.7 ms is not distinguished from run-to-run drift by any
   evidence in the repo.
-* **One resolution only.** Every baseline number is 2560x1440. The port's own
-  README caps the network at 2560x1440 (`README.md:259`), so the claim cannot be
-  probed above that; no 720p `network+composite` value for the same build exists.
-* **Single frame pair.** Each run reports only frames 29 and 59 (the worker prints
-  frames 0-3 and then every 30th, `linux-port.patch:1496`). Frame 0 is
-  excluded as warm-up; there is no median or distribution.
+* **The quoted baselines are 1440p only.** b and d are 2560x1440. The only 720p
+  `network+composite` figure in the repo, f's 5.5/4.5 ms, is on the previous patch
+  (`ea90414e2b00`), not the blend build (`08e297c8a802`). So there is no 720p
+  number for the exact build the baselines quote. The port's own README caps the
+  network at 2560x1440 (`README.md:259`), so nothing above that can be probed.
+* **A requested size silently did not take.** `r2026-10-11-e` was queued with
+  `--size 1280x720` (`runs/queue/r2026-10-11-e.json`), but the worker ran
+  2560x1440 (`origin/results:runs/done/r2026-10-11-e/report.md:8`). Its
+  14.9/12.8 ms are therefore 1440p numbers, and f's queue note quotes its "12.8ms
+  at frame 59" as a comparison figure without noting the size mismatch.
+* **Single frame pair.** Each run's worker log prints exactly five frames:
+  0, 1, 2, 29 and 59 (`linux-port.patch:1496`; observed in
+  `origin/results:runs/done/r2026-10-12-b/stderr.log:14-18`). Frame 0 is
+  excluded as warm-up, and the baselines quote only frames 29 and 59 — there is
+  no median, mean or distribution behind them.
