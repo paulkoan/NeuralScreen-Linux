@@ -67,9 +67,12 @@ correct and does not imply two runtimes:
 | `TECHNICAL.md:376` | "The bundled build is the leaked **310.8.0** runtime (from the RankFTW/rhi-repo mirror)" | correct |
 | `docs/MVP-PLAN.md:39` | "Iceberg risk: DLSS5-NR is a *leaked* runtime (**310.8.0**)" | correct |
 
-`git log --all -S "310.8.16"` returns zero commits; the string appears in the working tree only in
-the triage card `t_2cab16c2` and the claim sheet `docs/dlss-nr-performance-claim-sheet.md`, both of
-which already frame it as an unanchored belief. There is nothing to correct in the repo's own prose.
+Before this investigation the string had no history: `git log -S "310.8.16"` over every commit
+older than the claim sheet's first commit (`a50367c^`) returns **zero**. Its only occurrences in the
+repo today are the two documents produced by this card's own siblings — the claim sheet
+`docs/dlss-nr-performance-claim-sheet.md` (`a50367c`, `9d21ffa`) and this note — plus the triage card
+`t_2cab16c2`. All three already frame `310.8.16.0` as an unanchored belief. There is nothing to
+correct in the repo's own prose.
 
 ## Part B — not applicable
 
