@@ -1,0 +1,1 @@
+uv run python -m minimal --source window --size 2560x1440 --frames 120 --worker-log --shm --send-ahead 2 --save-before gfn-before.png --save-after gfn-after.png

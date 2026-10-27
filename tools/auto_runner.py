@@ -127,9 +127,19 @@ def prepare_checkout(policy: dict) -> Path:
     return worktree
 
 
-def validate(request: dict, policy: dict, source: Path) -> tuple[dict, list[str], int, list[str]]:
+def validate(request: dict, policy: dict, source: Path) -> tuple[dict, list[str], int, list[str], bool]:
     if not isinstance(request, dict):
         raise Refused("the request is not an object")
+    # ``manual`` means "a human has to be at the screen for this one": a portal dialog
+    # to click, a window to pick. Such a request must NOT be consumed by the unattended
+    # ticker - if it were, it would run with no display, fail instantly, and mark the id
+    # done so the human run could never happen. The ticker skips these; run_manually.sh
+    # passes --include-manual and runs them. Anything truthy other than a bool is a
+    # refusal rather than a guess, because "manual": "yes" silently read as False would
+    # reintroduce exactly the bug this prevents.
+    manual = request.get("manual", False)
+    if not isinstance(manual, bool):
+        raise Refused(f"manual must be true or false, not {manual!r}")
     entry_name = request.get(ENTRY_NAME)
     if not isinstance(entry_name, str) or entry_name not in policy["entries"]:
         raise Refused(f"entry {entry_name!r} is not in the policy "
@@ -152,7 +162,7 @@ def validate(request: dict, policy: dict, source: Path) -> tuple[dict, list[str]
     note = request.get("note", "")
     if not isinstance(note, str):
         raise Refused("note must be a string")
-    return policy["entries"][entry_name], args, timeout, artifacts
+    return policy["entries"][entry_name], args, timeout, artifacts, manual
 
 
 def wrap_for_container(entry: dict, policy: dict, argv: list[str], worktree: Path,
@@ -179,7 +189,7 @@ def wrap_for_container(entry: dict, policy: dict, argv: list[str], worktree: Pat
 
 def run_request(request: dict, policy: dict, worktree: Path, run_dir: Path,
                 dry_run: bool = False) -> int:
-    entry, args, timeout, artifacts = validate(request, policy, run_dir)
+    entry, args, timeout, artifacts, _manual = validate(request, policy, run_dir)
     argv = list(entry["argv"]) + args
     if entry.get("cwd"):
         os.chdir(worktree / entry["cwd"]) if not dry_run else None
@@ -368,7 +378,8 @@ def publish_pending(policy: dict, worktree: Path, already: set[str], dry_run: bo
     publish(worktree, policy, pending[-1], exit_code, dry_run=dry_run)
 
 
-def process(policy: dict, worktree: Path, dry_run: bool = False) -> int:
+def process(policy: dict, worktree: Path, dry_run: bool = False,
+            include_manual: bool = False) -> int:
     already = done_ids(worktree, policy)
     queue = sorted((worktree / "runs" / "queue").glob("*.json"))
     if not queue:
@@ -393,6 +404,22 @@ def process(policy: dict, worktree: Path, dry_run: bool = False) -> int:
         if run_dir.exists():
             log(f"{run_id}: already done, skipping")
             continue
+        # A manual request needs a human at the screen. Leave it in the queue, untouched:
+        # no attempted marker, no run directory, no unlinking. If this pass consumed it,
+        # it would run with no display, fail, and mark the id done - and the human run it
+        # was queued for could then never happen. Only run_manually.sh (--include-manual)
+        # takes these.
+        if not include_manual:
+            try:
+                # ``is True``, not truthiness: "manual": "yes" must fall through to
+                # validate() and be refused visibly, not be parked in the queue forever
+                # where nobody ever sees why it never ran.
+                wants_human = json.loads(request_path.read_text()).get("manual") is True
+            except Exception:                     # noqa: BLE001 - a broken file is the run's problem
+                wants_human = False
+            if wants_human:
+                log(f"{run_id}: manual request - waiting for a human run (run_manually.sh)")
+                continue
         run_dir.mkdir(parents=True)
         (attempted / run_id).write_text("")
         try:
@@ -444,6 +471,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true",
                        help="validate and print, run nothing, push nothing")
     parser.add_argument("--request", help="only this request file (for testing)")
+    parser.add_argument("--include-manual", action="store_true",
+                        help="also run requests marked \"manual\": true. The timer does NOT "
+                             "pass this: a manual request needs a human at the screen for "
+                             "the portal dialog or window choice, so the unattended ticker "
+                             "leaves it in the queue. run_manually.sh passes it.")
     args = parser.parse_args(argv)
 
     policy_path = Path(args.policy)
@@ -480,7 +512,8 @@ def main(argv: list[str] | None = None) -> int:
         queue.mkdir(parents=True, exist_ok=True)
         target = queue / source.name
         shutil.copy2(source, target)
-    return process(policy, worktree, dry_run=args.dry_run)
+    return process(policy, worktree, dry_run=args.dry_run,
+                   include_manual=args.include_manual)
 
 
 if __name__ == "__main__":

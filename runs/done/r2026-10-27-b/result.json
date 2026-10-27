@@ -1,0 +1,33 @@
+{
+  "exit_code": 2,
+  "seconds": 0.009,
+  "argv": [
+    "uv",
+    "run",
+    "python",
+    "-m",
+    "minimal",
+    "--source",
+    "window",
+    "--size",
+    "2560x1440",
+    "--frames",
+    "120",
+    "--worker-log",
+    "--shm",
+    "--send-ahead",
+    "2",
+    "--save-before",
+    "gfn-before.png",
+    "--save-after",
+    "gfn-after.png"
+  ],
+  "artifacts": [
+    "gfn-before.png",
+    "gfn-after.png"
+  ],
+  "runner": "40c3f9c1507d",
+  "entry_env": [
+    "NS_WORKER_CMD"
+  ]
+}
