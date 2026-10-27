@@ -10,11 +10,14 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Fix the port's composite offset against NGX. r2026-10-13-a measured the port adding
-  ~+9R/+4G/+6B and applying only 29-43% of NGX's delta; r2026-10-27-e shows the composite is
-  neutral without the network, so the offset appears only with the network present. Read the
-  blend path in `main.cpp` and the composite shader for a bias term or a colorspace mismatch,
-  then queue one run on the 13-a card to separate network bias from composite bias.
+* Fix the port's composite offset against NGX (code reading done, 2026-10-27). The composite is
+  `out = clamp(proxy + head/4)`: `composeChannel` in `composite_serve.comp` maps the proxy to a
+  centred space and back, exact at head=0, which is why r2026-10-27-e's bypass was byte-neutral.
+  So the +9R/+4G/+6B tone shift and the 29-43% delta are the network's *head*, not the composite
+  arithmetic - the composite is faithful to the demo and to `check_composite.py`. Next step is a
+  code change, not another comparison run: read the head back on a later frame (serve.cpp already
+  gates it to frame 0) and check its sign and scale against the expected residual. A head that is
+  positive where NGX's residual is negative points at the network's input preprocessing.
 * Decide the restoration goal. On q20 input the port leaves the 8x8 grid untouched
   (blockiness 1.5634 -> 1.5723, coherence flat) and applies a global tone shift instead. It is
   not a deblocker. Either pursue a network/stage that targets the 8x8 grid, or record that
