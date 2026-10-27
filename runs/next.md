@@ -10,6 +10,19 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
+* Re-measure the head mean over the valid rectangle (code fix made 2026-10-27, two runs queued).
+  The arithmetic is now understood: `composeChannel` is `clamp(proxy + head/4, 0, 1)` - the centred
+  space cancels, so head/4 lands in display units exactly - and the published frame is then blended
+  toward the previous frame by `sigmoid(head.a) * blendScale`. With the logit mean at -3.7533 the
+  average blend weight is ~1.7%, so the frame should follow the head closely and a valid head mean
+  should be comparable to the measured pixel shift. It was not, because the readback averaged the
+  WHOLE padded buffer: `main()` returns early for `id.y >= validHeight`, so 32 padded rows per frame
+  are never written and their contents entered the mean. The loop now walks only workWidth x
+  workHeight at stride fullWidth. Queued: `r2026-10-27-h` (port-build) then `r2026-10-27-i`
+  (minimal on the same 13-a card). Read i's residual mean and check it against the measured pixel
+  shift ~+7.0R/+0.6G/+3.7B; agreement within a level or so means the head explains the offset and
+  the blend is not adding brightness of its own.
+
 * Decide the restoration goal. On q20 input the port leaves the 8x8 grid untouched
   (blockiness 1.5634 -> 1.5723, coherence flat) and applies a global tone shift instead. It is
   not a deblocker. Either pursue a network/stage that targets the 8x8 grid, or record that
@@ -22,7 +35,7 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
-* learned: r2026-10-27-g: head mean -0.90270 (range -6.5039..0.5020), residual mean 0.0147 0.0100 0.0109, logit mean -3.7533. The head is negative, not positive; its scale is smaller than NGX's MAD 18.4345 and the port's 13-a MAD 6.7205. The +9R/+4G/+6B offset is therefore not the network's input preprocessing by the stated test.
+* learned: r2026-10-27-g: head -6.5039..0.5020, overall mean -0.90270, residual mean (head/4) **R +0.0147 G +0.0100 B +0.0109**, logit mean -3.7533, 0 non-finite of 15,073,280. Read the line carefully: the overall mean is negative only because the logit channel is -3.75 and it is averaged in with the RGB channels - the RGB residual is POSITIVE on all three channels. NGX's delta on this same card pulls the mean DOWN (154.4/143.0/143.4 -> 148.6/134.0/137.0), so the head's sign is inverted relative to NGX's: the port brightens where NGX darkens. That is the mechanism behind the +9R/+4G/+6B offset, not an absence of one. Scale still needs reconciling: head/4 x255 is ~+3.8R/+2.6G/+2.8B but the port's measured mean shift is ~+7.0R/+0.6G/+3.7B, so G disagrees in sign and the composite's centred mapping must be doing more than a plain add. Also: g's after.png is byte-identical to 13-a's after.png (sha256 9f13979b168dc3a0), so this run changed no pixels - it is diagnostic only, and the port-vs-NGX delta stands at MAD 14.7606 / PSNR 23.432 dB. Timing: steady state ~37ms worker, median recv 40ms, ~64ms/frame (~15fps); the 4.5fps headline is one 4561ms frame-0 warm-up inflating the mean.
 
 * The container question is closed (2026-10-27, developer): "no idea why we would run in a
   container after all this time." nvidia-container-cli 1.20.1 is installed on the box, so the

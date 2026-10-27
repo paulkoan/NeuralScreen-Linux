@@ -1,4 +1,4 @@
-From d6d4664f7d1998aa4f5fd61043b4f438104767a4 Mon Sep 17 00:00:00 2001
+From 410f0fe5de527ca2240a95915e7cefab474f595e Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -107,10 +107,10 @@ per-frame timing line on stderr.
  src/kernels.h                |  37 +-
  src/main.cpp                 |   6 +-
  src/nr_model.h               |   1 +
- src/serve.cpp                | 760 +++++++++++++++++++++++++++++++++++
+ src/serve.cpp                | 769 +++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |  26 +-
  src/vk_context.h             |   3 +
- 11 files changed, 1288 insertions(+), 13 deletions(-)
+ 11 files changed, 1297 insertions(+), 13 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/proxy_expand.comp
@@ -767,10 +767,10 @@ index 867c97e..66f2175 100644
  #include <string>
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..6de1f3c
+index 0000000..806b79a
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,760 @@
+@@ -0,0 +1,769 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -1463,18 +1463,27 @@ index 0000000..6de1f3c
 +          const std::vector<uint8_t> headBytes =
 +              context->download(graph->head().buffer, (VkDeviceSize)fullWidth * fullHeight * 4 * 4);
 +          const float* head = reinterpret_cast<const float*>(headBytes.data());
-+          const size_t values = (size_t)fullWidth * fullHeight * 4;
++          // Only the valid rectangle is published: the composite's main() returns early for
++          // id.y >= validHeight, so the padded rows are never written into the picture. Averaging
++          // the whole buffer - which this first did - folds those rows into the mean and makes the
++          // number incomparable with a pixel mean; the padded rows can hold anything. So walk the
++          // valid rectangle at the head's own stride (fullWidth) and leave the padding out.
++          const size_t values = (size_t)workWidth * workHeight * 4;
 +          size_t nonFinite = 0;
 +          double sum = 0;
 +          double channelSum[4] = {0, 0, 0, 0};
 +          size_t channelCount[4] = {0, 0, 0, 0};
 +          float low = INFINITY, high = -INFINITY;
-+          for (size_t i = 0; i < values; ++i) {
-+            const float v = head[i];
-+            const size_t channel = i & 3u;
-+            if (!std::isfinite(v)) { ++nonFinite; continue; }
-+            low = std::fmin(low, v); high = std::fmax(high, v); sum += v;
-+            channelSum[channel] += v; ++channelCount[channel];
++          for (uint32_t y = 0; y < workHeight; ++y) {
++            for (uint32_t x = 0; x < workWidth; ++x) {
++              const size_t base = ((size_t)y * fullWidth + x) * 4;
++              for (size_t channel = 0; channel < 4; ++channel) {
++                const float v = head[base + channel];
++                if (!std::isfinite(v)) { ++nonFinite; continue; }
++                low = std::fmin(low, v); high = std::fmax(high, v); sum += v;
++                channelSum[channel] += v; ++channelCount[channel];
++              }
++            }
 +          }
 +          const double mean[4] = {
 +              channelSum[0] / (double)(channelCount[0] ? channelCount[0] : 1),
