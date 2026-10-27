@@ -40,10 +40,21 @@
 # So the timer is stopped for the duration and restarted on exit, including on
 # failure. If the timer is not installed, both calls are no-ops.
 #
+# INSTALL (once, on the box)
+#
+#   install -m 0755 tools/run_manually.sh /opt/neuralscreen/run_manually.sh
+#
+# Install it into /opt/neuralscreen, beside auto_runner.py and policy.toml, not
+# into the repo's tools/ directory on the box. The repo checkout the runner uses
+# is its own private clone at /opt/neuralscreen/state/repo, and prepare_checkout
+# resets it to origin/main on every pass - so a script run from there disappears
+# or changes under you. /opt/neuralscreen is the operational directory and is not
+# touched by the runner's resets.
+#
 # USAGE
 #
-#   tools/run_manually.sh                    # policy at the default path
-#   tools/run_manually.sh /path/to/policy.toml
+#   /opt/neuralscreen/run_manually.sh                    # policy at the default path
+#   /opt/neuralscreen/run_manually.sh /path/to/policy.toml
 #
 # A request that needs the dialog prints its capture split when it finishes; the
 # numbers and any artifacts land in runs/done/<id>/ on the results branch.
