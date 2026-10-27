@@ -11,7 +11,7 @@ available here, because each one's health signal says nothing about the other.
 
 | where | what lives there | what runs there |
 |---|---|---|
-| **The GPU box**, `/opt/neuralscreen/` | `policy.toml`, `state/repo` (the runner's own clone), `port/`, `model/`, `deploy_key`, `PAUSE` | the **systemd user timer** + `auto_runner.py` |
+| **The GPU box**, `/opt/neuralscreen/` | flat install root: `auto_runner.py`, `policy.toml`, `ssh_config`, `deploy_key`, `state/` (contains the runner's own clone at `state/repo`), `port/`, `model/`, `PAUSE` | the **systemd user timer** + `auto_runner.py` |
 | **The agent sandbox**, `/opt/data/neuralscreen-linux/` | the developer's clone of the repo; the profile at `/opt/data/profiles/neuralscreen/` | the **Hermes cron ticker** and its jobs |
 | **GitHub** | branch `main` = requests in; branch `results` = results out | neither runs; both schedulers talk to it |
 
@@ -42,8 +42,16 @@ Profile `neuralscreen` has two jobs (`/opt/data/profiles/neuralscreen/cron/jobs.
 * `neuralscreen-progress` (`b639f19f57ff`), every 2 minutes — the *progress tick*. It works
   `runs/next.md`, reads new results off the `results` branch, and analyses them. Its change
   detector is `scripts/ns-results-monitor.sh`: the newest `runs/done/<id>` name plus a hash of
-  `runs/next.md` as committed to `main`. It is deterministic so an idle tick produces no
-  change and the loop stops instead of spinning.
+  **only the actionable work items** in `runs/next.md` — everything above `## Learned`:
+  `git show origin/main:runs/next.md | sed '/^## Learned/,$d' | sha256sum | cut -c1-12`.
+  The `## Learned` section is a running log that grows whenever a tick retires an item; hashing
+  the whole file meant a tick's own bookkeeping woke the next tick, which then had nothing to
+  report (the "nothing to report" chat spam). Cutting at `## Learned` leaves the plan and the
+  "Ask first" section in scope, so real plan edits still wake the tick. It is deterministic so
+  an idle tick produces no change and the loop stops instead of spinning.
+  Its `failure_deliver` is `local`: engine failures and interruptions are recorded in the run
+  history but not posted to chat. The `git fetch` failures that used to arrive as chat messages
+  were the same noise channel.
 * `neuralscreen-progress-watchdog` (`4ede271c53a9`), every 15 minutes —
   `scripts/ns-progress-watchdog.sh`. Silent while healthy; speaks only when the progress
   tick's output directory has had no new file for 30 minutes. Its "healthy" signal is the
@@ -116,6 +124,31 @@ Check it directly on the box:
 ls -l /opt/neuralscreen/state/repo/.venv/bin/python     # does it exist and resolve?
 /opt/neuralscreen/state/repo/.venv/bin/python -c "import numpy, PIL; print('ok')"
 ```
+
+## The installed executor is a copy, not the clone
+
+A commit changes `state/repo`, but the timer does **not** run the code in the clone. It runs
+`/opt/neuralscreen/auto_runner.py`, a standalone copy installed once from `tools/auto_runner.py`.
+So "I pushed the fix and the timer still behaves the old way" is normal until the copy is
+refreshed. Every run stamps its executor's fingerprint (`runner <12 hex>` in `report.md` and
+`result.json`), which is how you tell which copy actually ran.
+
+Refresh it after changing `tools/auto_runner.py` (stop the timer first so a pass cannot run
+mid-install):
+
+```sh
+systemctl --user stop neuralscreen-runner.timer
+cd /opt/neuralscreen/state/repo
+git fetch origin main
+git show origin/main:tools/auto_runner.py > /opt/neuralscreen/auto_runner.py
+chmod 0755 /opt/neuralscreen/auto_runner.py
+systemctl --user start neuralscreen-runner.timer
+```
+
+`ssh_config`, `policy.toml` and the deploy key are installed the same way and are also outside
+the repository — a commit cannot change them. `run_manually.sh` is the human path: it runs the
+same executor with `--include-manual`, so requests carrying `manual: true` are executed while
+the timer deliberately skips them. The timer never passes `--include-manual`.
 
 ## Reading a run without being at the machine
 
