@@ -102,8 +102,14 @@ restore() {
 }
 trap restore EXIT INT TERM
 
+# --include-manual is the whole difference from the timer: requests marked
+# "manual": true are skipped by the unattended ticker (they need someone at the
+# screen for the portal dialog), and this script is the only thing that takes
+# them. Without the flag this script would find "nothing to do" on exactly the
+# requests it exists to run.
+#
 # Not exec: the trap has to survive the call so the timer comes back.
-python3 "$RUNNER" --policy "$POLICY" --once
+python3 "$RUNNER" --policy "$POLICY" --once --include-manual
 exit_code=$?
 echo "runner exited $exit_code"
 exit "$exit_code"

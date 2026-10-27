@@ -158,6 +158,50 @@ def test_a_request_runs_and_lands_on_the_results_branch(world: World):
     assert world.log().strip(), "nothing was pushed"
 
 
+def test_a_manual_request_waits_for_a_human_run(world: World):
+    """A request that needs someone at the screen must not be eaten by the timer.
+
+    r2026-10-27-a was a HUMAN run - the portal hands out a screen-cast only after
+    its dialog is clicked - and the unattended timer consumed it while nobody was
+    there. It ran with SDL_VIDEODRIVER=dummy, failed in 0.02s, and marked the id
+    done, so the human run it was queued for could never happen. ``manual`` keeps
+    the request in the queue until run_manually.sh takes it with --include-manual.
+    """
+    run_id = world.queue({"id": "r-manual", "entry": "ok", "args": ["--frames", "2"],
+                          "manual": True, "artifacts": ["before.png"],
+                          "note": "needs a human at the screen"})
+
+    # The timer runs without --include-manual. It must leave the request untouched.
+    finished = world.run()
+    assert finished.returncode == 0, finished.stderr
+    assert "manual request" in finished.stdout + finished.stderr, finished.stdout
+    assert not world.done_dir(run_id).exists(), "the timer consumed a manual request"
+    assert (world.worktree / "runs" / "queue" / f"{run_id}.json").exists(), \
+        "the manual request was unlinked from the queue"
+    assert not (world.worktree / "ran.txt").exists(), "the stub ran, so the timer executed it"
+
+    # The human run takes it.
+    finished = world.run("--include-manual")
+    assert finished.returncode == 0, finished.stderr
+    result = json.loads((world.done_dir(run_id) / "result.json").read_text())
+    assert result["exit_code"] == 0, result
+    assert (world.worktree / "ran.txt").read_text() == "--frames 2"
+    assert f"runs/done/{run_id}/report.md" in world.results_tree()
+
+
+def test_manual_must_be_a_bool_or_it_is_refused(world: World):
+    """``"manual": "yes"`` is refused visibly, not silently parked in the queue.
+
+    The skip happens before validate(), so a truthy string would otherwise sit in
+    runs/queue forever with no run and no refusal - the request nobody ran and
+    nobody noticed, which is the failure mode runs/README.md engineers against.
+    """
+    run_id = world.queue({"id": "r-manual-bad", "entry": "ok", "manual": "yes"})
+    assert world.run().returncode == 0
+    assert "Refused" in (world.done_dir(run_id) / "report.md").read_text()
+    assert not (world.worktree / "ran.txt").exists()
+
+
 def test_an_entry_the_policy_does_not_name_is_refused_and_never_runs(world: World):
     run_id = world.queue({"id": "r002", "entry": "root-shell", "args": ["-c", "touch pwned"]})
     finished = world.run()

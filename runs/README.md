@@ -39,6 +39,10 @@ it is also the thing that stops a request running twice.
   `$(...)`, `;` and backticks are strings and nothing else.
 * `artifacts` are copied out of the run into the result directory. They must be relative
   paths inside the checkout.
+* `manual: true` marks a request that needs a human at the screen — a portal dialog to
+  click, a window to pick. The timer skips these and leaves them in the queue; only
+  `/opt/neuralscreen/run_manually.sh` takes them. It must be a real boolean: a string
+  like `"yes"` is refused and recorded rather than silently parked.
 
 ## Reading a result
 
@@ -54,7 +58,12 @@ that branch; requests come from `main`.
 ## What this cannot do
 
 Live capture. The portal hands out a screen-cast only after someone clicks the dialog, so
-anything driving the real compositor stays a manual run. That is why the fixture exists:
+anything driving the real compositor stays a manual run — queue it with `"manual": true`,
+which the timer will not consume. Run it with `/opt/neuralscreen/run_manually.sh` from a
+terminal in the graphical session; the script stops the timer for the duration, runs the
+outstanding requests, and publishes the results. Without the flag the timer would run the
+capture with no display, fail instantly, and mark the id done — so the human run it was
+queued for could never happen. That is why the fixture exists:
 `--input-image` plus `--headless` exercises everything except the capture path and the
 display stage, with no session involved. Those two, and the question of whether the picture
 is actually *right*, are what the manual runs are for.
