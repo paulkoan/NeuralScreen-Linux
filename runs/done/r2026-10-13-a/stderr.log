@@ -1,0 +1,13 @@
+warning: The `native-tls` setting is deprecated and will be removed in a future release. Use `system-certs` instead.
+[worker] serve: 2560x1440, model /opt/neuralscreen/model, shaders /opt/neuralscreen/port/build/shaders, seed 0
+[worker] serve: built from port 9d08f41 (12 modified) patch f0c60a1c2224d1bbbe7ee86c692d391fb24359dc
+[worker] serve: device NVIDIA GeForce RTX 4080 SUPER
+[worker] serve: blend scale 0.7397 (block70.layer0.blend_scale)
+[worker] serve: warming up (the PTX modules are JIT-compiled on first use)
+[worker] serve: warm-up 3082 ms
+[worker] serve: frame 0 carries reset: no history for this frame, and this frame primes the next
+[worker] serve: head -6.5039..0.5020 mean -0.90270, non-finite 0 of 15073280; first 8 -0.0168 -0.0381 -0.0440 -4.9414 -0.0143 -0.0451 -0.0468 -4.4062
+[worker] serve frame 0: 110.1 ms (proxy 6.7, network+composite 38.7, readback 56.9, reply 7.8)
+[worker] serve frame 1: 51.2 ms (proxy 8.0, network+composite 22.6, readback 8.9, reply 11.6)
+[worker] serve frame 2: 43.7 ms (proxy 9.6, network+composite 23.3, readback 4.0, reply 6.8)
+[worker] serve frame 29: 49.7 ms (proxy 9.1, network+composite 19.4, readback 5.6, reply 15.6)
