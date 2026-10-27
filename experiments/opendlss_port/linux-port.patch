@@ -1,4 +1,4 @@
-From f0c60a1c2224d1bbbe7ee86c692d391fb24359dc Mon Sep 17 00:00:00 2001
+From d6d4664f7d1998aa4f5fd61043b4f438104767a4 Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -100,17 +100,17 @@ Also lands: `--model`/`--shaders`/`--frames` for the mode, the warm record that 
 per-frame timing line on stderr.
 ---
  scripts/build_linux.sh       | 161 ++++++++
- shaders/composite_serve.comp | 196 ++++++++++
+ shaders/composite_serve.comp | 196 +++++++++
  shaders/preprocess.comp      |  26 +-
  shaders/proxy_expand.comp    |  32 ++
  src/kernels.cpp              |  53 ++-
  src/kernels.h                |  37 +-
  src/main.cpp                 |   6 +-
  src/nr_model.h               |   1 +
- src/serve.cpp                | 740 +++++++++++++++++++++++++++++++++++
+ src/serve.cpp                | 760 +++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |  26 +-
  src/vk_context.h             |   3 +
- 11 files changed, 1268 insertions(+), 13 deletions(-)
+ 11 files changed, 1288 insertions(+), 13 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/proxy_expand.comp
@@ -767,10 +767,10 @@ index 867c97e..66f2175 100644
  #include <string>
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..24265ec
+index 0000000..6de1f3c
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,740 @@
+@@ -0,0 +1,760 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -1446,25 +1446,45 @@ index 0000000..24265ec
 +        checkChainTimeouts(*kernels);
 +        const std::chrono::steady_clock::time_point afterRecord = std::chrono::steady_clock::now();
 +
-+        // The head is read back once, on the first frame, where the warm-up already
-+        // dominates. Its numbers are what says whether a wrong picture is the network
-+        // diverging or the composite throwing a good head away; after that the picture is
-+        // the only thing that leaves the device.
-+        if (frames == 0) {
++        // The head is read back for the diagnostic line. Frame 0's head is measured while
++        // the warm-up still dominates, so its numbers are the warm-up's and not the thing to
++        // compare against NGX; the default is therefore the run's last frame, which is steady
++        // state. DLSS5VK_SERVE_HEAD_FRAME overrides it with a frame index, or -1 to disable the
++        // readback. Its numbers are what says whether a wrong picture is the network diverging
++        // or the composite throwing a good head away; after that the picture is the only thing
++        // that leaves the device. The composite adds head/4 to the proxy (composeChannel), so
++        // the per-channel "residual" mean below is head.rgb/4: the quantity to compare, channel
++        // by channel, against NGX's measured delta. The fourth channel is the blend logit.
++        const char* headFrameValue = getenv("DLSS5VK_SERVE_HEAD_FRAME");
++        const long headFrame = headFrameValue
++            ? std::strtol(headFrameValue, nullptr, 10)
++            : (frameLimit > 0 ? (long)frameLimit - 1 : 0L);
++        if (headFrame >= 0 && (long)frames == headFrame) {
 +          const std::vector<uint8_t> headBytes =
 +              context->download(graph->head().buffer, (VkDeviceSize)fullWidth * fullHeight * 4 * 4);
 +          const float* head = reinterpret_cast<const float*>(headBytes.data());
 +          const size_t values = (size_t)fullWidth * fullHeight * 4;
 +          size_t nonFinite = 0;
 +          double sum = 0;
++          double channelSum[4] = {0, 0, 0, 0};
++          size_t channelCount[4] = {0, 0, 0, 0};
 +          float low = INFINITY, high = -INFINITY;
 +          for (size_t i = 0; i < values; ++i) {
 +            const float v = head[i];
++            const size_t channel = i & 3u;
 +            if (!std::isfinite(v)) { ++nonFinite; continue; }
 +            low = std::fmin(low, v); high = std::fmax(high, v); sum += v;
++            channelSum[channel] += v; ++channelCount[channel];
 +          }
-+          fprintf(stderr, "serve: head %.4f..%.4f mean %.5f, non-finite %zu of %zu; first 8",
++          const double mean[4] = {
++              channelSum[0] / (double)(channelCount[0] ? channelCount[0] : 1),
++              channelSum[1] / (double)(channelCount[1] ? channelCount[1] : 1),
++              channelSum[2] / (double)(channelCount[2] ? channelCount[2] : 1),
++              channelSum[3] / (double)(channelCount[3] ? channelCount[3] : 1)};
++          fprintf(stderr, "serve: head %.4f..%.4f mean %.5f; residual mean %.4f %.4f %.4f "
++                          "(rgb, head/4), logit mean %.4f; non-finite %zu of %zu; first 8",
 +                  low, high, nonFinite ? sum / (double)(values - nonFinite) : sum / (double)values,
++                  mean[0] / 4.0, mean[1] / 4.0, mean[2] / 4.0, mean[3],
 +                  nonFinite, values);
 +          for (int i = 0; i < 8; ++i) fprintf(stderr, " %.4f", head[i]);
 +          fprintf(stderr, "\n");
