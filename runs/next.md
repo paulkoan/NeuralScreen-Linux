@@ -8,6 +8,18 @@ pass; the test suite green before anything is pushed; never touch /etc or instal
 packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Linux; never edit
 /opt/neuralscreen (policy, executor, key, unit); never queue a run that is not described here.
 
+## 1. Next work
+
+* Fix the port's composite offset against NGX. r2026-10-13-a measured the port adding
+  ~+9R/+4G/+6B and applying only 29-43% of NGX's delta; r2026-10-27-e shows the composite is
+  neutral without the network, so the offset appears only with the network present. Read the
+  blend path in `main.cpp` and the composite shader for a bias term or a colorspace mismatch,
+  then queue one run on the 13-a card to separate network bias from composite bias.
+* Decide the restoration goal. On q20 input the port leaves the 8x8 grid untouched
+  (blockiness 1.5634 -> 1.5723, coherence flat) and applies a global tone shift instead. It is
+  not a deblocker. Either pursue a network/stage that targets the 8x8 grid, or record that
+  tone-shift-only is the accepted outcome. This is a design call, not a run.
+
 ## 2. Ask first - do not start these alone
 
 * Decided (2026-10-11): the fixture keeps the whole frame. No crop.
