@@ -59,11 +59,21 @@ characters like `block10.layer0.layerh`.
 - Every record's declared payload length lands exactly where the next record's name
   begins — for all 152 consecutive pairs, not a sample.
 - The payload total, 140.84 MiB, against the documented 141 MiB.
+- **The values themselves.** `check_model.py` reads `block70.layer0.blend_scale` out of the
+  emitted stage file and gets **0.73975** (`eb 39`), the documented 0.7397 as f16; with
+  `--dll` it also compares all **153 of 153** tensors byte for byte against the DLL's own
+  weight table. The bytes in the directory *are* the DLL's bytes, not merely bytes that
+  agree with the directory's manifest.
 
-**Resolved since the first pass.** The field split is **40 + 16**, and it is not a
-choice: each record's u64 at +0 and its u64 at +8 both equal its payload length plus
-40, in **153 of 153** records. `--fields` still takes any of the four, because all four
-fit every offset; the data prefers one, and the tool now defaults to it.
+**Resolved since the first pass.** The field split is **28 + 12**, not 40 + 16: 28 bytes of
+per-record fields before the payload and 12 after it. That is where the "payload plus 40"
+comes from — every record's u64 at +0 and at +8 both equal its payload length plus 40, in
+153 of 153 records, and 40 is the metadata total, not the header. Reading it as the header
+was the split this tool shipped first, and it cost a whole model: every payload started 12
+bytes late and the network diverged on the shifted weights. The split is pinned by a value
+and not by arithmetic — `block70.layer0.blend_scale` reads 0.73975 as f16 exactly 28 bytes
+after its name, and 0.0 at 40. `--fields` still takes any of the five, because all five fit
+every offset; the data prefers one, and the tool defaults to it.
 
 **The lengths are OpenDLSS-NR's own layout.** `docs/weights.md` gives a record's byte
 length as a sum of shapes and says reproducing every `byteLength` exactly "is the check
@@ -102,6 +112,15 @@ every block**, variants included:
 uv run python experiments/opendlss_weights/extract.py                 # report
 uv run python experiments/opendlss_weights/extract.py --fields 40     # a different split
 uv run python experiments/opendlss_weights/extract.py --out /tmp/odl  # emit a model dir
+```
+
+`check_model.py` then reads the directory the way the port's loader will — hashes, tiling, and
+the values: the documented `blend_scale` always, and with `--dll` every tensor's bytes against
+the DLL's own weight table. It needs no device.
+
+```
+uv run python experiments/opendlss_weights/check_model.py /tmp/odl
+uv run python experiments/opendlss_weights/check_model.py /tmp/odl --dll native/nvngx_dlssnr.dll
 ```
 
 **The weights stay out of git.** They are NVIDIA's, the DLL they come from is already

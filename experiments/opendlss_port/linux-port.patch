@@ -1,4 +1,4 @@
-From 08e297c8a802f2642dadf402dcfd25ae7ae58d70 Mon Sep 17 00:00:00 2001
+From f0c60a1c2224d1bbbe7ee86c692d391fb24359dc Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -53,12 +53,38 @@ included, because the two have to agree bit for bit - and blend_scale read out o
 model (block70.layer0.blend_scale, printed at startup rather than written into the
 source: a hard-coded weight would quietly disagree with the next model file).
 
-Two things this half still leaves out, and neither is dishonest while the motion field is
-a zero one: the reprojection, and the five-tap Catmull-Rom history filter the demo uses.
-With zero motion the reprojection is the identity and that filter is the centre tap, so
-the history sample here is the pixel itself. A reset frame, and a frame served in bypass,
-have no history at all: the blend is skipped and the residual is published alone - which
-is why the parity gate (src/main.cpp passes no history) cannot see any of this.
+The history half is the whole of it now: the composite reprojects and filters the history
+rather than reading the pixel. The client's motion field is bound to the composite as it
+arrives on the wire (binding 2, 2 x f16 per pixel: current -> previous, work-resolution
+pixels, y down - guides.py's units, "NGX consumes current-to-previous motion in pixel
+units") and the shader reads it the way the demo's nr_common.glsl reads motionTex, sampling
+five taps with the bilinear-weight trick - the four axis taps and the centre, clamped to
+the valid rectangle, combined in the demo's order and normalized by the weight sum. The
+history is a buffer and not a sampled image, so historyFetch spells out the bilinear a
+texture unit performs for the demo's textureLod; the tap positions, the weights and the
+combination are the demo's expression for expression, and check_composite.py transliterates
+both sides over random motion and a random history field rather than taking that on trust.
+
+Staying in pixels instead of the demo's uv round trip is deliberate: with a zero field the
+position is the pixel's own centre, where the weights collapse to the centre tap and the
+published byte is the one the blend was measured at (r2026-10-12-d) - a property a run on
+the box can check, and one no uv round trip would hold, since (x / valid) * valid is not x.
+
+The motion field is created once, zeroed, and uploaded only when the caller sends one, so
+a caller that declares no field (--no-motion, which exists because the field is 14.7MB at
+1440p) pays nothing and still exercises the filter's zero-motion path.
+
+What the field does not carry is the demo's per-pixel "is there a history at that previous
+position" flag: the demo's motionTex has it as a third component, because zero motion means
+the history is at this same pixel and so cannot also mean there is none. The wire's field
+has no room for it. The one case readable from the position is a reprojection that leaves
+the valid rectangle - those pixels have no history and skip the blend, which is the demo's
+treatment of a pixel whose previous position was off screen. Disocclusion stays the
+network's blend logit to reject, as the demo says it always was.
+
+A reset frame, and a frame served in bypass, have no history at all: the blend is skipped
+and the residual is published alone - which is why the parity gate (src/main.cpp passes no
+history) cannot see any of this.
 
 One extra dispatch for the history expand and no host bytes moved is the loop's whole
 cost. The truncation to the half grid is now a single publication point after the blend,
@@ -74,17 +100,17 @@ Also lands: `--model`/`--shaders`/`--frames` for the mode, the warm record that 
 per-frame timing line on stderr.
 ---
  scripts/build_linux.sh       | 161 ++++++++
- shaders/composite_serve.comp |  92 +++++
+ shaders/composite_serve.comp | 196 ++++++++++
  shaders/preprocess.comp      |  26 +-
  shaders/proxy_expand.comp    |  32 ++
- src/kernels.cpp              |  50 ++-
- src/kernels.h                |  32 +-
+ src/kernels.cpp              |  53 ++-
+ src/kernels.h                |  37 +-
  src/main.cpp                 |   6 +-
  src/nr_model.h               |   1 +
- src/serve.cpp                | 717 +++++++++++++++++++++++++++++++++++
+ src/serve.cpp                | 740 +++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |  26 +-
  src/vk_context.h             |   3 +
- 11 files changed, 1133 insertions(+), 13 deletions(-)
+ 11 files changed, 1268 insertions(+), 13 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/proxy_expand.comp
@@ -259,10 +285,10 @@ index 0000000..e16bc4d
 +echo "built $root/build/dlss5vk"
 diff --git a/shaders/composite_serve.comp b/shaders/composite_serve.comp
 new file mode 100644
-index 0000000..7b32374
+index 0000000..2df5917
 --- /dev/null
 +++ b/shaders/composite_serve.comp
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,196 @@
 +#version 460
 +// The serve path's composite: the network's head and the proxy image in, RGBA8 out.
 +//
@@ -279,6 +305,40 @@ index 0000000..7b32374
 +// The truncation to the half grid is the composite's publication of the neural result
 +// (`truncateHalf` in src/main.cpp): toward zero, not to nearest, so it cannot be spelled
 +// with roundF16 and is done on the bits.
++//
++// ---- the history half: the reprojection and the five-tap Catmull-Rom
++//
++// The history is the previous published frame, and it is read where this pixel's colour was
++// in the previous frame, with the demo's five-tap reconstruction — `historySample` in
++// demo/shaders/nr_common.glsl, which docs/frame.md's "History reconstruction" names. The
++// demo's own words for why it is five taps and not a bilinear one: "a box or bilinear filter
++// here softens the image frame over frame, because the history is fed back into the network's
++// input".
++//
++//   * The reprojection. The client's field is current -> previous, in work-resolution pixels,
++//     y down — guides.py's own units, "NGX consumes current-to-previous motion in pixel
++//     units" — and the demo's motionTex is that same vector in uv units of the render target.
++//     So `pixel + 0.5 + motion` is the demo's `historyUv * valid`: the same expression, with
++//     the units the wire carries. Staying in pixels rather than going through uv and back is
++//     what makes a zero field land exactly on a texel centre, where the five-tap below is the
++//     centre tap and nothing else — the byte this published before the filter existed. That
++//     is the property a run on the box can check; it is not checkable in uv.
++//   * The five-tap. The demo samples five positions with textureLod and combines them with the
++//     bilinear-weight trick. The history here is a buffer and not a sampled image, so the four
++//     axis taps and the centre are fetched by the bilinear a texture unit does for the demo,
++//     spelled out in historyFetch: the same tap positions, the same Catmull-Rom weights, the
++//     same order of combination, the same clamp to the valid rectangle and the same normalize
++//     by the weight sum. experiments/opendlss_port/check_composite.py transliterates both and
++//     compares them rather than taking this comment's word for it.
++//   * What the field does not carry. The demo's motionTex has a third component — "is there a
++//     history at that previous position" — a flag rather than a value, because zero motion
++//     means the history is at this same pixel and so cannot also stand for "there is none"
++//     (docs/frame.md). The client's field has no room for it. The one case readable from the
++//     position itself is a reprojection that leaves the valid rectangle: those pixels have no
++//     history to read and the blend is skipped, which is the demo's treatment of a pixel whose
++//     previous position was off screen. Disocclusion — a previous position that was on screen
++//     but belonged to another surface — is invisible to both, and stays the network's per-pixel
++//     blend logit to reject, as the demo says it always was.
 +layout(local_size_x = 8, local_size_y = 8) in;
 +
 +layout(push_constant) uniform Push {
@@ -294,6 +354,10 @@ index 0000000..7b32374
 +// The previous frame, through the same proxy transform, at the source's own stride (the serve
 +// path builds it with proxy_expand.comp). Always bound; pc.historyValid says whether it is read.
 +layout(std430, binding = 1) readonly buffer History { vec4 history[]; };
++// The client's motion field: 2 x f16 per pixel, current -> previous, work-resolution pixels, y
++// down. Always bound; a caller that declares no field sends none and this reads zeros, which is
++// the identity reprojection and the centre tap.
++layout(std430, binding = 2) readonly buffer Motion { uint motionField[]; };
 +layout(std430, binding = 6) readonly buffer Head { vec4 head[]; };
 +layout(std430, binding = 7) writeonly buffer Out { uint pixels[]; };   // RGBA8, little-endian
 +
@@ -327,6 +391,64 @@ index 0000000..7b32374
 +  return uint(clamp(floor(value * 255.0 + 0.5), 0.0, 255.0));
 +}
 +
++// One bilinear fetch of the history at `p`, a position in "pixel + 0.5" units — where the demo's
++// `historyUv * valid` lands. Texel (x, y) covers [x, x + 1) and its centre is at x + 0.5, so the
++// texel the position starts in is p - 0.5 floored. The history is a buffer, not a sampled image,
++// so this is the bilinear a texture unit would do for the demo's textureLod — with the same clamp
++// to the valid rectangle, which is what the sampler's address mode does there.
++vec3 historyFetch(vec2 p) {
++  vec2 base = floor(p - 0.5);
++  vec2 t = (p - 0.5) - base;
++  ivec2 last = ivec2(int(pc.validWidth), int(pc.validHeight)) - 1;
++  ivec2 lo = clamp(ivec2(base), ivec2(0), last);
++  ivec2 hi = clamp(ivec2(base) + 1, ivec2(0), last);
++  vec3 topLeft = history[lo.y * pc.proxyWidth + lo.x].rgb;
++  vec3 topRight = history[lo.y * pc.proxyWidth + hi.x].rgb;
++  vec3 bottomLeft = history[hi.y * pc.proxyWidth + lo.x].rgb;
++  vec3 bottomRight = history[hi.y * pc.proxyWidth + hi.x].rgb;
++  return mix(mix(topLeft, topRight, t.x), mix(bottomLeft, bottomRight, t.x), t.y);
++}
++
++// historySample: the demo's five-tap Catmull-Rom reconstruction of the history at `position`
++// (which is `pixel + 0.5 + motion`, the demo's historyUv * valid). The four axis taps and the
++// centre, with the bilinear-weight trick: the centre position is offset by w2 / middle so that
++// the bilinear fetch's two weights are the two middle Catmull-Rom taps, and the combination is
++// normalized by the weight sum, whose value the demo leaves to the expression rather than to 1.
++vec3 historySample(vec2 position) {
++  vec2 valid = vec2(pc.validWidth, pc.validHeight);
++  vec2 base = floor(position - 0.5) + 0.5;
++  vec2 f = clamp(position - base, vec2(0.0), vec2(1.0));
++  vec2 square = f * f;
++  vec2 cube = f * square;
++  vec2 w0 = fma(f + cube, vec2(-0.5), square);
++  vec2 w1 = (cube * 1.5 - square * 2.5) + 1.0;
++  vec2 w3 = (cube - square) * 0.5;
++  vec2 w2 = ((1.0 - w0) - w1) - w3;
++  vec2 middle = w1 + w2;
++  vec2 low = clamp(base - 1.0, vec2(0.5), valid - 0.5);
++  vec2 center = clamp(base + w2 / middle, vec2(0.5), valid - 0.5);
++  vec2 high = clamp(base + 2.0, vec2(0.5), valid - 0.5);
++  vec3 left = historyFetch(vec2(low.x, center.y));
++  vec3 top = historyFetch(vec2(center.x, low.y));
++  vec3 mid = historyFetch(center);
++  vec3 bottom = historyFetch(vec2(center.x, high.y));
++  vec3 right = historyFetch(vec2(high.x, center.y));
++  float a = w0.x * middle.y; float b = w0.y * middle.x;
++  float c = middle.x * middle.y; float d = w3.y * middle.x; float e = w3.x * middle.y;
++  vec3 value = fma(left, vec3(a), top * b);
++  value = fma(mid, vec3(c), value);
++  value = fma(bottom, vec3(d), value);
++  value = fma(right, vec3(e), value);
++  return value * (1.0 / (e + (d + (c + (a + b)))));
++}
++
++// The history's own "is there one here": where this pixel was in the previous frame, in "pixel
++// + 0.5" units. The demo reads the flag out of the motion texture's third component; the wire's
++// field carries no flag, so the composite's only per-pixel test is the rectangle below.
++vec2 historyPosition(vec2 pixel, uint index) {
++  return pixel + 0.5 + unpackHalf2x16(motionField[index]);
++}
++
 +void main() {
 +  uvec2 id = gl_GlobalInvocationID.xy;
 +  if (id.x >= pc.validWidth || id.y >= pc.validHeight) return;
@@ -341,13 +463,21 @@ index 0000000..7b32374
 +    // docs/frame.md's composition: weight = clamp(sigmoid(head.a) * blendScale, 0, 1), then
 +    // value = lerp(value, history, weight). The sigmoid is the demo's own expression, constant
 +    // and all: 1 / (1 + exp2(-x * 1.442695)), i.e. 1 / (1 + e^-x) written as the demo writes it.
-+    // The history is the previous published frame at the same pixel - this path is handed no
-+    // motion, so the reprojection is the identity (see the header).
-+    float scale = clamp(pc.blendScale, 0.0, 1.0);
-+    float weight = clamp((1.0 / (1.0 + exp2(neural.a * uintBitsToFloat(0xbfb8aa3bu)))) * scale,
-+                         0.0, 1.0);
-+    vec3 historyValue = history[index].rgb;
-+    value = fma(vec3(weight), historyValue - value, value);
++    // The history is the previous published frame, sampled where the motion field says this pixel
++    // was — the reprojection and the five-tap above. A zero field puts that position at this same
++    // pixel's centre, so the sample is the pixel itself and this is the blend as it was measured
++    // (r2026-10-12-d) to the byte. A position outside the valid rectangle is a pixel with no
++    // history to read (the demo's own hasHistory), and the blend is skipped for it.
++    vec2 position = historyPosition(vec2(id), index);
++    vec2 valid = vec2(pc.validWidth, pc.validHeight);
++    if (all(greaterThanEqual(position, vec2(0.5))) &&
++        all(lessThanEqual(position, valid - 0.5))) {
++      float scale = clamp(pc.blendScale, 0.0, 1.0);
++      float weight = clamp((1.0 / (1.0 + exp2(neural.a * uintBitsToFloat(0xbfb8aa3bu)))) * scale,
++                           0.0, 1.0);
++      vec3 historyValue = historySample(position);
++      value = fma(vec3(weight), historyValue - value, value);
++    }
 +  }
 +  // The publication point, once, after the blend.
 +  value = vec3(truncateHalf(value.r), truncateHalf(value.g), truncateHalf(value.b));
@@ -355,7 +485,6 @@ index 0000000..7b32374
 +  pixels[id.y * pc.validWidth + id.x] =
 +      bytes.r | (bytes.g << 8u) | (bytes.b << 16u) | (255u << 24u);
 +}
-\ No newline at end of file
 diff --git a/shaders/preprocess.comp b/shaders/preprocess.comp
 index 97edc1b..b5f247b 100644
 --- a/shaders/preprocess.comp
@@ -450,7 +579,7 @@ index 0000000..fff90c9
 +}
 \ No newline at end of file
 diff --git a/src/kernels.cpp b/src/kernels.cpp
-index 62bb8c3..b19a6e8 100644
+index 62bb8c3..788bf9e 100644
 --- a/src/kernels.cpp
 +++ b/src/kernels.cpp
 @@ -42,7 +42,8 @@ void check(bool condition, const char* message) {
@@ -463,7 +592,7 @@ index 62bb8c3..b19a6e8 100644
      modules_[name] = context_.loadShaderModule(shaderDirectory + "/" + name + ".spv");
    }
  }
-@@ -498,16 +499,54 @@ void Kernels::preprocessFromProxy(VkCommandBuffer commands, const vk::Buffer& pr
+@@ -498,16 +499,57 @@ void Kernels::preprocessFromProxy(VkCommandBuffer commands, const vk::Buffer& pr
    struct Push {
      uint32_t fullWidth, fullHeight, validWidth, validHeight, sourceWidth, sourceHeight, seed;
      float autoMask, localTone, localStructure, skinStructure, style;
@@ -497,8 +626,8 @@ index 62bb8c3..b19a6e8 100644
 +
 +void Kernels::compositeToRgba8(VkCommandBuffer commands, const vk::Buffer& proxy, const Activation& head,
 +                               const vk::Buffer& output, uint32_t proxyWidth, uint32_t headWidth,
-+                               uint32_t validWidth, uint32_t validHeight, const vk::Buffer* history,
-+                               float blendScale) {
++                               uint32_t validWidth, uint32_t validHeight, const vk::Buffer& motion,
++                               const vk::Buffer* history, float blendScale) {
 +  check(head.format == Format::F32 && head.channels == 4, "the composite takes the f32 head");
 +  struct Push {
 +    uint32_t proxyWidth, headWidth, validWidth, validHeight;
@@ -509,6 +638,9 @@ index 62bb8c3..b19a6e8 100644
 +  bindings[0] = &proxy;
 +  // Always bound: with no history the shader is told so (historyValid) and never reads it.
 +  bindings[1] = history ? history : &proxy;
++  // Always bound, and zeroed by a caller that declared no field: the shader's reprojection is
++  // then the identity and its five-tap history filter the centre tap.
++  bindings[2] = &motion;
 +  bindings[6] = &head.buffer;
 +  bindings[7] = &output;
 +  dispatchLabel_ = "composite serve";
@@ -519,7 +651,7 @@ index 62bb8c3..b19a6e8 100644
  void Kernels::convertF32ToF16(VkCommandBuffer commands, const Activation& input, Activation& output) {
    check(input.format == Format::F32 && output.format == Format::F16, "convert formats");
    uint32_t count = input.rows * input.channels;
-@@ -793,6 +832,13 @@ uint32_t Kernels::ffnRowTiles(uint32_t channels) {
+@@ -793,6 +835,13 @@ uint32_t Kernels::ffnRowTiles(uint32_t channels) {
    return channels == 256 ? 3u : 4u;   // warps = E * rowTiles (<= 32); C=256: 24 warps at .maxnreg 80 keep one workgroup per SM
  }
  
@@ -534,10 +666,10 @@ index 62bb8c3..b19a6e8 100644
    check(a.input && a.input->format == Format::E4 && a.output && a.output->format == Format::E4, "PTX FFN formats");
    check(a.channels == 64 || a.channels == 128 || a.channels == 256, "PTX FFN channels");
 diff --git a/src/kernels.h b/src/kernels.h
-index 472bd36..e1c8be5 100644
+index 472bd36..a002503 100644
 --- a/src/kernels.h
 +++ b/src/kernels.h
-@@ -77,10 +77,32 @@ class Kernels {
+@@ -77,10 +77,37 @@ class Kernels {
      uint32_t fullWidth, fullHeight, validWidth, validHeight, sourceWidth, sourceHeight, seed;
      bool autoMask;
      float localTone, localStructure, skinStructure, style;
@@ -563,14 +695,19 @@ index 472bd36..e1c8be5 100644
 +  // loop at all.
 +  void expandRgba8ToProxy(VkCommandBuffer commands, const vk::Buffer& source,
 +                          const vk::Buffer& proxy, uint32_t width, uint32_t height);
++  // `motion` is the client's field: 2 x f16 per pixel, current -> previous, in work-resolution
++  // pixels (guides.py's units, and what NGX consumes), which the shader turns into the
++  // reprojection the demo's motionTex carries in uv. A caller that declared no field passes a
++  // zeroed buffer of the same size: the reprojection is then the identity, and the five-tap
++  // history filter is the centre tap and nothing else.
 +  void compositeToRgba8(VkCommandBuffer commands, const vk::Buffer& proxy, const Activation& head,
 +                        const vk::Buffer& output, uint32_t proxyWidth, uint32_t headWidth,
-+                        uint32_t validWidth, uint32_t validHeight,
++                        uint32_t validWidth, uint32_t validHeight, const vk::Buffer& motion,
 +                        const vk::Buffer* history = nullptr, float blendScale = 1.0f);
    void convertF32ToF16(VkCommandBuffer commands, const Activation& input, Activation& output);
    void quantize(VkCommandBuffer commands, const Activation& input, Activation& output);
    void downsample2x(VkCommandBuffer commands, const Activation& input, Activation& output, uint32_t inWidth,
-@@ -210,13 +232,19 @@ class Kernels {
+@@ -210,13 +237,19 @@ class Kernels {
    // w2 tile-major [e][4][32][32], w3 tile-major [K/32][K][32].
    static bool ptxFfnEnabled();
    static uint32_t ffnRowTiles(uint32_t channels);          // PTX expert FFN: 16-row tiles per workgroup (its chaining signals cover 16 * tiles rows)
@@ -630,10 +767,10 @@ index 867c97e..66f2175 100644
  #include <string>
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..abd4d32
+index 0000000..24265ec
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,717 @@
+@@ -0,0 +1,740 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -653,19 +790,28 @@ index 0000000..abd4d32
 +//   * No shared-memory channel. SHMI is answered ok=0, which is the documented
 +//     fallback: the client stays on sending frames down the pipe. (Worker.start passes
 +//     no shm at all, so the MVP never asks; this is for everything else that might.)
-+//   * A history, and no reprojection. serve keeps the frame it published last, feeds it back
-+//     as lanes 7-9 (the network's temporal input) and blends it in the composite:
++//   * A history, reprojected and filtered. serve keeps the frame it published last, feeds it
++//     back as lanes 7-9 (the network's temporal input) and blends it in the composite:
 +//
 +//       weight = clamp(sigmoid(head.a) * block70.layer0.blend_scale, 0, 1)
 +//       neural = lerp(proxy + head.rgb / 4, history, weight)      # docs/frame.md
 +//
-+//     With the zero motion field the MVP sends ("The MVP has no real motion vectors",
-+//     minimal/loop.py) the reprojection is the identity, so the sample is the pixel itself,
-+//     not a motion-compensated one - one frame, one surface, and a reset drops it. The blend
++//     The composite samples that history where the client's motion field says this pixel was -
++//     current -> previous, work-resolution pixels, the units guides.py sends NGX - with the
++//     demo's five-tap Catmull-Rom reconstruction (shaders/composite_serve.comp, and
++//     experiments/opendlss_port/check_composite.py, which transliterates both sides). The field
++//     is the wire's; nothing is derived from the picture. A zero field ("The MVP has no real
++//     motion vectors", minimal/loop.py) puts the previous position at this pixel's own centre,
++//     where the five-tap is the centre tap and nothing else - so the fixture's bytes are what
++//     they were before the filter existed, which is what a run on the box can check. The blend
 +//     weight is the network's own, per pixel; blend_scale is read from the model rather than
-+//     assumed. What is NOT here: the reprojection, the five-tap history filter the demo uses
-+//     (the identity needs none), and the demo's style / tone-upgrade / display path, which is
-+//     this pipeline's display stage and not NR.
++//     assumed. What is NOT here: the demo's style / tone-upgrade / display path, which is this
++//     pipeline's display stage and not NR.
++//
++//     What the field does not carry is the demo's per-pixel "is there a history" flag
++//     (motionTex.z): a reprojection that leaves the valid rectangle is the one case readable
++//     from the position, and those pixels skip the blend. Disocclusion is not visible to
++//     either and stays the network's blend logit to reject.
 +//
 +// The proxy is the incoming frame's code values, f16-rounded. The network sees a
 +// display proxy (docs/frame.md) and an SDR video frame is already display-referred, so
@@ -1046,6 +1192,7 @@ index 0000000..abd4d32
 +  vk::Buffer colourBuffer{};  // the client's RGBA8 frame, from the pipe or the mapping
 +  vk::Buffer imageBuffer{};      // RGBA8, the composite's output and what leaves the device
 +  vk::Buffer historyProxy{};     // the last published frame, as a proxy the next one reads
++  vk::Buffer motionBuffer{};     // the client's motion field, 2 x f16 per pixel, as it arrived
 +  nr::Activation* features = nullptr;
 +  uint32_t fullWidth = 0, fullHeight = 0;
 +  bool haveHistory = false;      // a frame has been served, so lanes 7-9 have one to read
@@ -1101,6 +1248,12 @@ index 0000000..abd4d32
 +    // next frame's lanes 7-9 read (docs/frame.md's history, at this path's 8 bits).
 +    historyProxy = context->createBuffer((VkDeviceSize)workWidth * workHeight * 16, false, "history proxy");
 +    context->fillZero(historyProxy);
++    // The motion field, in the wire's own layout: 2 x f16 per pixel, current -> previous, in
++    // work-resolution pixels. Zeroed here and left zeroed by a caller that declares no field,
++    // which is what makes "no motion" the identity reprojection without a branch in the shader
++    // and without uploading 14.7MB of nothing every frame.
++    motionBuffer = context->createBuffer((VkDeviceSize)workWidth * workHeight * 4, false, "motion field");
++    context->fillZero(motionBuffer);
 +    preprocess.fullWidth = fullWidth;
 +    preprocess.fullHeight = fullHeight;
 +    // The warm record: every PTX kernel is JIT-compiled on first use, so the first frame
@@ -1215,8 +1368,9 @@ index 0000000..abd4d32
 +      const bool noMotion = (flags & kFrameFlagNoMotion) != 0;
 +      if (noMotion && !motionSaidNothing) {
 +        motionSaidNothing = true;
-+        fprintf(stderr, "serve: the caller declared no motion field: the history is sampled at the pixel\n"
-+                        "serve: itself, which is what zero motion means\n");
++        fprintf(stderr, "serve: the caller declared no motion field: the reprojection is the identity\n"
++                        "serve: and the five-tap history filter is the centre tap, which is the pixel\n"
++                        "serve: itself - so no published byte can move for it\n");
 +      }
 +      if ((flags & kFrameFlagShm) && input.map) {
 +        // The frame is in the mapping: only its header came down the pipe.
@@ -1264,6 +1418,11 @@ index 0000000..abd4d32
 +        // dispatch expands it to what preprocess.comp reads. The rounding to f16 is
 +        // preprocess's own, so it is not repeated here.
 +        context->upload(colourBuffer, colour.data(), (VkDeviceSize)colour.size());
++        // And the motion field, when the caller sent one. It goes up in the wire's own layout,
++        // so the shader reads the field the client computed rather than a conversion of it; a
++        // caller that declared no field leaves the buffer zeroed from startup, which is the
++        // identity reprojection at no cost per frame.
++        if (!noMotion) context->upload(motionBuffer, motion.data(), (VkDeviceSize)motion.size());
 +        const std::chrono::steady_clock::time_point afterUpload = std::chrono::steady_clock::now();
 +        context->resetDescriptorPool();
 +        VkCommandBuffer commands = context->beginCommands();
@@ -1281,7 +1440,8 @@ index 0000000..abd4d32
 +        // frame there, and publishing it here means the readback is the finished 14.7MB
 +        // image rather than the head's 60MB of f32.
 +        kernels->compositeToRgba8(commands, proxy, graph->head(), imageBuffer, workWidth, fullWidth,
-+                                  workWidth, workHeight, haveHistory ? &historyProxy : nullptr, blendScale);
++                                  workWidth, workHeight, motionBuffer,
++                                  haveHistory ? &historyProxy : nullptr, blendScale);
 +        context->endAndSubmit(commands, true);
 +        checkChainTimeouts(*kernels);
 +        const std::chrono::steady_clock::time_point afterRecord = std::chrono::steady_clock::now();

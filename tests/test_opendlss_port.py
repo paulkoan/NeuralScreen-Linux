@@ -129,7 +129,9 @@ def test_the_readme_keeps_its_evidence():
         "the boundary: it builds here, it needs a GPU to run")
     assert "GL_EXT_float_e4m3" in readme, (
         "the glslang version constraint, which a distro glslang can fail on")
-    assert "vkBasalt" in readme, "the implicit layer that would poison a measurement"
+    assert "vkBasalt" in readme, "the implicit layer, and why it does not poison a run"
+    assert "ENABLE_VKBASALT" in readme, (
+        "the gate that keeps the layer off: installed, but enabled nowhere")
 
 
 def test_the_apply_script_exists_and_is_the_documented_route():
@@ -187,38 +189,50 @@ def test_the_composite_push_constants_are_the_same_list_on_both_sides():
     assert declared == pushed, f"shader {declared} vs host {pushed}"
 
 
-def test_the_composite_blend_is_checked_against_its_two_authorities():
-    """The blend has two things to match and they pull in opposite directions.
+def test_the_composite_is_checked_against_its_authorities():
+    """The composite has three things to match and they pull in different directions.
 
     With no history the published byte must not move, because that is what the parity gate
     compares (src/main.cpp's `composed()`); with a history the value must be the demo's
-    `nr_composite.comp`, formula for formula. check_composite.py transliterates all three
-    and compares them on random input, reading the shader out of the patch rather than out
-    of a copy that can drift.
+    `nr_composite.comp`, formula for formula; and the history sample itself must be the
+    demo's `nr_common.glsl` reprojection and five-tap Catmull-Rom, at zero motion the centre
+    tap the fixture's bytes depend on. check_composite.py transliterates all of it and
+    compares it on random input — the filter against an independent build of the same filter,
+    so that agreeing is not the transliteration agreeing with itself — reading the shader out
+    of the patch rather than out of a copy that can drift.
     """
     script = PORT / "check_composite.py"
-    assert script.exists(), "the blend's arithmetic is checked, not asserted"
+    assert script.exists(), "the composite's arithmetic is checked, not asserted"
     pytest.importorskip("numpy")
     source = script.read_text()
     assert "linux-port.patch" in source, "it has to read the shader that ships"
     assert "nr_composite.comp" in source and "composed()" in source, "both authorities, named"
+    assert "nr_common.glsl" in source and "historySample" in source, (
+        "the reprojection and the filter come from the demo's nr_common.glsl; the checker has "
+        "to say so rather than reinventing them")
 
     finished = subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
     assert finished.returncode == 0, finished.stdout + finished.stderr
-    assert finished.stdout.count("agree") == 2, finished.stdout
+    # One line per comparison: no history, the blend, the five-tap at zero motion, the
+    # five-tap against the independent build, the reprojection's units, the history flag.
+    assert finished.stdout.count("agree") == 6, finished.stdout
+    assert "DIFFER" not in finished.stdout, finished.stdout
 
     # And it has to be able to fail: a checker that passes on a shader missing the blend is
-    # not checking anything. Strip the one line the blend is and watch it refuse.
+    # not checking anything, and the same goes for the terms the history half added. Strip the
+    # line and watch it refuse — the blend's own, the filter's normalize, and a tap.
     patch = PATCH.read_text()
-    line = "    value = fma(vec3(weight), historyValue - value, value);\n"
-    assert line in patch, "the blend line moved; update this test with it"
-    with tempfile.TemporaryDirectory() as tmp:
-        broken = Path(tmp) / "linux-port.patch"
-        broken.write_text(patch.replace(line, ""))
-        finished = subprocess.run([sys.executable, str(script), str(broken)],
-                                  capture_output=True, text=True)
-    assert finished.returncode == 2, finished.stdout + finished.stderr
-    assert "no longer contains" in finished.stdout, finished.stdout
+    for line in ("    value = fma(vec3(weight), historyValue - value, value);\n",
+                 "  return value * (1.0 / (e + (d + (c + (a + b)))));\n",
+                 "  vec3 right = historyFetch(vec2(high.x, center.y));\n"):
+        assert line in patch, f"a line the checker names moved: {line!r}"
+        with tempfile.TemporaryDirectory() as tmp:
+            broken = Path(tmp) / "linux-port.patch"
+            broken.write_text(patch.replace(line, ""))
+            finished = subprocess.run([sys.executable, str(script), str(broken)],
+                                      capture_output=True, text=True)
+        assert finished.returncode == 2, finished.stdout + finished.stderr
+        assert "no longer contains" in finished.stdout, finished.stdout
 
 
 def test_the_rebuild_script_is_the_two_steps_then_a_check():
@@ -309,3 +323,70 @@ def test_the_composite_shader_compiles():
                                  "-o", str(Path(tmp) / "out.spv")],
                                 capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_the_blend_scale_readout_is_the_models_weight_and_not_the_default():
+    """The one line a run's blend claim rests on, checked against the model itself.
+
+    `serve: blend scale 0.7397 (block70.layer0.blend_scale)` is the only evidence that the
+    temporal blend's learned cap came out of the model. Absent or short, the readout falls
+    back to the demo's own 1.0 — and a run with the default looks like every other run, so
+    nothing else here would notice. check_blend_scale.py reads the readout out of the patch
+    and the value out of the DLL's weight table and refuses (exit 2) if the read does not
+    land on docs/frame.md's 0.7397, or if the bytes one half along read the same thing.
+    """
+    script = PORT / "check_blend_scale.py"
+    assert script.exists(), "the readout's value is checked, not asserted"
+    dll = ROOT / "native" / "nvngx_dlssnr.dll"
+    if not dll.is_file():
+        pytest.skip("the DLSS-NR DLL is not in this checkout, so there is no model to read")
+
+    finished = subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
+    assert finished.returncode == 0, finished.stdout + finished.stderr
+    assert "nvngx_dlssnr.dll" in finished.stdout, "it has to read the model, not restate a constant"
+    # One agree per authority: the read's coordinates, the three that are not them, and the
+    # fallback's own string. A count rather than a substring, so losing one of them shows.
+    assert finished.stdout.count("agree") == 5, finished.stdout
+    assert "0.73974609375" in finished.stdout, "the f16 in the model, as the readout would print it"
+
+
+def test_the_blend_scale_guard_refuses_a_read_that_moved():
+    """And it has to be able to fail, or it is a checker that passes on anything.
+
+    Three ways the readout could stop being the model's weight without anyone seeing it:
+    the read removed (the fallback stands and prints its own string), the read pointed at a
+    different half of the tensor, and the read pointed at a different tensor. The first is
+    refused from the source alone; the other two need the model, because what makes the
+    offset wrong is the value it lands on.
+    """
+    script = PORT / "check_blend_scale.py"
+    patch = PATCH.read_text()
+    read = '        const nr::Tensor& blend = model->tensor(70, 0, "blend_scale");\n'
+    aux = "nr::auxHalf(blend, 0, 0)"
+    for line in (read, aux):
+        assert line in patch, "the readout moved; update this test with it"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        broken = Path(tmp) / "linux-port.patch"
+
+        # The read removed: the source is what moved, so this needs no model.
+        broken.write_text(patch.replace(read, ""))
+        finished = subprocess.run([sys.executable, str(script), str(broken)],
+                                  capture_output=True, text=True)
+        assert finished.returncode == 2, finished.stdout + finished.stderr
+        assert "no longer contains" in finished.stdout, finished.stdout
+
+        # A read pointed at a different offset: only the model can refuse this one.
+        dll = ROOT / "native" / "nvngx_dlssnr.dll"
+        if not dll.is_file():
+            return
+        for label, old, new in (("the next half", aux, "nr::auxHalf(blend, 2, 0)"),
+                                ("column 1", aux, "nr::auxHalf(blend, 0, 1)"),
+                                ("another tensor", read, read.replace("(70, 0,", "(69, 0,"))):
+            broken.write_text(patch.replace(old, new))
+            finished = subprocess.run([sys.executable, str(script), str(broken)],
+                                      capture_output=True, text=True)
+            assert finished.returncode == 2, f"{label}: " + finished.stdout + finished.stderr
+            assert "REFUSED" in finished.stdout or "no longer contains" in finished.stdout, (
+                f"{label}: " + finished.stdout)
+

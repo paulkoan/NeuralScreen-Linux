@@ -145,17 +145,15 @@ NS_WORKER_CMD="/home/paul/dev/OpenDLSS-NR/build/dlss5vk serve --model /home/paul
 expects `OUT1` — all three already match, so `NS_WORKER_CMD` is the whole integration.
 
 Verified without a GPU, on the real protocol (`tests/test_native_serve.py`, and by hand
-against the built binary): the header is parsed and the work size taken from it, two
-fallback — the client keeps sending down the pipe), an unknown command is answered rather
-than ignored, and a closed stream ends the process with exit 0.
+against the built binary): the header is parsed and the work size taken from it, `SHMI` and
+`OUTS` are negotiated and the frame and the result come off the pipe, an unknown command is
+answered rather than ignored, and a closed stream ends the process with exit 0.
 
 What it does **not** do, and says so instead of misbehaving:
 
 - **No NGX upscaling.** `fullWidth`/`fullHeight` must be 0 or the work size, so a
   `--work-scale` run is rejected at the header rather than served wrong-sized frames.
-  passes no shm), so frames stay on the pipe and the ~45ms `send` stays until the
-  transport itself changes.
-- **A history, blended, and no reprojection.** The temporal loop, both halves. `serve` keeps the
+- **A history, reprojected and filtered, and blended.** The temporal loop, both halves. `serve` keeps the
   frame it published last, expands it into a proxy of its own (`proxy_expand.comp`, one dispatch,
   no host bytes) and hands it to `preprocess.comp` as lanes 7-9 — where the demo's
   `nr_preprocess.comp` samples its history surface — and `composite_serve.comp` then blends it
@@ -169,20 +167,40 @@ What it does **not** do, and says so instead of misbehaving:
   `blend_scale` is read out of the model (`block70.layer0.blend_scale`, printed at startup)
   rather than written into the source, and the weight is the demo's own expression, constant
   included, because the two have to agree bit for bit. The pipeline sends a zero motion field
-  every frame (`minimal/loop.py`: "The MVP has no real motion vectors"), so the reprojection is
-  the identity and the history sample is the pixel itself — the reprojection and the demo's
-  five-tap Catmull-Rom filter are what this half still leaves out, and neither is dishonest while
-  the motion field is a zero one. A frame carrying a reset, or one served in bypass, has no
-  history: the blend is skipped and the residual is published alone, which is why the parity gate
-  (`src/main.cpp` passes no history) cannot see any of this. Motion is read and ignored, not
-  silently trusted.
+  every frame (`minimal/loop.py`: "The MVP has no real motion vectors").
+
+  The history it blends is the demo's. The client's motion field (2 × f16 per pixel, current →
+  previous, work-resolution pixels — `guides.py`'s units, "NGX consumes current-to-previous motion
+  in pixel units") is bound to the composite as it arrives and the sample is the demo's five-tap
+  Catmull-Rom reconstruction at the reprojected position: the four axis taps and the centre with
+  the bilinear-weight trick, clamped to the valid rectangle, combined and normalized exactly as
+  `demo/shaders/nr_common.glsl` combines them. The history is a buffer rather than a sampled image,
+  so the bilinear a texture unit does for the demo's `textureLod` is written out in the shader.
+
+  The port carries the position in pixels where the demo divides out to uv and multiplies back, and
+  that is deliberate: with the zero field the pipeline sends, the position is the pixel's own
+  centre, the weights collapse to the centre tap, and the published byte is the one the blend was
+  measured at (r2026-10-12-d) — a property no uv round trip would hold, since `(x / valid) * valid`
+  is not `x`. A frame carrying a reset, or one served in bypass, has no history: the blend is
+  skipped and the residual is published alone, which is why the parity gate (`src/main.cpp` passes
+  no history) cannot see any of this.
+
+  What the field does not carry is the demo's per-pixel "is there a history at that previous
+  position" flag (`motionTex.z`); the wire's field has no room for it, and the one case readable
+  from the position — a reprojection that leaves the valid rectangle — skips the blend, which is
+  the demo's treatment of a pixel whose previous position was off screen. Still the identity:
+  `preprocess.comp`'s lanes 7-9, which the demo also reprojects and filters, and which want the
+  same treatment before real motion is worth measuring.
 
   The arithmetic is checked rather than asserted —
   `uv run python experiments/opendlss_port/check_composite.py` transliterates the shader, the
-  demo's composite and `src/main.cpp`'s `composed()`, and compares them over 4000 random cases
-  including the saturated and ±60-logit extremes: with no history the published byte does not
-  move, and with one the value is the demo's, formula for formula. It reads the shader out of
-  `linux-port.patch`, so it cannot drift from what ships, and it refuses (exit 2) if the shader
+  demo's composite, `src/main.cpp`'s `composed()` and `nr_common.glsl`'s reprojection and five-tap,
+  and compares them over 4000 random cases including the saturated and ±60-logit extremes: with no
+  history the published byte does not move; with one the value is the demo's, formula for formula;
+  the filter agrees with an independently built Catmull-Rom to f32 rounding, where a version of it
+  that lost its normalize is 1.4e-2 out, so the bound is checking something; and at zero motion it
+  is the centre tap exactly, every pixel of a small field, edges included. It reads the shader out
+  of `linux-port.patch`, so it cannot drift from what ships, and it refuses (exit 2) if the shader
   stops saying what it transliterates.
 
 The model directory is the one input to this path nobody can look at: it comes out of
@@ -199,7 +217,10 @@ before it bites:
 - **Check the directory before a run, not after.** `experiments/opendlss_weights/check_model.py
   <dir>` recomputes the hashes and checks the structural claims the manifest makes about
   itself — every tensor inside its stage, the tensors of a stage tiling it exactly — with
-  no device involved.
+  no device involved. It reads the *values* too: the pinned `blend_scale` always, and with
+  `--dll native/nvngx_dlssnr.dll` all 153 tensors byte for byte against the DLL's own weight
+  table. Structure cannot see a payload cut at the wrong offset — such a directory tiles and
+  hashes perfectly — so the value checks are the only ones that catch it before a run.
 - **The payload offset is pinned by a value, not by arithmetic.** A record's size fields read
   `payload + 40`, which is its *whole* metadata — 28 bytes of fields and 12 after — and reading
   that 40 as the header put every payload twelve bytes late. The pin is
@@ -207,6 +228,17 @@ before it bites:
   bytes wide, and it reads 0.73975 exactly 28 bytes after its name. A shifted payload is not a
   subtler model, it is a diverging one — an output head that comes back two thirds non-finite
   and a picture that is a flat colour.
+- **The readout's value is read from the model, not defaulted to.** `serve` prints
+  `serve: blend scale 0.7397 (block70.layer0.blend_scale)` once at startup, and a run whose weight
+  did not arrive prints the same line with `absent - defaulted to 1.0, the demo's fallback` — the
+  frame, the timings and the parity gate are all the same either way. So the value is checked
+  against the model it comes from rather than asserted: `experiments/opendlss_port/check_blend_scale.py`
+  takes the readout out of `linux-port.patch`'s `src/serve.cpp` (the tensor, the half inside it, the
+  width guard, and the two strings that make "read" and "defaulted" different lines) and the value
+  out of the DLL's table — `block70.layer0.blend_scale` is `eb 39`, which as f16 is 0.73974609375.
+  Point the read at the next half, or at column 1, or at another tensor, or remove it, and it
+  refuses with exit 2. Its second argument is the container, so it needs the DLL: without it the
+  source half still runs, but nothing can verify the value.
 
 Two knobs and one open question:
 
@@ -243,10 +275,14 @@ VK_NV_cuda_kernel_launch         extension revision 2
 
 Two caveats before trusting that: an advertised extension is not an enabled feature, so
 what needs checking is the *features and properties* — that FP8 works with E4M3/E5M2
-components and f16 accumulation at this network's shapes. And `vkBasalt` is loaded as an
-implicit layer on this box (twice, from two json files — the loader warns about the
-duplicate); it injects a post-processing pass into every Vulkan app, so it should be
-disabled before any measurement means anything.
+components and f16 accumulation at this network's shapes. And `vkBasalt` is installed as
+an implicit layer on this box (twice, from two json files — the loader warns about the
+duplicate), but an implicit layer is only *loaded* here: its manifest gates it behind
+`enable_environment` (`ENABLE_VKBASALT=1`), and that variable is set nowhere on the box —
+not the shell, `/etc/environment`, `profile.d`, the fish config, `environment.d`, or the
+user manager. So the layer is never activated, adds no pass to a measurement, and the
+duplicate file is a cosmetic loader warning rather than a poisoned benchmark.
+(Checked 2026-10-14.)
 
 ## What is still unverified
 
@@ -289,3 +325,17 @@ shared channel before.
 
 `tests/test_native_serve_shm.py` drives both against a real process with the client's own
 `SharedFrameBuffer` and `send_frame`, in bypass mode so no device is needed.
+
+The pipeline's own runs use them. Every 1440p run since `r2026-10-11-b` negotiates `SHMI`
+(`[main] shared memory agreed: 29.5 MB, the frame does not go through the pipe`), opens the frame
+channel (29.5MB in) and the pixel channel (14.7MB out), and ends with worker exit 0. The numbers,
+from `r2026-10-12-b` (2560x1440, `--shm --no-motion`, 60 frames, exit 0): `send` min 1.7 / median
+1.9 / max 5.6ms — the max is frame 0, the worker's warm-up — and `network+composite` 12.2ms at
+frame 29 and 12.0ms at frame 59. `r2026-10-12-d`, the same fixture and flags against the blend
+build, repeats it: 1.8ms, 12.7/12.2ms. The one run where the negotiation did not land is
+`r2026-10-11-a`: the client timed out on `SHMI`, kept sending down the pipe as documented, and the
+Wine worker then died of NGX being unavailable (exit 3) — a Wine problem, not the transport's.
+
+What is still not measured is the other way: no 1440p run has gone down the pipe since the channels
+landed, so the pipe's own per-frame `send` at 1440p, beside these runs on the same fixture and
+flags, is still owed one.

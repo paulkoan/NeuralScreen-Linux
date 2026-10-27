@@ -114,7 +114,14 @@ def prepare_checkout(policy: dict) -> Path:
                 f"  (a name that will not resolve and a key that will not authenticate both "
                 f"look like this from here; the line above is git's own reason)")
     git(worktree, "fetch", "origin", "--prune")
-    git(worktree, "checkout", "-B", policy["request_branch"],
+    # -f, because this is a disposable mirror of the request branch and nothing in
+    # its working tree is worth keeping. Without it a single uncommitted edit makes
+    # the checkout abort - "Your local changes to the following files would be
+    # overwritten" - and the unit then retries every tick, forever, without ever
+    # recovering. The usual culprit is runs/next.md being edited in this clone
+    # instead of committed to main. Force the switch; the reset below discards
+    # whatever was there.
+    git(worktree, "checkout", "-f", "-B", policy["request_branch"],
         f"origin/{policy['request_branch']}")
     git(worktree, "reset", "--hard", f"origin/{policy['request_branch']}")
     return worktree

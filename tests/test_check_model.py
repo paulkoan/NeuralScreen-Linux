@@ -22,10 +22,13 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from experiments.opendlss_weights.check_model import check, sha256_of  # noqa: E402
+from experiments.opendlss_weights.check_model import (  # noqa: E402
+    check, dll_payloads, sha256_of,
+)
 
 SCRIPT = ROOT / "experiments" / "opendlss_weights" / "check_model.py"
 REAL = Path("/opt/data/tmp/odl_model")
+DLL = ROOT / "native" / "nvngx_dlssnr.dll"
 
 
 def build(directory: Path, stages=(b"abcd", b"efghij")) -> Path:
@@ -199,3 +202,99 @@ def test_the_loaders_own_hash_is_what_the_manifest_must_match(tmp_path):
         manifest = json.loads((REAL / "manifest.json").read_text())
         assert manifest["stages"][0]["sha256"] == got[0], (
             "our manifest does not match what the loader computes for the same bytes")
+
+
+# --- the values themselves -------------------------------------------------------------
+#
+# Every check above is satisfied by a directory whose payloads are the wrong bytes: the
+# offsets tile each stage exactly and the hashes describe what is on disk. The split the
+# extractor read as 40 for a whole model passed all of them. So these check numbers with a
+# known value, and — with a DLL — every tensor's bytes against the copy the weights came
+# from, which is the only expected content that is not the manifest talking to itself.
+
+
+def build_pinned(directory: Path, payload: bytes = b"\xeb\x39") -> Path:
+    """One stage holding one tensor: the documented blend_scale and nothing else.
+
+    `\\xeb\\x39` is 0.73975 as f16, which is what docs/frame.md's 0.7397 reads as — and it is
+    what sits 28 bytes after the name in the DLL. `\\x00\\x00` is what the record's trailer
+    reads, so a payload cut 12 bytes late reads 0.0 instead.
+    """
+    model = directory / "model"
+    model.mkdir(parents=True)
+    (model / "stage00.bin").write_bytes(payload)
+    manifest = {
+        "totals": {"blockCount": 1, "tensorCount": 1, "stageCount": 1},
+        "fieldSplit": 28,
+        "stages": [{"id": "stage00", "file": "stage00.bin",
+                    "packedByteLength": len(payload),
+                    "sha256": hashlib.sha256(payload).hexdigest().upper()}],
+        "tensors": [{"name": "block70.layer0.blend_scale", "block": 70, "layer": "layer0",
+                     "parameter": "blend_scale", "stage": "stage00",
+                     "stageOffset": 0, "byteLength": len(payload)}],
+    }
+    (directory / "manifest.json").write_text(json.dumps(manifest))
+    return directory
+
+
+def test_the_documented_blend_scale_is_checked_by_value(tmp_path):
+    """The one number the documentation names outside the network's arithmetic."""
+    problems, notes = check(build_pinned(tmp_path / "m"))
+    assert problems == []
+    assert any("blend_scale" in note and "0.73974609375" in note for note in notes), notes
+
+
+def test_a_payload_that_does_not_read_the_documented_value_is_named(tmp_path):
+    """A shifted payload, at the value level — the shape checks cannot see this one.
+
+    Cut 12 bytes late, the payload lands on the record's trailer and reads 0.0 where the
+    documentation says 0.7397. That is the reading that cost a model, and nothing else in
+    the checker reports it: the bytes still tile the stage and still hash to the manifest.
+    """
+    problems, _ = check(build_pinned(tmp_path / "m", b"\x00\x00"))
+    assert len(problems) == 1, problems
+    assert "blend_scale" in problems[0] and "0.0" in problems[0]
+
+
+def test_a_pinned_tensor_of_the_wrong_width_is_named(tmp_path):
+    problems, _ = check(build_pinned(tmp_path / "m", b"\x00\x00\x00\x00"))
+    assert any("declares 4 bytes" in problem for problem in problems), problems
+
+
+@pytest.mark.skipif(not (REAL.is_dir() and DLL.is_file()),
+                    reason="needs the extraction and the DLL on this box")
+def test_every_tensor_matches_the_dlls_own_bytes():
+    """All 153 of them, against the source — expected content the manifest knows nothing of."""
+    problems, notes = check(REAL, DLL)
+    assert problems == [], problems
+    assert any("all 153 tensors match the DLL's own bytes" in note for note in notes), notes
+    assert any("blend_scale" in note and "0.73974609375" in note for note in notes), notes
+
+
+@pytest.mark.skipif(not (REAL.is_dir() and DLL.is_file()),
+                    reason="needs the extraction and the DLL on this box")
+def test_bytes_that_are_not_the_dlls_are_named(tmp_path):
+    """A directory that agrees with its own manifest and disagrees with the DLL."""
+    name = "block70.layer0.layer"
+    payload = dll_payloads(DLL, 28)[name][:2]
+    other = bytes([payload[0] ^ 0xFF]) + payload[1:]
+    directory = build_pinned(tmp_path / "m", other)
+    manifest = json.loads((directory / "manifest.json").read_text())
+    manifest["tensors"][0].update({"name": name, "block": 70, "parameter": "layer"})
+    (directory / "manifest.json").write_text(json.dumps(manifest))
+    problems, _ = check(directory, DLL)
+    assert any(name in problem and "not the DLL's bytes" in problem
+               for problem in problems), problems
+
+
+@pytest.mark.skipif(not (REAL.is_dir() and DLL.is_file()),
+                    reason="needs the extraction and the DLL on this box")
+def test_a_tensor_the_dll_does_not_have_is_named(tmp_path):
+    """A directory from a different build than the DLL it is checked against."""
+    directory = build_pinned(tmp_path / "m")
+    manifest = json.loads((directory / "manifest.json").read_text())
+    manifest["tensors"][0]["name"] = "block70.layer9.not_in_the_table"
+    (directory / "manifest.json").write_text(json.dumps(manifest))
+    problems, _ = check(directory, DLL)
+    assert any("no record for" in problem and "not the same build" in problem
+               for problem in problems), problems
