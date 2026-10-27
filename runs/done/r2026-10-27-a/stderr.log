@@ -1,0 +1,3 @@
+warning: The `native-tls` setting is deprecated and will be removed in a future release. Use `system-certs` instead.
+error: Failed to query Python interpreter
+  cause: failed to canonicalize path `/opt/neuralscreen/state/repo/.venv/bin/python`: Permission denied (os error 13)
