@@ -10,14 +10,16 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Fix the port's composite offset against NGX (code reading done, 2026-10-27). The composite is
-  `out = clamp(proxy + head/4)`: `composeChannel` in `composite_serve.comp` maps the proxy to a
-  centred space and back, exact at head=0, which is why r2026-10-27-e's bypass was byte-neutral.
-  So the +9R/+4G/+6B tone shift and the 29-43% delta are the network's *head*, not the composite
-  arithmetic - the composite is faithful to the demo and to `check_composite.py`. Next step is a
-  code change, not another comparison run: read the head back on a later frame (serve.cpp already
-  gates it to frame 0) and check its sign and scale against the expected residual. A head that is
-  positive where NGX's residual is negative points at the network's input preprocessing.
+* Close the port's fidelity gap against NGX (code change made 2026-10-27, two runs queued).
+  `serve.cpp` now reads the head back on the run's LAST frame by default instead of frame 0
+  (`DLSS5VK_SERVE_HEAD_FRAME` overrides it, -1 disables) and prints the per-channel head/4 mean -
+  the quantity the composite adds to the proxy. That is the measurement the composite-offset
+  question needs. Queued in order: `r2026-10-27-f` (port-build: apply the patch to the staged port,
+  rebuild, stamp-check) then `r2026-10-27-g` (minimal on the 13-a card, 30 frames 2560x1440
+  synthetic). Read g's `serve: head ... residual mean R G B ... logit mean ...` line and compare
+  its sign and scale against NGX's MAD 18.4345 and the port's 13-a MAD 6.7205. If the head is
+  positive where NGX's residual is negative, the +9R/+4G/+6B offset is the network's input
+  preprocessing, not the composite.
 * Decide the restoration goal. On q20 input the port leaves the 8x8 grid untouched
   (blockiness 1.5634 -> 1.5723, coherence flat) and applies a global tone shift instead. It is
   not a deblocker. Either pursue a network/stage that targets the 8x8 grid, or record that
