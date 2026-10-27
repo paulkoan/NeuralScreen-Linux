@@ -33,6 +33,22 @@ print("about to fail")
 sys.exit(3)
 """
 
+# A burst is a directory, not a file: frames/, motion/ and manifest.json. The
+# artifact copy has to take the whole tree, or a downstream run that opens
+# burst/manifest.json finds nothing even though the run "succeeded".
+BURST_STUB = """\
+import json, pathlib, sys
+pathlib.Path("ran.txt").write_text(" ".join(sys.argv[1:]))
+b = pathlib.Path("burst")
+for sub in ("frames", "motion"):
+    (b / sub).mkdir(parents=True, exist_ok=True)
+(b / "frames" / "frame_000000_before.png").write_bytes(b"PNG before")
+(b / "frames" / "frame_000000_after.png").write_bytes(b"PNG after")
+(b / "motion" / "frame_000000_motion.npz").write_bytes(b"NPZ motion")
+(b / "manifest.json").write_text(json.dumps({"frames_saved": 1}))
+print("the burst stub ran")
+"""
+
 
 def git(*args: str, cwd: Path | None = None, check: bool = True):
     return subprocess.run(["git", *args], cwd=str(cwd) if cwd else None,
@@ -88,6 +104,7 @@ def world(tmp_path: Path) -> World:
     (w.seed / "stubs").mkdir()
     (w.seed / "stubs" / "ok.py").write_text(OK_STUB)
     (w.seed / "stubs" / "boom.py").write_text(BOOM_STUB)
+    (w.seed / "stubs" / "burst.py").write_text(BURST_STUB)
     (w.seed / "stubs" / "caches.py").write_text(
         "import os, pathlib\n"
         "home = pathlib.Path(os.environ['HOME'])\n"
@@ -115,6 +132,10 @@ argv = ["{sys.executable}", "stubs/ok.py"]
 [[entry]]
 name = "boom"
 argv = ["{sys.executable}", "stubs/boom.py"]
+
+[[entry]]
+name = "burst"
+argv = ["{sys.executable}", "stubs/burst.py"]
 
 [[entry]]
 name = "caches"
@@ -156,6 +177,30 @@ def test_a_request_runs_and_lands_on_the_results_branch(world: World):
     # .gitkeep is along for the ride. What must not be there is the request itself.
     assert f"runs/queue/{run_id}.json" not in tree, "the request was published with the result"
     assert world.log().strip(), "nothing was pushed"
+
+
+def test_a_directory_artifact_is_copied_recursively(world: World):
+    """A burst directory lands in the result with its whole tree.
+
+    A burst is frames/, motion/ and manifest.json, not a single file. The copy
+    out of the run must take the tree: a manifest that points at frames that
+    were never collected is worse than no manifest, because it looks readable.
+    """
+    run_id = world.queue({"id": "r-burst", "entry": "burst",
+                          "artifacts": ["burst"],
+                          "note": "a directory artifact"})
+    finished = world.run()
+    assert finished.returncode == 0, finished.stderr
+
+    done = world.done_dir(run_id)
+    assert (done / "burst" / "manifest.json").is_file(), \
+        "the manifest was not copied out of the run"
+    assert (done / "burst" / "frames" / "frame_000000_before.png").is_file()
+    assert (done / "burst" / "frames" / "frame_000000_after.png").is_file()
+    assert (done / "burst" / "motion" / "frame_000000_motion.npz").is_file()
+    assert "the burst stub ran" in (done / "report.md").read_text()
+    assert f"runs/done/{run_id}/burst/manifest.json" in world.results_tree(), \
+        "the burst tree was not published on the results branch"
 
 
 def test_a_manual_request_waits_for_a_human_run(world: World):

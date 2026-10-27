@@ -1,0 +1,12 @@
+{
+  "id": "r2026-10-27-f",
+  "entry": "minimal",
+  "args": ["--source", "window", "--size", "2560x1440", "--frames", "120",
+           "--worker-log", "--shm", "--send-ahead", "2",
+           "--save-before", "gfn-before.png", "--save-after", "gfn-after.png",
+           "--save-burst", "burst"],
+  "timeout_s": 300,
+  "artifacts": ["gfn-before.png", "gfn-after.png", "burst"],
+  "manual": true,
+  "note": "the real GeForce Now session WITH the complete burst saved. The single gfn-before/gfn-after pair is one frame looked at twice; the burst is every frame's colour on both sides of the pass plus the motion field sent with each one. Run it with /opt/neuralscreen/run_manually.sh from a terminal in the graphical session and click the portal dialog. The deliverable is the burst directory (frames/, motion/, manifest.json) plus the 'capture split: wait ... read ...' line, quoted with the resolution. Downstream runs open it with tools/read_burst.py; the layout is docs/burst-format.md. Artifact copying now takes a directory as well as a file."
+}

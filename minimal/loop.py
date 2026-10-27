@@ -12,6 +12,10 @@ to prove the pass runs. Real optical flow is a later milestone.
 
 from __future__ import annotations
 
+import json
+import queue
+import sys
+import threading
 import time
 from collections import deque
 from pathlib import Path
@@ -286,10 +290,17 @@ class Pipeline:
         return getattr(self.capture, "pipeline_pid", None)
 
     def run(self, frames: int = 0, save_before: str | None = None,
-            save_after: str | None = None, on_frame=None) -> dict:
+            save_after: str | None = None, on_frame=None,
+            save_burst: str | None = None) -> dict:
         """Run the loop. frames=0 means until quit/EOF.
 
         Returns a summary dict — the caller (or a test) can assert on it.
+
+        save_burst=DIR saves the complete burst — every frame's colour before and
+        after the pass, and the motion field sent with it — into DIR as a
+        downstream-readable set (frames/*.png, motion/*.npz, manifest.json).
+        Encoding happens on a background thread, so the capture split stays
+        honest; a frame that cannot be queued is dropped and counted.
         """
         self.worker.start()
         started = time.monotonic()
@@ -308,6 +319,13 @@ class Pipeline:
         pair_before = None
         last_after = None
 
+        # The complete burst: every frame's colour and the motion field sent with
+        # it. Opened before the loops so frame 0 is not lost and closed in the
+        # finally block so a failure still leaves a readable manifest. Encoding
+        # runs on its own thread; the capture loop never waits on it.
+        burst = BurstWriter(save_burst) if save_burst else None
+        burst_summary = None
+
         if not self.bypass:
             # The window is up before the worker has answered anything, and its first
             # answer is behind whatever the worker does at startup — with the native
@@ -321,15 +339,30 @@ class Pipeline:
         try:
             if self.send_ahead > 1:
                 pair_before, last_after, index = self._pipelined_loop(
-                    frames, on_frame, keep_inputs=bool(save_before or save_after))
+                    frames, on_frame,
+                    keep_inputs=bool(save_before or save_after or burst),
+                    writer=burst)
             else:
-                pair_before, last_after, index = self._serial_loop(frames, on_frame)
+                pair_before, last_after, index = self._serial_loop(
+                    frames, on_frame, writer=burst)
         finally:
             # Sample the capture's CPU before close(): close() drops the
             # pipeline handle, and taking the end reading after it reported
             # "pid None" and a failed reading on every run — the measurement
             # was being taken after the thing it measures was gone.
             capture_cpu1 = self._capture_cpu()
+            if burst is not None:
+                split = {}
+                waits = self.capture_split["wait"]
+                if waits:
+                    split = {
+                        "wait_ms": round(1000 * sum(waits) / len(waits), 1),
+                        "read_ms": round(
+                            1000 * sum(self.capture_split["read"])
+                            / len(self.capture_split["read"]), 1),
+                        "frames": len(waits),
+                    }
+                burst_summary = burst.close(capture_split=split)
             self.worker.stop()
             self.capture.close()
             self.display.close()
@@ -354,6 +387,9 @@ class Pipeline:
             "worker_exit": self.worker.proc.returncode if self.worker.proc else None,
             "before": pair_before,
             "after": last_after,
+            # The burst manifest when --save-burst asked for one, so a caller can
+            # print where the frames landed and how many were kept or dropped.
+            "burst": burst_summary,
             "timing": self.timing_summary(),
             # The worker's OWN clock, parsed from the lines it stamps as it
             # delivers frames. It is the one number in a run that does not depend
@@ -381,11 +417,14 @@ class Pipeline:
                 "the worker died during the run; last stderr:\n  "
                 + "\n  ".join(self.worker.logs[-15:] or ["(no output)"]))
 
-    def _serial_loop(self, frames: int, on_frame):
+    def _serial_loop(self, frames: int, on_frame, writer=None):
         """One frame in flight: send it, then wait for that frame's result.
 
         The shape the MVP has always had, and the reason every frame carries the
         worker's whole per-frame time plus a round trip.
+
+        writer, if given, receives each answered frame's matched input/output
+        pair and the motion field that went with it.
         """
         index = 0
         pair_before = last_after = None
@@ -399,6 +438,8 @@ class Pipeline:
                 # saved pair can never straddle two frames.
                 pair_before = self.last_input
                 last_after = after
+                if writer is not None:
+                    writer.add(index, self.last_input, after, self.zero_motion)
                 if on_frame is not None:
                     on_frame(index, after)
             index += 1
@@ -437,7 +478,7 @@ class Pipeline:
             self._timed("display", self.display.show, after)
         return sent_index, input_frame, after
 
-    def _consume(self, window, pair: list, on_frame) -> None:
+    def _consume(self, window, pair: list, on_frame, writer=None) -> None:
         """Take one result and keep the counters, the pair and the callback in step.
 
         One implementation for the window path and the drain path: two copies of
@@ -450,10 +491,16 @@ class Pipeline:
         self.frames_done += 1
         if input_frame is not None:
             pair[0], pair[1] = input_frame, after
+            # The input is only kept when something is going to save a pair or a
+            # burst, so its presence is what makes this frame a complete one to
+            # write out: colour in, colour out and the motion field between.
+            if writer is not None:
+                writer.add(sent_index, input_frame, after, self.zero_motion)
         if on_frame is not None:
             on_frame(sent_index, after)
 
-    def _pipelined_loop(self, frames: int, on_frame, keep_inputs: bool):
+    def _pipelined_loop(self, frames: int, on_frame, keep_inputs: bool,
+                        writer=None):
         """Keep `send_ahead` frames in flight instead of one.
 
         The worker answers in order — it finishes writing a frame's reply before
@@ -489,12 +536,12 @@ class Pipeline:
             index += 1
 
             while len(window) >= self.send_ahead:
-                self._consume(window, pair, on_frame)
+                self._consume(window, pair, on_frame, writer=writer)
 
         # Drain what is still in flight: frames_done should count every frame the
         # worker answered, not only the ones the window happened to wait for.
         while window:
-            self._consume(window, pair, on_frame)
+            self._consume(window, pair, on_frame, writer=writer)
         return pair[0], pair[1], index
 
     def close(self) -> None:
@@ -512,9 +559,124 @@ def _save_rgba(path: str, frame: np.ndarray) -> None:
     pygame.image.save(surface, path)
 
 
+class BurstWriter:
+    """Save the complete burst: every frame's colour and the motion field sent.
+
+    The burst is what a downstream analysis run reads: for each frame the colour
+    frame the pass was given (``..._before.png``), the colour frame it returned
+    (``..._after.png``) and the motion field that went with it
+    (``..._motion.npz``), plus one ``manifest.json`` naming the layout, the
+    resolution and the capture split so a reader never has to guess. PNG for the
+    frames because it is lossless and ``tools/frame_diff.py`` already reads PNG;
+    npz for the motion because a zero field compresses to a few KB instead of the
+    14.7 MB it occupies in RAM at 1440p.
+
+    Encoding runs on its own thread with a bounded queue. A PNG encode at 1440p
+    costs ~40 ms and the capture loop runs at ~120 ms/frame, so saving inline
+    would inflate the very capture split a live run is measuring. A frame that
+    cannot be queued is dropped and counted — the capture never waits on the
+    writer, and the manifest says how many frames it lost.
+    """
+
+    def __init__(self, root: str | Path, queue_depth: int = 4) -> None:
+        self.root = Path(root)
+        self.frames_dir = self.root / "frames"
+        self.motion_dir = self.root / "motion"
+        self.frames_dir.mkdir(parents=True, exist_ok=True)
+        self.motion_dir.mkdir(parents=True, exist_ok=True)
+        self._queue_depth = max(1, int(queue_depth))
+        self._q: queue.Queue = queue.Queue(maxsize=self._queue_depth)
+        self._stop = object()
+        self.saved = 0
+        self.dropped = 0
+        self.errors: list[str] = []
+        self.width = self.height = None
+        self.motion_shape = None
+        self.motion_dtype = None
+        self._t0 = time.time()
+        self._thread = threading.Thread(
+            target=self._worker, name="burst-writer", daemon=True)
+        self._thread.start()
+
+    # -- public ----------------------------------------------------------
+    def add(self, index: int, before, after, motion) -> None:
+        """Queue one frame's colour and motion. Never blocks, never raises."""
+        try:
+            self._q.put_nowait((index, before, after, motion))
+        except queue.Full:
+            self.dropped += 1
+        except Exception as exc:  # a save must never stop the capture
+            self.errors.append(f"frame {index}: {exc}")
+
+    def close(self, capture_split: dict | None = None) -> dict:
+        """Drain the queue, write manifest.json and return it."""
+        try:
+            self._q.put(self._stop, timeout=5)
+        except queue.Full:
+            pass
+        self._thread.join(timeout=120)
+        manifest = {
+            "format": "neuralscreen-burst/1",
+            "frames_saved": self.saved,
+            "frames_dropped": self.dropped,
+            "width": self.width,
+            "height": self.height,
+            "frames_dir": "frames",
+            "motion_dir": "motion",
+            "frame_pattern": "frame_{index:06d}_before.png / "
+                             "frame_{index:06d}_after.png",
+            "motion_pattern": "frame_{index:06d}_motion.npz",
+            "motion_shape": self.motion_shape,
+            "motion_dtype": self.motion_dtype,
+            "seconds": round(time.time() - self._t0, 2),
+            "note": ("before = the colour frame the pass was given; after = the "
+                     "colour frame it returned; motion = the motion field sent "
+                     "with that frame (float16 HxWx2, read with "
+                     "numpy.load(path)['motion'])"),
+            "errors": self.errors[:20],
+        }
+        if capture_split:
+            manifest["capture_split"] = capture_split
+        try:
+            (self.root / "manifest.json").write_text(json.dumps(manifest, indent=2))
+        except Exception as exc:
+            print(f"[burst] manifest not written: {exc}", file=sys.stderr)
+        return manifest
+
+    # -- worker thread ---------------------------------------------------
+    def _worker(self) -> None:
+        while True:
+            item = self._q.get()
+            if item is self._stop:
+                break
+            index, before, after, motion = item
+            try:
+                if before is not None:
+                    _save_rgba(
+                        str(self.frames_dir / f"frame_{index:06d}_before.png"),
+                        before)
+                    if self.width is None:
+                        self.height, self.width = before.shape[:2]
+                if after is not None:
+                    _save_rgba(
+                        str(self.frames_dir / f"frame_{index:06d}_after.png"),
+                        after)
+                if motion is not None:
+                    np.savez_compressed(
+                        self.motion_dir / f"frame_{index:06d}_motion.npz",
+                        motion=motion)
+                    self.motion_shape = list(motion.shape)
+                    self.motion_dtype = str(motion.dtype)
+                self.saved += 1
+            except Exception as exc:
+                self.errors.append(f"frame {index}: {exc}")
+                print(f"[burst] frame {index} not saved: {exc}", file=sys.stderr)
+
+
 def run(frames: int = 0, monitor: int = 0, fullscreen: bool = True,
         headless: bool = False, save_before: str | None = None,
-        save_after: str | None = None) -> dict:
+        save_after: str | None = None, save_burst: str | None = None) -> dict:
     """Convenience wrapper used by __main__ and the integration tests."""
     pipe = Pipeline(monitor=monitor, fullscreen=fullscreen, headless=headless)
-    return pipe.run(frames=frames, save_before=save_before, save_after=save_after)
+    return pipe.run(frames=frames, save_before=save_before,
+                    save_after=save_after, save_burst=save_burst)

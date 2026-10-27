@@ -152,6 +152,13 @@ def build_parser() -> argparse.ArgumentParser:
                         "iteration as --save-after, as a PNG")
     p.add_argument("--save-after", metavar="PATH",
                    help="write the last processed frame as a PNG")
+    p.add_argument("--save-burst", metavar="DIR",
+                   help="save the complete burst — every frame's colour before "
+                        "and after the pass, and the motion field sent with it — "
+                        "into DIR as frames/*.png, motion/*.npz and a "
+                        "manifest.json. This is what a downstream analysis run "
+                        "reads; the single before/after pair above is for a "
+                        "one-off look at one frame")
     p.add_argument("--list-monitors", action="store_true",
                    help="print the screens and exit")
     return p
@@ -240,7 +247,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         summary = pipe.run(frames=args.frames,
                            save_before=args.save_before,
-                           save_after=args.save_after)
+                           save_after=args.save_after,
+                           save_burst=args.save_burst)
     except KeyboardInterrupt:
         print("\ninterrupted", file=sys.stderr)
         pipe.close()
@@ -355,6 +363,22 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  before -> {args.save_before}")
     if args.save_after:
         print(f"  after  -> {args.save_after}")
+    burst = summary.get("burst")
+    if burst:
+        # The burst is the thing a downstream run reads, so say where it is and
+        # what is in it: a path with no count is how a run that saved nothing
+        # looks identical to one that saved a hundred frames.
+        print(f"  burst  -> {args.save_burst}  {burst['frames_saved']} frames "
+              f"saved, {burst['frames_dropped']} dropped, "
+              f"{burst['width']}x{burst['height']} "
+              f"(manifest: {args.save_burst}/manifest.json)")
+        split = burst.get("capture_split") or {}
+        if split:
+            print(f"  burst capture split: wait {split['wait_ms']}ms  "
+                  f"read {split['read_ms']}ms over {split['frames']} frames")
+        if burst.get("errors"):
+            print(f"  burst errors: {len(burst['errors'])} — "
+                  f"first: {burst['errors'][0]}")
     return 0 if summary["frames_done"] > 0 else 4
 
 

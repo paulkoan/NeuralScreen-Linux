@@ -226,10 +226,24 @@ def run_request(request: dict, policy: dict, worktree: Path, run_dir: Path,
     (run_dir / "stderr.log").write_text(err or "")
     for artifact in artifacts:
         source = worktree / artifact
-        if source.exists():
-            shutil.copy2(source, run_dir / Path(artifact).name)
-        else:
+        dest = run_dir / Path(artifact).name
+        if not source.exists():
             log(f"artifact {artifact} was not produced")
+            continue
+        try:
+            if source.is_dir():
+                # A burst is a directory: frames/, motion/ and manifest.json. Copy
+                # the tree rather than the top directory, so the result directory
+                # has the same relative layout the manifest names. dirs_exist_ok
+                # so an artifact named the same as an earlier one does not fail.
+                shutil.copytree(source, dest, dirs_exist_ok=True)
+            else:
+                shutil.copy2(source, dest)
+        except OSError as exc:
+            # An artifact that could not be copied is a result of the run, not a
+            # reason to lose the report: say it and keep going. The logs and
+            # result.json are what a person reads when the numbers are missing.
+            log(f"artifact {artifact} could not be copied: {exc}")
     (run_dir / "result.json").write_text(json.dumps(
         {"exit_code": code, "seconds": round(elapsed, 3), "argv": argv,
          "artifacts": artifacts, "runner": fingerprint(Path(__file__)),
