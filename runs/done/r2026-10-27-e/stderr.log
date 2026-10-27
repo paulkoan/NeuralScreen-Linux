@@ -1,0 +1,9 @@
+warning: The `native-tls` setting is deprecated and will be removed in a future release. Use `system-certs` instead.
+[worker] serve: 2560x1440, model /opt/neuralscreen/model, shaders /opt/neuralscreen/port/build/shaders, seed 0
+[worker] serve: built from port 9d08f41 (12 modified) patch f0c60a1c2224d1bbbe7ee86c692d391fb24359dc
+[worker] serve: frame channel open (29.5 MB, NeuralScreen_2540566_1059e1db)
+[worker] serve: pixel channel open (2560x1440, 14.7 MB, NeuralScreenOut_2540566_10cdad)
+[main] shared memory: frames in and pixels out through /dev/shm (frame 29.5MB, pixels 14.7MB)
+[worker] serve: the caller declared no motion field: the reprojection is the identity
+[worker] serve: and the five-tap history filter is the centre tap, which is the pixel
+[worker] serve: itself - so no published byte can move for it
