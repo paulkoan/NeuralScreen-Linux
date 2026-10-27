@@ -1,0 +1,18 @@
+warning: The `native-tls` setting is deprecated and will be removed in a future release. Use `system-certs` instead.
+[worker] serve: 2560x1440, model /opt/neuralscreen/model, shaders /opt/neuralscreen/port/build/shaders, seed 0
+[worker] serve: built from port 9d08f41 (12 modified) patch f0c60a1c2224d1bbbe7ee86c692d391fb24359dc
+[worker] serve: frame channel open (29.5 MB, NeuralScreen_2086375_a41b3c85)
+[worker] serve: pixel channel open (2560x1440, 14.7 MB, NeuralScreenOut_2086375_bbca71)
+[main] shared memory: frames in and pixels out through /dev/shm (frame 29.5MB, pixels 14.7MB)
+[worker] serve: the caller declared no motion field: the reprojection is the identity
+[worker] serve: and the five-tap history filter is the centre tap, which is the pixel
+[worker] serve: itself - so no published byte can move for it
+[worker] serve: device NVIDIA GeForce RTX 4080 SUPER
+[worker] serve: blend scale 0.7397 (block70.layer0.blend_scale)
+[worker] serve: warming up (the PTX modules are JIT-compiled on first use)
+[worker] serve: warm-up 3105 ms
+[worker] serve: frame 0 carries reset: no history for this frame, and this frame primes the next
+[worker] serve: head -8.1406..0.5454 mean -1.06513, non-finite 0 of 15073280; first 8 0.0205 0.0403 0.0115 -3.8906 0.0177 0.0364 0.0033 -3.7461
+[worker] serve frame 0: 110.0 ms (proxy 3.6, network+composite 42.8, readback 58.5, reply 5.0)
+[worker] serve frame 1: 35.5 ms (proxy 4.7, network+composite 23.4, readback 5.8, reply 1.7)
+[worker] serve frame 2: 36.5 ms (proxy 5.1, network+composite 23.8, readback 5.0, reply 2.5)

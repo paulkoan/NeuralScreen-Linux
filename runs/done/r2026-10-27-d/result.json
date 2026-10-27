@@ -1,0 +1,35 @@
+{
+  "exit_code": 0,
+  "seconds": 6.472,
+  "argv": [
+    "uv",
+    "run",
+    "python",
+    "-m",
+    "minimal",
+    "--source",
+    "image",
+    "--input-image",
+    "fixtures/stream-1440p-jpeg-q20.png",
+    "--headless",
+    "--frames",
+    "3",
+    "--worker-log",
+    "--shm",
+    "--no-motion",
+    "--send-ahead",
+    "2",
+    "--save-before",
+    "before.png",
+    "--save-after",
+    "after.png"
+  ],
+  "artifacts": [
+    "before.png",
+    "after.png"
+  ],
+  "runner": "e44571d7dd12",
+  "entry_env": [
+    "NS_WORKER_CMD"
+  ]
+}
