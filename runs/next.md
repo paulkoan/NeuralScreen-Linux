@@ -10,16 +10,6 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Close the port's fidelity gap against NGX (code change made 2026-10-27, two runs queued).
-  `serve.cpp` now reads the head back on the run's LAST frame by default instead of frame 0
-  (`DLSS5VK_SERVE_HEAD_FRAME` overrides it, -1 disables) and prints the per-channel head/4 mean -
-  the quantity the composite adds to the proxy. That is the measurement the composite-offset
-  question needs. Queued in order: `r2026-10-27-f` (port-build: apply the patch to the staged port,
-  rebuild, stamp-check) then `r2026-10-27-g` (minimal on the 13-a card, 30 frames 2560x1440
-  synthetic). Read g's `serve: head ... residual mean R G B ... logit mean ...` line and compare
-  its sign and scale against NGX's MAD 18.4345 and the port's 13-a MAD 6.7205. If the head is
-  positive where NGX's residual is negative, the +9R/+4G/+6B offset is the network's input
-  preprocessing, not the composite.
 * Decide the restoration goal. On q20 input the port leaves the 8x8 grid untouched
   (blockiness 1.5634 -> 1.5723, coherence flat) and applies a global tone shift instead. It is
   not a deblocker. Either pursue a network/stage that targets the 8x8 grid, or record that
@@ -31,6 +21,8 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: r2026-10-27-g: head mean -0.90270 (range -6.5039..0.5020), residual mean 0.0147 0.0100 0.0109, logit mean -3.7533. The head is negative, not positive; its scale is smaller than NGX's MAD 18.4345 and the port's 13-a MAD 6.7205. The +9R/+4G/+6B offset is therefore not the network's input preprocessing by the stated test.
 
 * The container question is closed (2026-10-27, developer): "no idea why we would run in a
   container after all this time." nvidia-container-cli 1.20.1 is installed on the box, so the
