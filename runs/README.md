@@ -80,3 +80,8 @@ journalctl --user -u neuralscreen-runner.service -n 50
 Installation - a systemd user unit, no root, nothing in /etc - is the header of
 `tools/neuralscreen-runner.service`, and what may run at all is
 `tools/runner_policy.example.toml`.
+
+When a request does not come back, or you need to know which piece is alive, read
+`docs/runner-operations.md`. The short version: the `cron/ticker_heartbeat` file proves the
+Hermes ticker is running, not the GPU runner - the age of the newest `results` commit is what
+says whether the GPU box is completing runs.
