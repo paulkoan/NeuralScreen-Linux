@@ -26,14 +26,15 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 ## 2. Ask first - do not start these alone
 
 * Decided (2026-10-11): the fixture keeps the whole frame. No crop.
-* The container: nvidia-container-toolkit is installed on the box - `nvidia-container-cli 1.20.1`,
-  confirmed by the developer 2026-10-27 - so the install cost is gone and `container = true` is
-  available without a system package. It stays false: the unit's sandbox already enforces the same
-  bound and the Dockerfile warns a silent software-render fallback would report believable
-  timings. Revisit only if the bound must exceed the unit's sandbox. (Card t_07535efe.)
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* The container question is closed (2026-10-27, developer): "no idea why we would run in a
+  container after all this time." nvidia-container-cli 1.20.1 is installed on the box, so the
+  install cost is gone, but `container = false` stands - the unit's sandbox already enforces the
+  same bound and a silent software-render fallback would report believable timings. Do not
+  reopen this. (Card t_07535efe.)
 
 * The blend (2026-10-12, patch 08e297c8a802): the composite takes a history binding, a
   `blendScale` and a `historyValid`, and the truncation to the half grid became one publication
