@@ -47,9 +47,13 @@ Profile `neuralscreen` has two jobs (`/opt/data/profiles/neuralscreen/cron/jobs.
 * `neuralscreen-progress-watchdog` (`4ede271c53a9`), every 15 minutes —
   `scripts/ns-progress-watchdog.sh`. Silent while healthy; speaks only when the progress
   tick's output directory has had no new file for 30 minutes. Its "healthy" signal is the
-  output directory `/opt/data/cron/output/b639f19f57ff/`, which the scheduler writes for every
-  tick including silent `no_change` ones — so "no file" means "not being run", not "nothing
-  to do".
+  profile's own output directory, `cron/output/b639f19f57ff/` beside the script, which the
+  scheduler writes for every tick including silent `no_change` ones — so "no file" means
+  "not being run", not "nothing to do". Derive that path from the script's location, not from
+  a literal: this watchdog hardcoded the pre-migration `/opt/data/cron/output/...`, which
+  stopped existing when the jobs moved into the profile, so it reported "has produced no
+  output at all" every 15 minutes while the tick was healthy (12 false alarms in one
+  afternoon against 2 real reports).
 
 ## What proves what is alive
 
