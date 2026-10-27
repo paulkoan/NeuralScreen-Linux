@@ -26,9 +26,11 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 ## 2. Ask first - do not start these alone
 
 * Decided (2026-10-11): the fixture keeps the whole frame. No crop.
-* The container: nvidia-container-toolkit is already installed on the box (2026-10-27), so there
-  is no package left to weigh - the remaining question is only whether the isolation is worth it
-  over the unit's own sandbox. The developer's call. (Card t_07535efe carries the correction.)
+* The container: nvidia-container-toolkit is installed on the box - `nvidia-container-cli 1.20.1`,
+  confirmed by the developer 2026-10-27 - so the install cost is gone and `container = true` is
+  available without a system package. It stays false: the unit's sandbox already enforces the same
+  bound and the Dockerfile warns a silent software-render fallback would report believable
+  timings. Revisit only if the bound must exceed the unit's sandbox. (Card t_07535efe.)
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
