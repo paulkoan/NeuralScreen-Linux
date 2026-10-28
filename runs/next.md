@@ -10,10 +10,17 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Decide the restoration goal. On q20 input the port leaves the 8x8 grid untouched
-  (blockiness 1.5634 -> 1.5723, coherence flat) and applies a global tone shift instead. It is
-  not a deblocker. Either pursue a network/stage that targets the 8x8 grid, or record that
-  tone-shift-only is the accepted outcome. This is a design call, not a run.
+* Decide what "fidelity" means now that the gap is measured (evidence below, 2026-10-28). Tone
+  matching the port's output to NGX's histogram collapses the MAD from 14.7606 to 2.2469, and the
+  detail layers correlate at 0.978: the port puts detail where NGX does. So 85% of the "fidelity
+  gap" is TONE, not structure, and the port's structure is already close. The tone difference has
+  a known cause: the demo's composite has a display path after the neural stage - `upgradeToneMap`
+  then ACES fit + sRGB - which docs/frame.md calls "not part of NR" and the port omits. NGX's
+  output went through its own display transform; the port's did not. The fork: either (a) implement
+  a display path in the port - note it cannot be reproduced exactly from an LDR fixture, because
+  upgradeToneMap needs the HDR original the fixture does not carry - or (b) adopt the tone-matched
+  comparison as the fidelity metric and stop scoring absolute pixels against NGX. This is the
+  developer's call, not a run.
 
 ## 2. Ask first - do not start these alone
 
@@ -21,6 +28,22 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the fidelity gap split into tone and structure (2026-10-28, offline on the 13-a card's
+  pixels; no run needed). Real per-channel shifts measured from the PNGs: port +6.99R/+0.60G/+3.75B,
+  NGX -5.82R/-9.04G/-6.44B, so the port brightens where NGX darkens. That is NOT a sign error in
+  the composite: the composite is byte-for-byte the demo's (`clamp(proxy + head/4)`, verified
+  against nr_composite.comp's fma spelling), and the per-channel means cannot be compared directly
+  because a clamp is nonlinear - the mean of the curve is not the curve of the mean. The port's tone
+  curve fits as after = 0.899*before + 22.56 (R), 0.938*+9.47 (G), 0.946*+11.45 (B): contrast down
+  ~10%, blacks lifted ~23 levels. NGX's goes the other way. Structure agrees: tone-match the port to
+  NGX's histogram and MAD falls 14.7606 -> 2.2469 with detail correlation 0.978. NGX's output also
+  has ZERO 255-clipping (max 234) where the port's has 11.71% - the fingerprint of a display
+  transform. So the port's structure is already close to NGX's and the remaining gap is the demo's
+  display path (upgradeToneMap + ACES + sRGB), which docs/frame.md calls "not part of NR" and the
+  port omits by design. Absolute pixel parity with NGX is therefore not attainable from an LDR
+  fixture. Numbers reproduced with `/opt/data/tmp/pngstat.py`, `/opt/data/tmp/tonecurve2.py` and
+  `/opt/data/tmp/structtest.py` (ffmpeg decodes the PNGs; PIL is broken in the venv).
 
 * learned: r2026-10-27-g: head -6.5039..0.5020, overall mean -0.90270, residual mean (head/4) **R +0.0147 G +0.0100 B +0.0109**, logit mean -3.7533, 0 non-finite of 15,073,280. Read the line carefully: the overall mean is negative only because the logit channel is -3.75 and it is averaged in with the RGB channels - the RGB residual is POSITIVE on all three channels. NGX's delta on this same card pulls the mean DOWN (154.4/143.0/143.4 -> 148.6/134.0/137.0), so the head's sign is inverted relative to NGX's: the port brightens where NGX darkens. That is the mechanism behind the +9R/+4G/+6B offset, not an absence of one. Scale still needs reconciling: head/4 x255 is ~+3.8R/+2.6G/+2.8B but the port's measured mean shift is ~+7.0R/+0.6G/+3.7B, so G disagrees in sign and the composite's centred mapping must be doing more than a plain add. Also: g's after.png is byte-identical to 13-a's after.png (sha256 9f13979b168dc3a0), so this run changed no pixels - it is diagnostic only, and the port-vs-NGX delta stands at MAD 14.7606 / PSNR 23.432 dB. Timing: steady state ~37ms worker, median recv 40ms, ~64ms/frame (~15fps); the 4.5fps headline is one 4561ms frame-0 warm-up inflating the mean.
 
