@@ -10,19 +10,6 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Re-measure the head mean over the valid rectangle (code fix made 2026-10-27, two runs queued).
-  The arithmetic is now understood: `composeChannel` is `clamp(proxy + head/4, 0, 1)` - the centred
-  space cancels, so head/4 lands in display units exactly - and the published frame is then blended
-  toward the previous frame by `sigmoid(head.a) * blendScale`. With the logit mean at -3.7533 the
-  average blend weight is ~1.7%, so the frame should follow the head closely and a valid head mean
-  should be comparable to the measured pixel shift. It was not, because the readback averaged the
-  WHOLE padded buffer: `main()` returns early for `id.y >= validHeight`, so 32 padded rows per frame
-  are never written and their contents entered the mean. The loop now walks only workWidth x
-  workHeight at stride fullWidth. Queued: `r2026-10-27-h` (port-build) then `r2026-10-27-i`
-  (minimal on the same 13-a card). Read i's residual mean and check it against the measured pixel
-  shift ~+7.0R/+0.6G/+3.7B; agreement within a level or so means the head explains the offset and
-  the blend is not adding brightness of its own.
-
 * Decide the restoration goal. On q20 input the port leaves the 8x8 grid untouched
   (blockiness 1.5634 -> 1.5723, coherence flat) and applies a global tone shift instead. It is
   not a deblocker. Either pursue a network/stage that targets the 8x8 grid, or record that
@@ -91,3 +78,4 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 * The real motion measurement (r2026-10-27-c): the first HUMAN-run GeForce Now session that reached the pipeline (120 frames, 48.0s, genuine motion, capture split wait 0.1ms read 27.4ms at 2560x1440). Worker per-frame `network+composite` 17.0/16.5ms at frames 29/59 against b's 12.2/12.0ms and d's 12.7/12.2ms — the motion path (reprojection + five-tap) costs ~4.5-4.8ms per frame. Quality on the saved pair: mean abs diff per channel [5.486 6.218 6.536], 97.63% of pixels moved >2 and 62.37% >8; blockiness 0.9707 -> 0.9771 and coherence 0.9482 -> 0.9476, both flat. That is d's near-passthrough / tone shift again, now on real motion data: the network changes the frame globally but does not restore JPEG structure.
 * The composite's arithmetic verified against the extended `check_composite.py` on the real-motion run's port build: 4000 random cases agree on both paths; zero-motion five-tap equals the centre tap in 4000 cases; motion five-tap vs the independent Catmull-Rom agrees in 1773 interior cases (worst 1.2e-06, allowed 1e-05); the reprojection stays within 2.00 ulp of the demo's uv route (allowed 4); the on-screen flag agrees. So the tone shift is not a composite-math bug — it is what the network outputs on real motion input.
+* learned: r2026-10-27-i, the valid-rectangle re-measure: exit 0, 9.1s. The head mean now walks workWidth x workHeight at stride fullWidth — residual mean (head/4) R +0.0144 G +0.0112 B +0.0110 against g's +0.0147/+0.0100/+0.0109, so the 32 padded rows were NOT what polluted the mean; the fix changed almost nothing. Measured pixel shift on the pair: R +6.9936 G +0.5973 B +3.7503 (MAD 6.7205, PSNR 28.800 dB, 97.2% moved >2, 63.7% >8). Head/4 x255 predicts ~+3.67R/+2.86G/+2.80B: B agrees within ~1 level (2.80 vs 3.75), but R is under-explained by ~3.3 levels (3.67 vs 6.99) and G is over-explained by ~2.3 (2.86 vs 0.60) — so no single scale reconciles the three channels, and "within a level" is not met. The composite's centred mapping still does more than a plain add, and G is the channel to look at, not R. Control: i's before.png and after.png are byte-identical to 13-a's (82e16d3d073a5cea / 9f13979b168dc3a0), so i reproduced the earlier frame exactly — diagnostic only, no new pixels.
