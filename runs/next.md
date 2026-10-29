@@ -10,14 +10,6 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Report steady-state fps, not the warm-up-polluted headline (evidence below, 2026-10-28). Every
-  "fps" figure this project has quoted is dominated by frame 0: r2026-10-13-a's 4.68 fps is 29
-  frames at a 72.5ms median plus one 4026ms frame 0. The medians say 13.8-14.4 fps steady, and
-  r2026-10-27-c (120 frames) says 14.4. The goal was 15 fps, so steady state is within ~4% and the
-  headline number has been wrong by 3x. Fix the report first - quote the median per-frame time and
-  the steady-state rate alongside the mean - before optimising anything, or the next change gets
-  judged against a number that is measuring the PTX JIT warm-up. This is a measurement change, not
-  a run.
 
 ## 2. Ask first - do not start these alone
 
@@ -130,3 +122,13 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * The real motion measurement (r2026-10-27-c): the first HUMAN-run GeForce Now session that reached the pipeline (120 frames, 48.0s, genuine motion, capture split wait 0.1ms read 27.4ms at 2560x1440). Worker per-frame `network+composite` 17.0/16.5ms at frames 29/59 against b's 12.2/12.0ms and d's 12.7/12.2ms — the motion path (reprojection + five-tap) costs ~4.5-4.8ms per frame. Quality on the saved pair: mean abs diff per channel [5.486 6.218 6.536], 97.63% of pixels moved >2 and 62.37% >8; blockiness 0.9707 -> 0.9771 and coherence 0.9482 -> 0.9476, both flat. That is d's near-passthrough / tone shift again, now on real motion data: the network changes the frame globally but does not restore JPEG structure.
 * The composite's arithmetic verified against the extended `check_composite.py` on the real-motion run's port build: 4000 random cases agree on both paths; zero-motion five-tap equals the centre tap in 4000 cases; motion five-tap vs the independent Catmull-Rom agrees in 1773 interior cases (worst 1.2e-06, allowed 1e-05); the reprojection stays within 2.00 ulp of the demo's uv route (allowed 4); the on-screen flag agrees. So the tone shift is not a composite-math bug — it is what the network outputs on real motion input.
 * learned: r2026-10-27-i, the valid-rectangle re-measure: exit 0, 9.1s. The head mean now walks workWidth x workHeight at stride fullWidth — residual mean (head/4) R +0.0144 G +0.0112 B +0.0110 against g's +0.0147/+0.0100/+0.0109, so the 32 padded rows were NOT what polluted the mean; the fix changed almost nothing. Measured pixel shift on the pair: R +6.9936 G +0.5973 B +3.7503 (MAD 6.7205, PSNR 28.800 dB, 97.2% moved >2, 63.7% >8). Head/4 x255 predicts ~+3.67R/+2.86G/+2.80B: B agrees within ~1 level (2.80 vs 3.75), but R is under-explained by ~3.3 levels (3.67 vs 6.99) and G is over-explained by ~2.3 (2.86 vs 0.60) — so no single scale reconciles the three channels, and "within a level" is not met. The composite's centred mapping still does more than a plain add, and G is the channel to look at, not R. Control: i's before.png and after.png are byte-identical to 13-a's (82e16d3d073a5cea / 9f13979b168dc3a0), so i reproduced the earlier frame exactly — diagnostic only, no new pixels.
+
+* learned: the run summary now quotes the steady-state rate beside the mean (commit dee5cd2).
+  `timing_summary` carries `total_median`/`steady_fps` (median of the per-frame totals, not the sum
+  of per-stage medians) and the CLI prints `X fps headline, Y fps steady` on the frames line plus
+  `mean ... ms/frame, Z fps; median ... ms/frame, W fps steady` on the timing line. The new unit
+  test reproduces 13-a's shape: one 4026ms frame 0 over 30 frames leaves the mean at 4.68 fps while
+  the median 72.5ms is 13.8 fps. Full suite on this box: 9 pre-existing import failures
+  (`libGL.so.1` and SDL2 absent) in capture/dependency/tool tests; the 63 timing and pipeline tests
+  pass. The gate needs those system libs installed (or a run on the GPU box) before the whole suite
+  can be called green here.
