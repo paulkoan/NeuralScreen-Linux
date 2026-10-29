@@ -10,17 +10,14 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Decide what "fidelity" means now that the gap is measured (evidence below, 2026-10-28). Tone
-  matching the port's output to NGX's histogram collapses the MAD from 14.7606 to 2.2469, and the
-  detail layers correlate at 0.978: the port puts detail where NGX does. So 85% of the "fidelity
-  gap" is TONE, not structure, and the port's structure is already close. The tone difference has
-  a known cause: the demo's composite has a display path after the neural stage - `upgradeToneMap`
-  then ACES fit + sRGB - which docs/frame.md calls "not part of NR" and the port omits. NGX's
-  output went through its own display transform; the port's did not. The fork: either (a) implement
-  a display path in the port - note it cannot be reproduced exactly from an LDR fixture, because
-  upgradeToneMap needs the HDR original the fixture does not carry - or (b) adopt the tone-matched
-  comparison as the fidelity metric and stop scoring absolute pixels against NGX. This is the
-  developer's call, not a run.
+* Report steady-state fps, not the warm-up-polluted headline (evidence below, 2026-10-28). Every
+  "fps" figure this project has quoted is dominated by frame 0: r2026-10-13-a's 4.68 fps is 29
+  frames at a 72.5ms median plus one 4026ms frame 0. The medians say 13.8-14.4 fps steady, and
+  r2026-10-27-c (120 frames) says 14.4. The goal was 15 fps, so steady state is within ~4% and the
+  headline number has been wrong by 3x. Fix the report first - quote the median per-frame time and
+  the steady-state rate alongside the mean - before optimising anything, or the next change gets
+  judged against a number that is measuring the PTX JIT warm-up. This is a measurement change, not
+  a run.
 
 ## 2. Ask first - do not start these alone
 
@@ -28,6 +25,37 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: throughput measured from the results branch's own logs (2026-10-28; no new run needed).
+  The headline fps on every run is a warm-up artefact. Medians, per frame:
+
+  | run | capture | send | recv | display | steady total | steady fps | headline |
+  |---|---|---|---|---|---|---|---|
+  | 13-a (30f) | 5.8 | 13.5 | 49.6 | 3.6 | 72.5ms | 13.8 | 4.68 |
+  | 27-c (120f) | 27.3 | 9.5 | 20.3 | 12.4 | 69.5ms | 14.4 | 8.45 |
+  | 27-g (30f) | - | 14.8 | 40.0 | - | - | - | 4.50 |
+  | 27-i (30f) | - | 16.2 | 61.2 | - | - | - | 4.48 |
+  | 27-e (3f, --bypass) | 3.0 | 2.7 | 4.3 | 2.8 | 12.8ms | 78.1 | 75.33 |
+
+  13-a's 4026ms frame 0 over 30 frames is the whole reason the mean says 4.68: the median frame is
+  72.5ms. The goal was 15 fps and the 120-frame run measures 14.4 steady, so the target is ~4% away,
+  not 3x away. The bypass run sets the floor: with the model doing nothing, the loop costs 12.8ms,
+  so capture/send/recv/display overhead is ~13ms and everything above that is the worker.
+
+* learned: the worker's own per-frame breakdown, from the port's timestamps (`[worker] serve frame
+  N: total (proxy, network+composite, readback, reply)`). Steady state r2026-10-27-g: 37.0-37.9ms
+  total - proxy 8.6-10.4, network+composite 13.5-16.2, readback 4.5-7.3, reply 7.9-8.3. r2026-10-27-c:
+  41.7-67.2ms - proxy 18.4-24.6, network+composite 14.3-17.5, readback 4.8-19.3, reply 4.2-7.9. So the
+  four candidates in the old plan rank as: NGX network+composite ~16ms (the model itself, the largest
+  and the least removable), proxy ~9-24ms (varies run to run, worth understanding), readback ~5ms
+  steady (58.5ms only on frame 0, first touch), reply ~8ms. There is no encode stage in the loop - the
+  bypass run's 12.8ms is capture+send+recv+display only. The client's own `send` (9.5-16.2ms) is a
+  full 29.5MB copy per frame into shm and is the biggest client-side cost.
+
+* learned: `recv` under `--send-ahead` does not measure worker compute. r2026-10-27-c's client recv
+  median is 20.3ms while the same worker reports 54-67ms per frame - impossible unless the client's
+  recv is returning a frame the worker finished earlier out of the queue. Judge worker cost from the
+  worker's line and end-to-end cost from the run's elapsed time; do not read `recv` as inference time.
 
 * learned: the fidelity gap split into tone and structure (2026-10-28, offline on the 13-a card's
   pixels; no run needed). Real per-channel shifts measured from the PNGs: port +6.99R/+0.60G/+3.75B,
