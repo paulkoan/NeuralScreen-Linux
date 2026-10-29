@@ -1,0 +1,8 @@
+{
+  "id": "r2026-10-29-a",
+  "entry": "port-build",
+  "args": [],
+  "timeout_s": 600,
+  "artifacts": [],
+  "note": "Rebuild the staged port from linux-port.patch, which now honours kFrameFlagWantPixels: the 14.7MB readback and the 14.7MB reply are skipped when the caller did not ask for pixels, and a bare header is sent instead. Must exit 0 before r2026-10-29-b. Quote the stamp line (port base and patch sha) - b's numbers are only tied to this binary if the patch sha moved."
+}

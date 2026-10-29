@@ -214,6 +214,11 @@ def main(argv: list[str] | None = None) -> int:
                         send_ahead=args.send_ahead,
                         no_motion=args.no_motion,
                         shm=args.shm,
+                        # Pixels cost the worker a 14.7MB readback plus a 14.7MB reply.
+                        # Ask for them only when something consumes them: a window to
+                        # draw or a PNG to write. A headless benchmark that saves
+                        # nothing should not pay for a channel it throws away.
+                        want_pixels=(not args.headless) or bool(args.save_before or args.save_after),
                         frame_timeout=args.frame_timeout,
                         writev=args.writev,
                         worker_log=args.worker_log)

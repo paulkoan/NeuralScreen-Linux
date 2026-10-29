@@ -10,6 +10,18 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
+* Prove the readback gate (queued 2026-10-29). The port was reading 14.7MB back and writing
+  14.7MB to the caller on every frame whether or not anything wanted the pixels: `minimal` never
+  set FRAME_FLAG_WANT_PIXELS, so the wire's own flag was dead and 12.8ms of the worker's 37ms
+  frame went into publishing a picture the harness ignored. Both sides now honour it - the
+  client asks only when it draws or saves, the port replies with a bare header otherwise, and a
+  bare reply from a run that asked for nothing counts as a completed frame rather than a skipped
+  one. Queued: r2026-10-29-a (rebuild), then b (120 frames, no pixels - expect steady ~57ms,
+  16-18 fps against 27-c's 69.5ms) and c (30 frames with pixels - after.png must still be
+  sha256 9f13979b168dc3a0). Read the medians, not the headline: frame 0 is the PTX JIT. If b
+  does not move, the readback was not on the critical path and the next candidate is the
+  client's 14.7MB colour copy into shm; if c's picture moves, the gate is wrong and b's gain is
+  void.
 
 ## 2. Ask first - do not start these alone
 

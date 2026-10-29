@@ -79,6 +79,7 @@ class Pipeline:
                  worker_cwd: Path | None = None, capture=None, display=None,
                  work_scale: float = 1.0, motion_small: bool = False,
                  no_motion: bool = False, shm: bool = False,
+                 want_pixels: bool = True,
                  bypass: bool = False, send_ahead: int = 1,
                  frame_timeout: float = 60.0, writev: bool = False,
                  worker_log: bool = False):
@@ -110,6 +111,12 @@ class Pipeline:
         self.motion_small = bool(motion_small)
         self.no_motion = bool(no_motion)
         self.shm = bool(shm)
+        # Whether the caller can use the pixels at all. The worker's reply carries a 14.7MB
+        # readback and a 14.7MB write-back when this is set, and 12.8ms of its 37ms frame at
+        # 1440p was going into publishing a picture nobody had asked for: minimal never set
+        # the wire's WantPixels flag, so every benchmark paid for a channel it ignored. Only
+        # ask when something consumes the result - a display to draw or a PNG to write.
+        self.want_pixels = bool(want_pixels)
 
         # Injected sources let the tests drive the loop without a screen or a GPU.
         self.capture = capture if capture is not None else Capture(monitor_idx=monitor)
@@ -220,9 +227,14 @@ class Pipeline:
 
         reset = index == 0
         self._timed("send", self.worker.send, index, frame, self.zero_motion,
-                    reset, pts=index)
+                    reset, pts=index, want_pixels=self.want_pixels)
         result = self._timed("recv", self.worker.recv, index, timeout)
         if result is None:
+            if not self.want_pixels:
+                # See _consume: a bare reply from a run that asked for no pixels is a
+                # completed frame, and calling it skipped would report an idle worker.
+                self.frames_done += 1
+                return None
             self.frames_skipped += 1
             return None
         self.frames_done += 1
@@ -460,6 +472,12 @@ class Pipeline:
         """
         sent_index, input_frame, after = self._take_oldest(window)
         if after is None:
+            if not self.want_pixels:
+                # A bare reply: the worker ran the frame and published nothing because
+                # nothing asked for pixels. That is a completed frame, not a skipped
+                # evaluation - counting it as skipped reported an idle worker.
+                self.frames_done += 1
+                return
             self.frames_skipped += 1
             return
         self.frames_done += 1
@@ -499,7 +517,7 @@ class Pipeline:
             self.last_input = frame
 
             self._timed("send", self.worker.send, index, frame, self.zero_motion,
-                        index == 0, pts=index)
+                        index == 0, pts=index, want_pixels=self.want_pixels)
             window.append((index, frame if keep_inputs else None))
             index += 1
 

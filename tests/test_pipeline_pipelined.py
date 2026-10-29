@@ -72,7 +72,7 @@ class StubWorker:
     def is_alive(self) -> bool:
         return True
 
-    def send(self, index, rgba, motion, reset, pts=0) -> None:
+    def send(self, index, rgba, motion, reset, pts=0, want_pixels=True) -> None:
         self.sent.append(index)
 
     def recv_any(self, timeout=None):
