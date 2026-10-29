@@ -242,8 +242,21 @@ class Pipeline:
 
         stamps = {k: mean(v) for k, v in self.timings.items()}
         total = sum(stamps.values())
+        # The mean total is dominated by frame 0: the first frame pays the PTX
+        # JIT warm-up and one multi-second frame divided by thirty looks like a
+        # 3x slower pipeline. The median frame is what the steady state costs, so
+        # report both, and the rate the median implies beside the mean's rate.
+        series = list(self.timings.values())
+        n = max((len(v) for v in series), default=0)
+        frame_totals = [sum(v[i] for v in series if i < len(v))
+                        for i in range(n)]
+        ordered_totals = sorted(frame_totals)
+        total_median = (ordered_totals[len(ordered_totals) // 2]
+                        if ordered_totals else 0.0)
         out = {**stamps, "total": total,
                "fps": (1.0 / total) if total > 0 else 0.0,
+               "total_median": total_median,
+               "steady_fps": (1.0 / total_median) if total_median > 0 else 0.0,
                "count": len(self.timings["recv"])}
         # The spread, which the mean hides. A stage that costs the same on every
         # frame is structural — something is pacing at a fixed interval. A stage
@@ -341,6 +354,7 @@ class Pipeline:
         if save_after and last_after is not None:
             _save_rgba(save_after, last_after)
 
+        timing = self.timing_summary()
         return {
             "frames_attempted": index,
             "frames_done": self.frames_done,
@@ -351,10 +365,11 @@ class Pipeline:
             "stalls": self.stalls,
             "seconds": round(elapsed, 3),
             "fps": round(self.frames_done / elapsed, 2) if elapsed > 0 else 0.0,
+            "steady_fps": round(timing.get("steady_fps", 0.0), 2),
             "worker_exit": self.worker.proc.returncode if self.worker.proc else None,
             "before": pair_before,
             "after": last_after,
-            "timing": self.timing_summary(),
+            "timing": timing,
             # The worker's OWN clock, parsed from the lines it stamps as it
             # delivers frames. It is the one number in a run that does not depend
             # on our timing at all, so it is reported next to ours: if the two

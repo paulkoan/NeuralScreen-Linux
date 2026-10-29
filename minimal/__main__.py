@@ -253,7 +253,8 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"frames: {summary['frames_done']} done, "
           f"{summary['frames_skipped']} skipped, "
-          f"{summary['seconds']}s ({summary['fps']} fps), "
+          f"{summary['seconds']}s ({summary['fps']} fps headline, "
+          f"{summary.get('steady_fps', summary['fps'])} fps steady), "
           f"worker exit {summary['worker_exit']}")
     # Where the time actually goes. "4.2 fps" alone cannot be acted on: the fix
     # is completely different depending on whether the frame is lost in the
@@ -262,8 +263,11 @@ def main(argv: list[str] | None = None) -> int:
     if t.get("count"):
         parts = [f"{k} {1000 * t[k]:.1f}ms"
                  for k in ("capture", "send", "recv", "display") if k in t]
+        steady = t.get("steady_fps", t["fps"])
+        med = t.get("total_median", t["total"])
         print(f"timing: {'  '.join(parts)}   "
-              f"(total {1000 * t['total']:.1f}ms/frame, {t['fps']:.1f} fps)")
+              f"(mean {1000 * t['total']:.1f}ms/frame, {t['fps']:.1f} fps; "
+              f"median {1000 * med:.1f}ms/frame, {steady:.1f} fps steady)")
     # The worker's own timestamps, which know nothing of ours. Printed beside the
     # timing line on purpose: if these two disagree about the same run, the
     # timing line is what is wrong.
