@@ -23,12 +23,39 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   client's 14.7MB colour copy into shm; if c's picture moves, the gate is wrong and b's gain is
   void.
 
+* Stop reordering colour on the CPU in the capture leg (no run yet - needs a wire flag). `grab()`
+  swaps BGRA to RGBA with a fancy-index assign that costs 6.9ms a frame at 1440p, and every
+  byte-touching alternative benches the same 6-7ms; only not doing it is free. The port already
+  uploads the frame and expands it in `expandRgba8ToProxy`, so the swizzle belongs there: add a
+  frame flag for "the colour is BGRA", set it from the capture source's own format, and let the
+  shader read .bgra. Cheap for the port, zero for the client. Do this AFTER the readback gate is
+  verified, so a picture regression has one cause rather than two.
+
 ## 2. Ask first - do not start these alone
 
 * Decided (2026-10-11): the fixture keeps the whole frame. No crop.
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the per-frame client copy is NOT the cost it looked like (measured on the sandbox
+  2026-10-29, `python /opt/data/tmp/copybench.py` and `pipebench.py`). 29.5MB colour+motion into
+  an mmap: **1.59ms** median (18.5GB/s). The 14.7MB motion half alone: 0.58ms. A strided window
+  source through `reshape(-1)`: 2.36ms, versus 1.49ms through a 3D view (the reshape copies).
+  Writing 29.5MB **down a pipe** to a reader: **24.3ms**. A 24-byte header down a pipe: 0.00ms.
+  So shared memory is a 15x win over the pipe and must always be on, but the residual 9.5-16.2ms
+  `send` seen on the box is not our code - it is memory-bandwidth contention with whatever else
+  is touching the same pages (the worker downloading 14.7MB from the GPU at the same moment), or
+  the process being descheduled. Do not spend a run making a 1.6ms copy faster. The earlier
+  reading of 13-a's 13.5ms as "the motion field costs 10ms" was wrong: 13-a ran WITHOUT --shm,
+  so its send was 29.5MB down a pipe, which benches at 24ms.
+
+* learned: the capture-side colour swap is a real per-frame stage: `img[:, :, [0, 2]] =
+  img[:, :, [2, 0]]` costs **6.9ms** at 2560x1440 (`swapbench.py`), and every alternative that
+  touches the bytes costs the same - two plane copies 7.1ms, a full gather 6.1ms, a uint32
+  byte-rotate 20.5ms. There is no faster CPU reorder; the only cheaper option is not reordering
+  at all, i.e. hand the port BGRA and swizzle in the expand shader. That needs a wire flag and a
+  port rebuild, so it is a later item, not this one.
 
 * learned: throughput measured from the results branch's own logs (2026-10-28; no new run needed).
   The headline fps on every run is a warm-up artefact. Medians, per frame:
