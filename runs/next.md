@@ -25,6 +25,15 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* learned: comparing two NGX model presets is now one command (commit c17b5c0):
+  `uv run python tools/ngx_preset_compare.py` runs presets 1 and 2 back to back, parses the
+  preset/frames/timing lines itself, hashes the four PNGs, diffs the pictures through
+  frame_diff.py, and exits 1 with a named reason when the comparison cannot be attributed
+  (same preset reached the DLL, different before frames, identical after frames). Use it instead
+  of running the pair by hand and hunting through two logs. It runs the pipeline directly, not
+  through the queue: the installed unit's policy pins the worker to the port and its sandbox
+  hides the Wine prefix.
+
 * learned: the per-frame client copy is NOT the cost it looked like (measured on the sandbox
   2026-10-29, `python /opt/data/tmp/copybench.py` and `pipebench.py`). 29.5MB colour+motion into
   an mmap: **1.59ms** median (18.5GB/s). The 14.7MB motion half alone: 0.58ms. A strided window

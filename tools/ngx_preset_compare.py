@@ -86,12 +86,22 @@ def parse(text: str) -> dict:
     return out
 
 
+def pipeline_python() -> str:
+    """The interpreter that has the pipeline's dependencies.
+
+    A direct `tools/ngx_preset_compare.py` invocation picks up whatever python3 is on PATH; the
+    repo's own venv is the one with numpy, so prefer it when it exists.
+    """
+    venv = REPO / ".venv" / "bin" / "python"
+    return str(venv) if venv.exists() else sys.executable
+
+
 def run_preset(preset: int, args: list[str], out_dir: Path, timeout: int) -> dict:
     """Run the pipeline once at one preset and keep its logs and pictures."""
     tag = f"preset{preset}"
     before = out_dir / f"before-{tag}.png"
     after = out_dir / f"after-{tag}.png"
-    command = [sys.executable, "-m", "minimal", *args,
+    command = [pipeline_python(), "-m", "minimal", *args,
                "--save-before", str(before), "--save-after", str(after)]
     env = {"NS_NR_PRESET": str(preset)}
     started = time.time()
