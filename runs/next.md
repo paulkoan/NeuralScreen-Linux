@@ -10,16 +10,14 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Queue r2026-10-30-f: the same 120-frame shape as r2026-10-30-e
-  (`--frames 120 --headless --source synthetic --size 2560x1440 --shm --worker-log`), written to
-  runs/queue/r2026-10-30-f.json. Why: d/e closed the step-1 verification on pixels - d's
-  before/after blobs are byte-identical to 29-e's (a1bafe2d07 / 1975cb4479), so the table-driven
-  recorder publishes the same frame - and e's `network+composite` is flat (12.9/13.4ms at frames
-  29/119 against f's 12.7/12.9), but e's steady rate is 34.51 fps against f's 40.48 with the whole
-  gap in `proxy` (5.0ms at frame 29 -> 10.2ms at frame 119, where f holds 3.7-5.8). One repeat
-  separates proxy creep from contention on the box. If it reproduces under ~38 fps the next item
-  is the proxy stage, not a revert of step 1 - the recorder is not implicated: it moves no pixels
-  and costs nothing in the model stage.
+* The proxy stage, offline: find out why `proxy` climbs across a run. r2026-10-30-f reproduced
+  the drop (30.63 fps steady against 40.48 on 29-f) with `network+composite` flat at
+  13.4/13.4/14.6ms but `proxy` 6.3 / 5.7 / 21.3ms at frames 29/59/89, so the loss is entirely in
+  preprocess, and it grows late in the run rather than from the start. Read the proxy path in
+  patch 7b827810f679 (`serve.cpp`'s preprocess dispatch, `preprocess.comp`, and whatever allocates
+  or rewrites descriptors per frame) and identify the per-frame growth: allocation, a re-upload,
+  a barrier, or descriptor indexing that degrades. This is a read-and-report item - no code change
+  and no run; write the concrete fix up as an item here when the cause is named.
   After that: parity against NGX preset 2 on the same card (`tools/ngx_preset_compare.py` runs
   presets 1 and 2 back to back), then steady-state fps.
 
@@ -29,6 +27,15 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the proxy creep reproduces, so it is not box contention (r2026-10-30-f, 2026-10-30).
+  Exit 0 in 9.6s, 120 done / 0 skipped, stamp `patch 7b827810f679` in sync. Steady 30.63 fps
+  against r2026-10-29-f's 40.48 and e's 34.51 - the third reading below 40, so the drop is real.
+  Headline 13.37 fps is the frame-0 warm-up (recv max 4593.4ms at frame 0 of 120) and should be
+  ignored. `network+composite` is flat at 13.4/13.4/14.6ms (frames 29/59/89) while `proxy` reads
+  6.3/5.7/21.3ms - the growth is late (~frame 89) rather than linear, which points at something
+  accumulating per frame in preprocess rather than a constant extra cost. Next item is the proxy
+  stage itself; the recorder is not implicated.
 
 * learned: the table-driven recorder publishes the same frame (2026-10-30, read d and e). d, on
   stamp `patch 7b827810f679`, wrote before.png/after.png whose blobs are byte-identical to 29-e's
