@@ -120,6 +120,13 @@ class Pipeline:
 
         # Injected sources let the tests drive the loop without a screen or a GPU.
         self.capture = capture if capture is not None else Capture(monitor_idx=monitor)
+        #: Whether the source hands us BGRA. It is a property of the source, not
+        #: a choice here: mss and PipeWire deliver BGRA, while the synthetic card
+        #: and a decoded image are RGBA. The channel order travels with the frame
+        #: on the wire (FRAME_FLAG_COLOR_BGRA) and the port's expand shader does
+        #: the swizzle on the GPU, so there is no per-frame CPU swap to pay for.
+        #: A source that says nothing is RGBA, the historical behaviour.
+        self.bgra = bool(getattr(self.capture, "bgra", False))
         self.width, self.height = self.capture.resolution
         # work_scale is the product's own performance dial: the network works on
         # a fraction of the frame and the result is scaled back to full, so the
@@ -227,7 +234,8 @@ class Pipeline:
 
         reset = index == 0
         self._timed("send", self.worker.send, index, frame, self.zero_motion,
-                    reset, pts=index, want_pixels=self.want_pixels)
+                    reset, pts=index, want_pixels=self.want_pixels,
+                    bgra=self.bgra)
         result = self._timed("recv", self.worker.recv, index, timeout)
         if result is None:
             if not self.want_pixels:
@@ -362,9 +370,10 @@ class Pipeline:
         elapsed = time.monotonic() - started
 
         if save_before and pair_before is not None:
-            _save_rgba(save_before, pair_before)
+            _save_rgba(save_before, pair_before, bgra=self.bgra)
         if save_after and last_after is not None:
-            _save_rgba(save_after, last_after)
+            # The worker always answers in RGBA, whatever went in.
+            _save_rgba(save_after, last_after, bgra=False)
 
         timing = self.timing_summary()
         return {
@@ -517,7 +526,8 @@ class Pipeline:
             self.last_input = frame
 
             self._timed("send", self.worker.send, index, frame, self.zero_motion,
-                        index == 0, pts=index, want_pixels=self.want_pixels)
+                        index == 0, pts=index, want_pixels=self.want_pixels,
+                        bgra=self.bgra)
             window.append((index, frame if keep_inputs else None))
             index += 1
 
@@ -537,11 +547,25 @@ class Pipeline:
             pass
 
 
-def _save_rgba(path: str, frame: np.ndarray) -> None:
+def _to_rgba(frame: np.ndarray, *, bgra: bool = False) -> np.ndarray:
+    """The frame's bytes in RGBA order, without copying when they already are.
+
+    The capture leg no longer swaps channels (that was 6.9ms of a 29ms 1440p
+    frame); the port swizzles on the GPU. A file still has to be written in
+    RGBA, so this is the one place the order is converted: at save time, on the
+    frame being saved, not on every frame in the loop.
+    """
+    if not bgra:
+        return frame
+    return frame[:, :, [2, 1, 0, 3]]
+
+
+def _save_rgba(path: str, frame: np.ndarray, *, bgra: bool = False) -> None:
     """Write an RGBA array out as a PNG (via pygame, so there is no cv2 dep)."""
     import pygame
+    rgba = _to_rgba(frame, bgra=bgra)
     surface = pygame.image.frombuffer(
-        frame.tobytes(), (frame.shape[1], frame.shape[0]), "RGBA")
+        rgba.tobytes(), (rgba.shape[1], rgba.shape[0]), "RGBA")
     pygame.image.save(surface, path)
 
 

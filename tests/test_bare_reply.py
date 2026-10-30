@@ -28,7 +28,7 @@ class QuietWorker:
     def is_alive(self):
         return True
 
-    def send(self, index, rgba, motion, reset, pts=0, want_pixels=True):
+    def send(self, index, rgba, motion, reset, pts=0, want_pixels=True, bgra=False):
         self.sent.append((index, want_pixels))
 
     def recv(self, index, timeout=None):
