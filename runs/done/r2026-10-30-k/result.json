@@ -1,0 +1,18 @@
+{
+  "exit_code": 1,
+  "seconds": 14.293,
+  "argv": [
+    "xvfb-run",
+    "-a",
+    "uv",
+    "run",
+    "python",
+    "tools/ngx_matrix.py",
+    "--baseline"
+  ],
+  "artifacts": [],
+  "runner": "e44571d7dd12",
+  "entry_env": [
+    "WINEPREFIX"
+  ]
+}
