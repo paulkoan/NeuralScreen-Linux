@@ -122,7 +122,7 @@ class SyntheticCapture:
 
     bgra = False
 
-    def __init__(self, width: int = 1280, height: int = 720):
+    def __init__(self, width: int = 1280, height: int = 720, bgra: bool = False):
         self.width = int(width)
         self.height = int(height)
         self._n = 0
@@ -136,6 +136,12 @@ class SyntheticCapture:
         # scaled14 and the whole size sweep. A fixture that costs more than the
         # thing it replaces is not a fixture.
         self._base = self._build()
+        if bgra:
+            # Hand the frame in the capture card's own channel order. The swap happens once,
+            # when the fixture is built, so a timing run measures the handoff and not the
+            # fixture - the same reason the static part is built once at all.
+            self._base = self._base[..., [2, 1, 0, 3]].copy()
+        self.bgra = bool(bgra)
 
     def _build(self) -> np.ndarray:
         w, h = self.width, self.height
@@ -194,7 +200,7 @@ class ImageCapture:
 
 def open_capture(source: str, *, monitor: int = 0, input_image=None,
                  width: int | None = None, height: int | None = None,
-                 video_scale: bool = True):
+                 video_scale: bool = True, bgra: bool = False):
     """Build the frame source named by --source.
 
     "auto" picks per session: Wayland desktops get the portal (mss would hand
@@ -237,7 +243,7 @@ def open_capture(source: str, *, monitor: int = 0, input_image=None,
         return PortalCapture(monitor_idx=monitor, source=SOURCE_WINDOW,
                              video_scale=video_scale, width=width, height=height)
     if source == "synthetic":
-        return SyntheticCapture(width or 1280, height or 720)
+        return SyntheticCapture(width or 1280, height or 720, bgra=bgra)
     if source == "image":
         if not input_image:
             raise CaptureError("--source image needs --input-image PATH")

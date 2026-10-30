@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-ae",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--bgra",
+           "--size", "2560x1440", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "The BGRA handoff, 1440p, no screen: the synthetic card now builds itself in BGRA order once, so the fixture adds no per-frame cost and the port's swizzle path is exercised for real. Expect the no-pixel median to fall from z's 29.1 ms by roughly the 6.9 ms CPU swap it removes. The content differs from the RGBA card by channel order only; the neural pass cost does not depend on that. If it does not fall, the swap was already gone or the port is reordering anyway - read stderr for 'graph fused' and the blend scale to confirm the usual path."
+}

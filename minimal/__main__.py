@@ -56,6 +56,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--frames", type=int, default=0,
                    help="stop after N frames (0 = until the window is closed)")
     p.add_argument("--monitor", type=int, default=0, help="screen index (default 0)")
+    p.add_argument("--bgra", action="store_true",
+                   help="hand the synthetic card over in BGRA order, the way a capture "
+                        "card does, so the handoff can be timed without a screen")
     p.add_argument("--source",
                    choices=("auto", "screen", "wayland", "window", "synthetic",
                             "image"),
@@ -196,11 +199,17 @@ def main(argv: list[str] | None = None) -> int:
                   file=sys.stderr)
             return 2
 
+    if args.bgra and args.source != "synthetic":
+        print("--bgra only applies to --source synthetic; a real capture reports its own order",
+              file=sys.stderr)
+        return 2
+
     try:
         source = open_capture(args.source, monitor=args.monitor,
                               input_image=args.input_image,
                               width=force_w, height=force_h,
-                              video_scale=not args.capture_no_scale)
+                              video_scale=not args.capture_no_scale,
+                              bgra=args.bgra)
         if args.prefetch:
             # Wrap before the Pipeline sees it: the loop then reads a frame that
             # is already waiting instead of one the producer makes on demand.

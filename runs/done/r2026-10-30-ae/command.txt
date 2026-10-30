@@ -1,0 +1,1 @@
+uv run python -m minimal --frames 120 --headless --source synthetic --bgra --size 2560x1440 --worker-log
