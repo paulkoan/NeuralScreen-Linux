@@ -1,0 +1,5 @@
+source synthetic  capture 2560x1440  ->  work 2560x1440 (work scale 1.00, NGX ceiling 2560x1440)
+params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+worker: bash native/run_worker.sh --prefix /opt/neuralscreen/wine
+version: repo 2e21621 (+12 uncommitted) · worker reports no stamp · unknown — the worker reports no stamp (not the native mode, or not rebuilt)
+frame 0 is the worker's warm-up: the window stays black until its first answer lands

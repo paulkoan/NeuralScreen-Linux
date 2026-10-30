@@ -1,0 +1,31 @@
+{
+  "exit_code": 3,
+  "seconds": 3.649,
+  "argv": [
+    "xvfb-run",
+    "-a",
+    "uv",
+    "run",
+    "python",
+    "-m",
+    "minimal",
+    "--frames",
+    "3",
+    "--headless",
+    "--source",
+    "synthetic",
+    "--size",
+    "2560x1440",
+    "--save-after",
+    "ngx-live.png",
+    "--worker-log"
+  ],
+  "artifacts": [
+    "ngx-live.png"
+  ],
+  "runner": "e44571d7dd12",
+  "entry_env": [
+    "NS_NR_PRESET",
+    "NS_WORKER_CMD"
+  ]
+}
