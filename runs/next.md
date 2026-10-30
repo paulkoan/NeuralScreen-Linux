@@ -10,21 +10,22 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Stop sending the zero motion field on port runs; `--no-motion` is the default, not a quality
-  decision. `minimal/loop.py` builds ONE all-zero field and reuses it every frame (a stream
-  cannot supply real vectors), and `serve.cpp` fills its motion buffer with zeros and calls that
-  the identity reprojection when no field arrives - so the pictures are identical, proven
-  byte-identical (r2026-10-30-ah vs -ad, MAD 0.0). It is 14.7 MB of zeroes per frame at 1440p,
-  5 ms of send, 7.5 ms of frame. No human decision is needed; the earlier "needs real footage"
-  framing was wrong. With no motion, 1080p is 14.5 ms = 69 fps (60 fps met) and 1440p is 21.8 ms
-  = 46 fps. Next for 1440p: 5.1 ms off the GPU pass (the small network is ~2 ms of it).
-
 ## 2. Ask first - do not start these alone
 
 * Decided (2026-10-11): the fixture keeps the whole frame. No crop.
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the zero motion field is no longer sent by default (2026-10-30 tick, commit b4bee54).
+  `minimal/__main__.py` now defaults `no_motion=True` and `--motion` opts back in; `--no-motion`
+  still parses so existing run requests work, and old requests that omit both now take the fast
+  path instead of the 29.1 ms one. Not a quality trade: the field is all zeros and the pictures
+  are byte-identical (r2026-10-30-ah vs -ad, MAD 0.0). The Wine/NGX arm needs `--motion` added to
+  its argv, since it derives flow from the field. Tested in `tests/test_motion_flag.py` (default,
+  opt-in, legacy flag); suite 344 pass / 32 skip, the 9 failures are the same libGL/SDL2 import
+  errors this box always has. NOT verified: no queue run yet, so the expected ~5 ms send saving at
+  1440p is still the measured motion-on/motion-off delta, not a run of the new default.
 
 * learned: the motion field is all zeros - `loop.py` builds one and reuses it, because a stream
   cannot supply real vectors. So `--no-motion` is not a quality trade: `serve` zero-fills its
