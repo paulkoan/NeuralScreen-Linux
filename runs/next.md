@@ -10,18 +10,22 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Integrate the 310.9.16 small network into the port (decided yes, 2026-10-30). Extraction is
-  already done: `extract.py --magic 0x06c9dfdf` cuts 31 blocks / 77 tensors / 108.6 MiB, and the
-  full layout is `docs/small-network-layout.md`. This is a second schedule, not a renumbering:
-  `nr_graph.cpp` is 1006 lines built for 71 blocks, `nr_graph.h:40` pins `kBlockCount = 71`,
-  `nr_graph.cpp:164` refuses anything else, and six loops hardcode block ranges; the small
-  model's layers are much wider (block11.layer0.layer is 4,194,320 bytes against 197,184).
-  Take ONE numbered step per pass:
-  1. Generic per-block schedule first, no fusion, checked against the existing reference
-     kernels. Only fuse after it matches.
+* Integrate the 310.9.16 small network into the port (decided yes, 2026-10-30). The schedule is
+  now derived, not guessed: `tools/nr_schedule.py` classifies every block from its tensors' byte
+  lengths and emits the stage table, and `tools/nr_schedule.py <model> --check` proves the
+  derivation reproduces `nr_graph.cpp`'s hard-coded ranges on the 71-block model. The small
+  network (31 blocks / 77 tensors) is the SAME six-level architecture with the same eight-block
+  ViT bottleneck and the same post block; only the block counts per level differ
+  (`docs/small-network-schedule.md`). So this is not a second schedule to write - it is the
+  hard-coded ranges to replace with the table. Take ONE numbered step per pass:
+  1. Make `Graph::record` table-driven: derive the stage list from the model's block
+     signatures (mirror `tools/nr_schedule.py`, which is the reference and must stay in sync),
+     delete the six hard-coded ranges and the two ViT-chain constants keyed on block 38, keep
+     fusion off for this step, and verify the 71-block path still records the same schedule
+     (queue a `--bypass` parity run, and a steady-fps run, before considering step 2).
   2. Parity against NGX preset 2 on the same card, then steady-state fps.
-  If the generic schedule cannot reach parity, the small model is not usable in the port: say so
-  and stop rather than fusing a wrong graph.
+  If the 71-block path cannot be made to record the identical schedule, say so and stop rather
+  than shipping an unverified recorder.
 
 ## 2. Ask first - do not start these alone
 
@@ -29,6 +33,21 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the 31-block network is NOT a different architecture (2026-10-30, offline on the
+  extracted weights). Both networks in the 310.9.16 DLL were re-extracted here (large magic
+  0x08cda732: 71 blocks / 153 tensors / 140.84 MiB, blend_scale 0.73974609375; small magic
+  0x06c9dfdf: 31 blocks / 77 tensors / 108.61 MiB, blend_scale 0.76708984375) and every block
+  byte length in the small one is a length the large one also has. `tools/nr_schedule.py`
+  classifies blocks from those lengths using `fusedLayout`'s own formula and derives the stage
+  table; on the 71-block model the derived table equals nr_graph.cpp's hard-coded ranges
+  exactly (a test asserts it), and on the 31-block model it gives the same six levels, the same
+  eight-block ViT bottleneck and the same post block, with one working block per encoder and
+  decoder level instead of 1/3/5/7. So the integration is replacing six hard-coded ranges (and
+  two ViT-chain constants keyed on block 38) with that table - not porting a second schedule,
+  and not re-learning the layout. The earlier "block11.layer0.layer is 4,194,320 bytes against
+  197,184" reading was the ViT stage compared against a c128 block; in the small model the ViT
+  stage is blocks 11-18 with the same five tensors as the large model's blocks 31-38.
 
 * learned: the BGRA handoff is implemented: the capture leg returns BGRA and sets
   FRAME_FLAG_COLOR_BGRA (0x80); the port's expand shader reads .bgra when the push constant's
