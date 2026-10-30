@@ -1,4 +1,4 @@
-From 4b934233b9241aa3ea39cab42de9f9ee68ff0f29 Mon Sep 17 00:00:00 2001
+From 1dc1f756b6686685b6d7d7a517d85a58a1d2c62a Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -102,15 +102,15 @@ per-frame timing line on stderr.
  scripts/build_linux.sh       | 161 +++++++
  shaders/composite_serve.comp | 196 +++++++++
  shaders/preprocess.comp      |  26 +-
- shaders/proxy_expand.comp    |  32 ++
- src/kernels.cpp              |  53 ++-
- src/kernels.h                |  37 +-
+ shaders/proxy_expand.comp    |  35 ++
+ src/kernels.cpp              |  54 ++-
+ src/kernels.h                |  38 +-
  src/main.cpp                 |   6 +-
  src/nr_model.h               |   1 +
- src/serve.cpp                | 784 +++++++++++++++++++++++++++++++++++
+ src/serve.cpp                | 786 +++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |  26 +-
  src/vk_context.h             |   3 +
- 11 files changed, 1312 insertions(+), 13 deletions(-)
+ 11 files changed, 1319 insertions(+), 13 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/proxy_expand.comp
@@ -541,10 +541,10 @@ index 97edc1b..b5f247b 100644
    features[base + 12u] = roundF16(pc.autoMask > 0.0 ? 1.0 : pc.localStructure);
 diff --git a/shaders/proxy_expand.comp b/shaders/proxy_expand.comp
 new file mode 100644
-index 0000000..fff90c9
+index 0000000..23d1ef5
 --- /dev/null
 +++ b/shaders/proxy_expand.comp
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,35 @@
 +#version 460
 +// RGBA8 in, the f32 proxy out — what preprocess.comp reads.
 +//
@@ -572,14 +572,17 @@ index 0000000..fff90c9
 +  if (id.x >= pc.width || id.y >= pc.height) return;
 +  const uint packed = pixels[id.y * pc.width + id.x];
 +  const float k = 1.0 / 255.0;
-+  proxy[id.y * pc.width + id.x] = vec4(float(packed % 256u) * k,
-+                                       float((packed / 256u) % 256u) * k,
-+                                       float((packed / 65536u) % 256u) * k,
++  const uint r = pc.pad0 != 0 ? (packed / 65536u) % 256u : packed % 256u;
++  const uint g = (packed / 256u) % 256u;
++  const uint b = pc.pad0 != 0 ? packed % 256u : (packed / 65536u) % 256u;
++  proxy[id.y * pc.width + id.x] = vec4(float(r) * k,
++                                       float(g) * k,
++                                       float(b) * k,
 +                                       1.0);
 +}
 \ No newline at end of file
 diff --git a/src/kernels.cpp b/src/kernels.cpp
-index 62bb8c3..788bf9e 100644
+index 62bb8c3..d2b26b2 100644
 --- a/src/kernels.cpp
 +++ b/src/kernels.cpp
 @@ -42,7 +42,8 @@ void check(bool condition, const char* message) {
@@ -592,7 +595,7 @@ index 62bb8c3..788bf9e 100644
      modules_[name] = context_.loadShaderModule(shaderDirectory + "/" + name + ".spv");
    }
  }
-@@ -498,16 +499,57 @@ void Kernels::preprocessFromProxy(VkCommandBuffer commands, const vk::Buffer& pr
+@@ -498,16 +499,58 @@ void Kernels::preprocessFromProxy(VkCommandBuffer commands, const vk::Buffer& pr
    struct Push {
      uint32_t fullWidth, fullHeight, validWidth, validHeight, sourceWidth, sourceHeight, seed;
      float autoMask, localTone, localStructure, skinStructure, style;
@@ -612,10 +615,11 @@ index 62bb8c3..788bf9e 100644
  }
  
 +void Kernels::expandRgba8ToProxy(VkCommandBuffer commands, const vk::Buffer& source,
-+                                const vk::Buffer& proxy, uint32_t width, uint32_t height) {
++                                const vk::Buffer& proxy, uint32_t width, uint32_t height,
++                                bool bgra) {
 +  struct Push {
 +    uint32_t width, height, pad0, pad1;
-+  } push{width, height, 0, 0};
++  } push{width, height, bgra ? 1u : 0u, 0};
 +  const vk::Buffer* bindings[vk::kGenericBindings] = {};
 +  bindings[0] = &source;
 +  bindings[6] = &proxy;
@@ -651,7 +655,7 @@ index 62bb8c3..788bf9e 100644
  void Kernels::convertF32ToF16(VkCommandBuffer commands, const Activation& input, Activation& output) {
    check(input.format == Format::F32 && output.format == Format::F16, "convert formats");
    uint32_t count = input.rows * input.channels;
-@@ -793,6 +835,13 @@ uint32_t Kernels::ffnRowTiles(uint32_t channels) {
+@@ -793,6 +836,13 @@ uint32_t Kernels::ffnRowTiles(uint32_t channels) {
    return channels == 256 ? 3u : 4u;   // warps = E * rowTiles (<= 32); C=256: 24 warps at .maxnreg 80 keep one workgroup per SM
  }
  
@@ -666,10 +670,10 @@ index 62bb8c3..788bf9e 100644
    check(a.input && a.input->format == Format::E4 && a.output && a.output->format == Format::E4, "PTX FFN formats");
    check(a.channels == 64 || a.channels == 128 || a.channels == 256, "PTX FFN channels");
 diff --git a/src/kernels.h b/src/kernels.h
-index 472bd36..a002503 100644
+index 472bd36..cfa52b8 100644
 --- a/src/kernels.h
 +++ b/src/kernels.h
-@@ -77,10 +77,37 @@ class Kernels {
+@@ -77,10 +77,38 @@ class Kernels {
      uint32_t fullWidth, fullHeight, validWidth, validHeight, sourceWidth, sourceHeight, seed;
      bool autoMask;
      float localTone, localStructure, skinStructure, style;
@@ -694,7 +698,8 @@ index 472bd36..a002503 100644
 +  // shaders/proxy_expand.comp). A quarter of the upload bytes of an f32 proxy and no host
 +  // loop at all.
 +  void expandRgba8ToProxy(VkCommandBuffer commands, const vk::Buffer& source,
-+                          const vk::Buffer& proxy, uint32_t width, uint32_t height);
++                          const vk::Buffer& proxy, uint32_t width, uint32_t height,
++                          bool bgra = false);
 +  // `motion` is the client's field: 2 x f16 per pixel, current -> previous, in work-resolution
 +  // pixels (guides.py's units, and what NGX consumes), which the shader turns into the
 +  // reprojection the demo's motionTex carries in uv. A caller that declared no field passes a
@@ -707,7 +712,7 @@ index 472bd36..a002503 100644
    void convertF32ToF16(VkCommandBuffer commands, const Activation& input, Activation& output);
    void quantize(VkCommandBuffer commands, const Activation& input, Activation& output);
    void downsample2x(VkCommandBuffer commands, const Activation& input, Activation& output, uint32_t inWidth,
-@@ -210,13 +237,19 @@ class Kernels {
+@@ -210,13 +238,19 @@ class Kernels {
    // w2 tile-major [e][4][32][32], w3 tile-major [K/32][K][32].
    static bool ptxFfnEnabled();
    static uint32_t ffnRowTiles(uint32_t channels);          // PTX expert FFN: 16-row tiles per workgroup (its chaining signals cover 16 * tiles rows)
@@ -767,10 +772,10 @@ index 867c97e..66f2175 100644
  #include <string>
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..eefb1c9
+index 0000000..43008ec
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,784 @@
+@@ -0,0 +1,786 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -887,6 +892,7 @@ index 0000000..eefb1c9
 +// No motion field follows this header: nothing in this mode reads one, and at
 +// 2560x1440 the field is 14.7MB of float16 - as much as the colour.
 +constexpr uint32_t kFrameFlagNoMotion = 0x40;
++constexpr uint32_t kFrameFlagBgra = 0x80;   // the colour bytes are BGRA, not RGBA
 +
 +constexpr size_t kHeaderBytes = 64;        // HEADER_FMT  "<10I4f2I"
 +constexpr size_t kFrameHeaderBytes = 24;   // FRAME_FMT   "<4Iq"
@@ -1358,6 +1364,7 @@ index 0000000..eefb1c9
 +      const uint32_t index = le32(frameHeader + 4);
 +      const uint32_t reset = le32(frameHeader + 8);
 +      const uint32_t flags = le32(frameHeader + 12);
++      const bool bgra = (flags & kFrameFlagBgra) != 0;
 +      const int64_t pts = le64(frameHeader + 16);
 +
 +      if (flags & kFrameFlagNoColor) {
@@ -1436,8 +1443,8 @@ index 0000000..eefb1c9
 +        // was published last and this is the only moment it does - the composite below overwrites
 +        // it. The same expand the current frame gets, on the previous one: one dispatch and no
 +        // host bytes.
-+        if (haveHistory) kernels->expandRgba8ToProxy(commands, imageBuffer, historyProxy, workWidth, workHeight);
-+        kernels->expandRgba8ToProxy(commands, colourBuffer, proxy, workWidth, workHeight);
++        if (haveHistory) kernels->expandRgba8ToProxy(commands, imageBuffer, historyProxy, workWidth, workHeight, bgra);
++        kernels->expandRgba8ToProxy(commands, colourBuffer, proxy, workWidth, workHeight, bgra);
 +        preprocess.history = haveHistory ? &historyProxy : nullptr;
 +        kernels->preprocessFromProxy(commands, proxy, *features, preprocess);
 +        graph->record(commands, *features);

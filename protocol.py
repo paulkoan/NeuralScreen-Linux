@@ -281,6 +281,7 @@ FRAME_FLAG_SHM = 0x1         # a bit in the reserved field of the frame header
 FRAME_FLAG_WANT_PIXELS = 0x2  # return the pixels even in window mode (for a screenshot)
 FRAME_FLAG_MOTION_SMALL = 0x4  # motion field at flow resolution, upscaled by the worker
 FRAME_FLAG_SPLIT = 0x20        # before/after wipe; position in the high 16 bits of reserved
+FRAME_FLAG_COLOR_BGRA = 0x80   # the colour bytes are BGRA, not RGBA
 
 # MOTS: the motion field arrives at the optical-flow resolution (~320x180) and
 # the worker upscales it to the work resolution on the GPU. The CPU is spared
@@ -417,7 +418,7 @@ def send_frame(worker: subprocess.Popen, index: int, rgba: np.ndarray,
                shm: "SharedFrameBuffer | None" = None,
                want_pixels: bool = False, motion_small: bool = False,
                no_color: bool = False, bypass: bool = False, no_motion: bool = False,
-               split: float = 0.0, writev: bool = False) -> None:
+               bgra: bool = False, split: float = 0.0, writev: bool = False) -> None:
     """Send a frame to the worker.
 
     With shared memory agreed, only the 24-byte header with the
@@ -436,7 +437,8 @@ def send_frame(worker: subprocess.Popen, index: int, rgba: np.ndarray,
             (FRAME_FLAG_MOTION_SMALL if motion_small else 0) | \
             (FRAME_FLAG_NO_COLOR if no_color else 0) | \
             (FRAME_FLAG_BYPASS if bypass else 0) | \
-            (FRAME_FLAG_NO_MOTION if no_motion else 0)
+            (FRAME_FLAG_NO_MOTION if no_motion else 0) | \
+            (FRAME_FLAG_COLOR_BGRA if bgra else 0)
     if split > 0.0:
         # The wipe position rides in the high 16 bits of the same flags field:
         # there is no dedicated field in the header, and widening it for a
