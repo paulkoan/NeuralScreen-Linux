@@ -41,6 +41,16 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* learned: the unfused parity run is unreachable from a request as the box is configured (2026-10-30,
+  no measurement; tick before i). `tools/auto_runner.py` builds the worker's env from the policy
+  entry only - a request contributes `args`, `timeout_s`, `artifacts`, `manual`, `note` and nothing
+  else - so `DLSS5VK_UNFUSED=1` can only arrive through `[entry.env]` in `/opt/neuralscreen/policy.toml`.
+  The `minimal` entry there sets `NS_WORKER_CMD` and no unfused flag, and putting the flag on `minimal`
+  would make every run unfused, so it needs a second entry (`minimal-unfused`, same argv, env
+  `NS_WORKER_CMD` + `DLSS5VK_UNFUSED=1`) installed on the box - box configuration, not this repo.
+  The build half is queued as `r2026-10-30-i` (port-build, must stamp `0aabc30ec374`), so the binary
+  is current when that entry exists; step 1 stays here until the parity frame can actually be served.
+
 * learned: serve can run the unfused graph now, so the parity comparison the plan asks for is
   actually possible (2026-10-30, patch `0aabc30ec374`, no run). `src/serve.cpp` pinned
   `nr::Graph::Options{.fusedBlocks = true}` while every other entry in `main.cpp` went through
