@@ -10,22 +10,16 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Integrate the 310.9.16 small network into the port (decided yes, 2026-10-30). The schedule is
-  now derived, not guessed: `tools/nr_schedule.py` classifies every block from its tensors' byte
-  lengths and emits the stage table, and `tools/nr_schedule.py <model> --check` proves the
-  derivation reproduces `nr_graph.cpp`'s hard-coded ranges on the 71-block model. The small
-  network (31 blocks / 77 tensors) is the SAME six-level architecture with the same eight-block
-  ViT bottleneck and the same post block; only the block counts per level differ
-  (`docs/small-network-schedule.md`). So this is not a second schedule to write - it is the
-  hard-coded ranges to replace with the table. Take ONE numbered step per pass:
-  1. Make `Graph::record` table-driven: derive the stage list from the model's block
-     signatures (mirror `tools/nr_schedule.py`, which is the reference and must stay in sync),
-     delete the six hard-coded ranges and the two ViT-chain constants keyed on block 38, keep
-     fusion off for this step, and verify the 71-block path still records the same schedule
-     (queue a `--bypass` parity run, and a steady-fps run, before considering step 2).
-  2. Parity against NGX preset 2 on the same card, then steady-state fps.
-  If the 71-block path cannot be made to record the identical schedule, say so and stop rather
-  than shipping an unverified recorder.
+* Verify the table-driven recorder, then step 2. Step 1 is implemented (commit 56cfb43):
+  `Graph::record` takes every block range from a schedule derived from the model's block
+  signatures (`src/nr_schedule.{h,cpp}`, mirroring `tools/nr_schedule.py`), the six hard-coded
+  ranges and the `block < 38` ViT constant are gone, and the 71-block derivation is pinned to
+  the old ranges by `dlss5vk schedule --check` (ok on both extracted models, 71 and 31 blocks).
+  What is NOT yet proven is that the graph records the same work on the GPU. Read the two
+  queued runs first: r2026-10-30-a (30 frames, `after.png` must be byte-identical to 29-e's)
+  and r2026-10-30-b (120 frames, ~40.5 fps steady). If either disagrees, fix or revert step 1
+  before anything else. If both agree, take step 2: parity against NGX preset 2 on the same
+  card (`tools/ngx_preset_compare.py` runs presets 1 and 2 back to back), then steady-state fps.
 
 ## 2. Ask first - do not start these alone
 
@@ -33,6 +27,19 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the recorder now walks a table, and the table is verifiable without a GPU (2026-10-30).
+  `src/nr_schedule.{h,cpp}` classifies each block from its `layer` tensors' byte lengths (the
+  `layer` field is the string "layer0", not an int - parsing it as an integer collapses the
+  signature and every block comes back as 4 layers of the wrong order), walks them into stages,
+  and `Graph::record` takes all its boundaries from it; the six ranges and the `block < 38` ViT
+  constant are gone. `dlss5vk schedule --model <dir> --check` is device-free, and on both
+  extracted models it prints exactly the table `tools/nr_schedule.py` prints (71: 1..4/5..8/9..14/
+  15..22/23..30/31..38/39/40..47/48..55/56..61/62..65/66..69/70; 31: one working block per level),
+  with the 71-block one also equalling the ranges the recorder used to hard-code. A pytest in
+  tests/test_nr_schedule.py drives that mode for both networks against the reference tool. What
+  this does NOT prove is pixel parity, because nothing here has a GPU - that is r2026-10-30-a/b.
+  Also: the patch applies to a pristine 9d08f41 and rebuilds in sync (patch 7b827810f679, 78 PTX).
 
 * learned: the 31-block network is NOT a different architecture (2026-10-30, offline on the
   extracted weights). Both networks in the 310.9.16 DLL were re-extracted here (large magic
