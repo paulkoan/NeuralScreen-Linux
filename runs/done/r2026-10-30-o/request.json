@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-o",
+  "entry": "ngx-old",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--save-after", "ngx-old-120.png", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": ["ngx-old-120.png"],
+  "note": "Preset 1 (the 310.8.0 network) at 120 frames on the live path. The pair with r2026-10-30-p is the real speed comparison: read the median and the worker clock, not the headline, and diff the two PNGs. 3-frame probes proved both entries work (m preset 2, n preset 1, both exit 0)."
+}
