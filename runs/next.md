@@ -12,17 +12,25 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 * Integrate the 310.9.16 small network into the port (decided yes, 2026-10-30). Extraction is
   done: `extract.py --magic 0x06c9dfdf` cuts 31 blocks / 77 tensors / 108.6 MiB, and
-  `docs/small-network-layout.md` is the layout. This is a second schedule, not a renumbering:
-  `nr_graph.h:40` pins `kBlockCount = 71`, `nr_graph.cpp:164` refuses anything else, and six
-  loops hardcode block ranges; the small model's layers are much wider (block11.layer0.layer is
-  4,194,320 bytes against 197,184). Take ONE numbered step per pass:
-  1. Loader: accept a block count that is not 71, keeping the 71-block model selectable beside
-     the small one - the big model stays the parity reference, so do not replace it.
-  2. Generic per-block schedule, no fusion, checked against the existing reference kernels. Fuse
-     only after it matches.
-  3. Port-small vs NGX preset 2 on the same card, then steady-state fps. NGX preset 1 vs 2 is
+  `docs/small-network-layout.md` is the layout. This is a second schedule, not a renumbering.
+  STEP 1 IS DONE (2026-10-30 tick, "port: read the blend scale from the model's post block"):
+  the block count is the model's
+  (`blockCount_`), the stage table is derived from block signatures, and the blend scale now
+  comes from the model's POST block (`blockCount - 1`) instead of a literal block 70 - on the
+  small network that literal missed and the readout would have defaulted to 1.0 while looking
+  healthy. `dlss5vk schedule --check --model /opt/data/tmp/model-fp8` prints 13 stages, 31
+  blocks, every block in one stage. Take ONE numbered step per pass:
+  1. Parity of the generic schedule with NO fusion, against the existing reference kernels, on
+     the same card. Two parts: serve hardcodes `fusedBlocks = true` (serve.cpp:475) while
+     main.cpp has `DLSS5VK_UNFUSED=1` - make serve honour that env var (a flag is fine too) so
+     a run can measure the unfused path at all; then compare against `verify`/parity, which
+     already run `fusedBlocks = false`. Fuse only after it matches.
+  2. Port-small vs NGX preset 2 on the same card, then steady-state fps. NGX preset 1 vs 2 is
      already measured (1.08x end-to-end, 27.7 fps steady); that number is the model's effect
      inside NVIDIA's engine, not the port's, so it does not replace this step.
+  Step 2 cannot be queued from here: it needs the box to hold the small model at the directory
+  the executor passes to `serve --model` (that path is the policy's, not this repo's). Stage it
+  on the box, or say which path to name, before a run is written.
   If the generic schedule cannot reach parity, say so and stop rather than fusing a wrong graph.
 
 ## 2. Ask first - do not start these alone
@@ -31,6 +39,25 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the small network's blend weight is read from the model's own post block now
+  (2026-10-30, no run). Step 1 of the integration was half done in the patch: `blockCount_` is
+  the model's and the stage table is derived (`schedule --check --model /opt/data/tmp/model-fp8`
+  prints 13 stages / 31 blocks / every block in one stage), but serve.cpp still looked the blend
+  scale up at a literal block 70. The small model carries it at block30.layer0.blend_scale
+  (0.76708984375 against the big model's 0.73974609375 at block70), so the literal missed, the
+  catch-all swallowed the throw, and the readout would have printed "absent - defaulted to 1.0"
+  and served with a blend cap of 1.0 - a wrong weight that looks like a healthy run, which is
+  exactly the failure `check_blend_scale.py` exists for. The read is now
+  `model->tensor(blockCount() - 1, 0, "blend_scale")` and the log names the block it read
+  ("block30..."/"block70..."), with the found/fallback strings on separate arms. The checker
+  transliterates the derivation (refuses a literal index) and still pins the big model's value:
+  0.73974609375 at the read's own coordinates, the three neighbouring reads not that value.
+  Verified here: patch applies to a pristine 9d08f41 and /opt/data/tmp/odl-verify4 rebuilds in
+  sync (17 files, 78 PTX, patch 03246c10b315); `pytest tests/` 327 pass, 32 skip, 9 failures are
+  the same libGL/SDL2 import errors this box always has. NOT verified: a device, so neither the
+  unfused parity nor any fps. Next is step 2 of the item: serve hardcodes fusedBlocks = true, so
+  make it honour DLSS5VK_UNFUSED=1 before the parity run.
 
 * learned: the one-copy upload holds and the creep is gone (2026-10-30, read g and h; tick h+1).
   g is the port-build: exit 0 in 9.6s, `stamp: port 9d08f41 (17 modified) patch 9e90de0d48d0...`,
