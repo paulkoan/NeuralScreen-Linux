@@ -21,10 +21,11 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   healthy. `dlss5vk schedule --check --model /opt/data/tmp/model-fp8` prints 13 stages, 31
   blocks, every block in one stage. Take ONE numbered step per pass:
   1. Parity of the generic schedule with NO fusion, against the existing reference kernels, on
-     the same card. Two parts: serve hardcodes `fusedBlocks = true` (serve.cpp:475) while
-     main.cpp has `DLSS5VK_UNFUSED=1` - make serve honour that env var (a flag is fine too) so
-     a run can measure the unfused path at all; then compare against `verify`/parity, which
-     already run `fusedBlocks = false`. Fuse only after it matches.
+     the same card. The switch is there now: `serve` reads `DLSS5VK_UNFUSED=1` and prints
+     `serve: graph fused|unfused`, so the unfused graph is reachable from a worker run (the
+     patch is on main, and a port-build run is still needed before anything measures it).
+     What is left is the comparison itself: a served unfused frame against `verify`/`parity`,
+     which already run `fusedBlocks = false`, on the same card. Fuse only after it matches.
   2. Port-small vs NGX preset 2 on the same card, then steady-state fps. NGX preset 1 vs 2 is
      already measured (1.08x end-to-end, 27.7 fps steady); that number is the model's effect
      inside NVIDIA's engine, not the port's, so it does not replace this step.
@@ -39,6 +40,24 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: serve can run the unfused graph now, so the parity comparison the plan asks for is
+  actually possible (2026-10-30, patch `0aabc30ec374`, no run). `src/serve.cpp` pinned
+  `nr::Graph::Options{.fusedBlocks = true}` while every other entry in `main.cpp` went through
+  `fusedBlocksEnabled()` (`DLSS5VK_UNFUSED=1`), which meant a worker run could only ever measure
+  the fused graph - the unfused-vs-reference comparison was unmeasurable from the pipeline no
+  matter what a queue entry said. serve now has the same static helper, same variable name and
+  spelling, so one env set in the policy's entry covers both binaries, and prints
+  `serve: graph fused (DLSS5VK_UNFUSED not set)` or `serve: graph unfused - reference kernels
+  (DLSS5VK_UNFUSED=1)` before the first frame, because a parity run is only evidence for the
+  graph it names. A new test (`test_serve_can_run_the_unfused_graph_too`) reads the served
+  source out of the patch and refuses a literal `true` there again. Verified here: the patch
+  applies to a pristine 9d08f41 worktree, and `g++ -fsyntax-only -std=c++20
+  -DVK_ENABLE_BETA_EXTENSIONS` (repo's volk + Vulkan-Headers) passes on the patched serve.cpp;
+  `pytest tests/` 328 pass / 32 skip / 9 failures, the same libGL/SDL2 import errors this box
+  always has. NOT verified: no device, so neither the unfused graph's output nor its dispatch
+  count. Next: rebuild the staged port (the binary still stamps the previous patch), then the
+  box-side comparison against `verify`/`parity` - do not fuse anything until it matches.
 
 * learned: the small network's blend weight is read from the model's own post block now
   (2026-10-30, no run). Step 1 of the integration was half done in the patch: `blockCount_` is
