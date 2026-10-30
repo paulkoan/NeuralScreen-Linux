@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-am",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--send-ahead", "2", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "Two frames in flight at 2560x1440 with the motion field ON. Motion costs 5 ms of the send at 1440p and drops 1080p from 69 to 50 fps, but it is CPU work that the worker does not need until it starts the frame - so keeping a second frame in flight should hide it behind the GPU pass instead of paying for it serially. Target: 1080p under 16.7 ms with motion still on (it is 19.9 serial, 14.5 without motion). If send-ahead 2 changes nothing, the loop is not overlapping and that is the next code item."
+}
