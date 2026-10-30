@@ -10,15 +10,15 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Measure the BGRA handoff at 1440p. The loop half landed (it now forwards the source's
-  channel order; `0baa2fe` had already done the capture leg and the port's shader), so the
-  only thing left is the number. **The stock synthetic card is RGBA, so it cannot exercise the
-  path at all** — a run on it would measure the same 29.1 ms and prove nothing. The run needs a
-  BGRA source on the box: `--source screen` (the XWayland grab is black on Wayland but is still
-  BGRA, so a no-pixel timing run is valid evidence) or `--source image` with a saved PNG.
-  Decision needed: which source, and whether a black-frame timing run counts. Then queue
-  120 frames at 2560x1440 with `--worker-log` and compare the no-pixel median against z's
-  29.1 ms, and confirm `--save-after` on the synthetic card is still `9f13979b168dc3a0`.
+* Settle the motion field, now the biggest measured lever: full motion costs 5.0 ms of the send
+  and 7.5 ms of the frame (1440p median 29.1 -> 21.8 ms with `--no-motion`, 34.3 -> 45.9 fps),
+  but the composite uses it for history reprojection. On the synthetic card dropping it is
+  byte-identical (r2026-10-30-ah vs -ad, MAD 0.0), which proves nothing about a real stream.
+  `--motion-small` hung at worker init (r2026-10-30-ag, exit 3, no device line);
+  `r2026-10-30-ai` retries it with a picture. If it runs, compare its median with af/z and its
+  picture with ad; if it hangs again, the reduced path is broken and the choice is full motion
+  or none - a quality call that needs real footage, so leave it to the human and keep
+  `--no-motion` as an opt-in entry.
 
 ## 2. Ask first - do not start these alone
 
@@ -26,6 +26,14 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the motion field is 5 ms of send and 7.5 ms of the frame (r2026-10-30-af/-ah,
+  2026-10-30). 1440p no pixels: 29.1 ms with motion, 21.8 ms with `--no-motion` (45.9 fps),
+  split capture 2.7 / send 5.1 / recv 14.0. The picture is byte-identical without it on the
+  synthetic card (MAD 0.0 vs ad), so the fixture cannot judge quality. BGRA is implemented and
+  measures nothing (29.3 vs 29.1): the CPU swap was already gone from the path, and the RGBA
+  picture is still 9f13979b168dc3a0. The send is not the copy - 14.7 MB into shm is 1.6 ms, and
+  even without motion send is 5.1 ms.
 
 * learned: the BGRA handoff was only half wired. `0baa2fe` made the capture leg return BGRA
   (`minimal/capture.py`), added `FRAME_FLAG_COLOR_BGRA = 0x80` and the port's
