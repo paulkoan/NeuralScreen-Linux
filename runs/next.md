@@ -42,6 +42,15 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* learned: r2026-10-30-l (`ngx-live`) never reached the network — exit 3 in 3.6s. The worker died
+  at frame 0 with `bash: native/run_worker.sh: No such file or directory` (BrokenPipeError while
+  sending frame 0), so this run says nothing about the 310.9.16 small model or EvaluateVideo, and
+  the "run that decides whether 310.9.16 works" claim above is void. The worker line the policy
+  supplies is relative (`bash native/run_worker.sh --prefix /opt/neuralscreen/wine`) and the box's
+  staged checkout (`/opt/neuralscreen/state/repo`, per the traceback) evidently has no `native/`
+  even though this repo does. Box-side staging or policy fix (absolute path, or ship `native/`):
+  no worker run can reach frame 0 until it lands, so the step-1 parity comparison stays blocked.
+
 * learned: the control matrix measured the GATE, not the DLL (r2026-10-30-k, 2026-10-30, exit 1
   in 14.3s). Every direct row failed evaluate 0xBAD00004 for both DLLs and both spoof settings;
   the core row failed earlier at create 0xBAD0000B. The cause is in
