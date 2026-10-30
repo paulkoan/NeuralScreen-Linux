@@ -1,0 +1,28 @@
+{
+  "exit_code": 0,
+  "seconds": 6.758,
+  "argv": [
+    "uv",
+    "run",
+    "python",
+    "-m",
+    "minimal",
+    "--frames",
+    "3",
+    "--headless",
+    "--source",
+    "synthetic",
+    "--size",
+    "2560x1440",
+    "--save-after",
+    "fused.png",
+    "--worker-log"
+  ],
+  "artifacts": [
+    "fused.png"
+  ],
+  "runner": "e44571d7dd12",
+  "entry_env": [
+    "NS_WORKER_CMD"
+  ]
+}

@@ -1,0 +1,1 @@
+uv run python -m minimal --frames 3 --headless --source synthetic --size 2560x1440 --save-after fused.png --worker-log
