@@ -20,20 +20,22 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   small network that literal missed and the readout would have defaulted to 1.0 while looking
   healthy. `dlss5vk schedule --check --model /opt/data/tmp/model-fp8` prints 13 stages, 31
   blocks, every block in one stage. Take ONE numbered step per pass:
-  1. Parity of the generic schedule with NO fusion, against the existing reference kernels, on
-     the same card. The switch is there now: `serve` reads `DLSS5VK_UNFUSED=1` and prints
-     `serve: graph fused|unfused`, so the unfused graph is reachable from a worker run (the
-     patch is on main, and a port-build run is still needed before anything measures it).
-     What is left is the comparison itself: a served unfused frame against `verify`/`parity`,
-     which already run `fusedBlocks = false`, on the same card. Fuse only after it matches.
+  1. DONE (2026-10-30): parity with no fusion is exact. r2026-10-30-r served three frames
+     through the reference kernels (`serve: graph unfused - reference kernels`, exit 0) and
+     r2026-10-30-s served the same three frames fused (`serve: graph fused`, exit 0); the PNGs
+     are byte-identical (MAD 0.0, 0 changed pixels, PSNR inf) on the same card and binary
+     (patch 0aabc30e). Median 234.6 ms unfused vs 77.4 ms fused, as expected. Fusion may be
+     carried into the small network.
   2. Port-small vs NGX preset 2 on the same card, then steady-state fps. The NGX pair is now
      measured on the current DLL (r2026-10-30-o/p, both exit 0, 120 frames): preset 1
      57.48 ms/frame, preset 2 52.65 ms/frame, **1.09x**, pictures differ (MAD 4.4661, p99 18).
      The model is ~11 ms of a ~57 ms Wine frame, so 1.78x at the model lands as ~5 ms; the NGX
      arm remains 17-19 fps against the port's 40.5. The port comparison is the one that matters.
-  Step 2 cannot be queued from here: it needs the box to hold the small model at the directory
-  the executor passes to `serve --model` (that path is the policy's, not this repo's). Stage it
-  on the box, or say which path to name, before a run is written.
+  Step 2 cannot be queued from here: it needs the box to hold the small model at a path an entry
+  passes to `serve --model` (that path is the policy's, not this repo's). The DLL is already on
+  the box, so no upload is needed - `extract.py --magic 0x06c9dfdf --out /opt/neuralscreen/model-small`
+  cuts it there from `native/nvngx_dlssnr.dll`, then an entry must pass that path. Do not swap
+  `/opt/neuralscreen/model`: the reference model stays.
   If the generic schedule cannot reach parity, say so and stop rather than fusing a wrong graph.
 
 ## 2. Ask first - do not start these alone
@@ -42,6 +44,13 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: fused and unfused are byte-identical on the port (r2026-10-30-r vs -s, 2026-10-30,
+  both exit 0, three frames, 2560x1440, same card). `serve: graph unfused - reference kernels`
+  produced exactly the bytes `serve: graph fused` did (MAD 0.0, 0 changed pixels, PSNR inf).
+  So the generic schedule computes what the reference kernels compute, and fusion is safe to
+  carry into the small network. Unfused median 234.6 ms vs fused 77.4 ms: the reference path is
+  for parity only, never for speed.
 
 * learned: the 310.9.16 small model is real and only ~9% faster end-to-end in NGX
   (r2026-10-30-o/p: preset 1 57.48 ms/frame, preset 2 52.65 ms/frame, 1.09x; pictures differ
