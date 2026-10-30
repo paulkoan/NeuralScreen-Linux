@@ -10,13 +10,11 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Read r2026-10-30-g (port-build) and r2026-10-30-h (120-frame measure of the one-copy /
-  one-submit upload, patch 9e90de0d48d0) now queued. Accept when per-frame `proxy` at frame 119
-  is no higher than at frame 29 (f read 6.3 -> 21.3, e 5.0 -> 10.2) and the steady rate is back
-  above 30.63 fps; the printed split `proxy X [copy Y, submit Z]` says whether the host copy or
-  the submit moved. If g's stamp is not 9e90de0d48d0, h is measuring the old binary - rebuild
-  before reading h. Then: parity against NGX preset 2 on the same card
-  (`tools/ngx_preset_compare.py` runs presets 1 and 2 back to back), then steady-state fps.
+* Parity against NGX preset 2 on the same card. The steady-rate half is answered (h: 40.7 fps) and
+  g/h are read; the instrument is `tools/ngx_preset_compare.py`, which runs presets 1 and 2 back
+  to back. It cannot be queued as a run: the unit's policy pins the worker to the port and its
+  sandbox hides the Wine prefix, and nothing here has a GPU. Needs one line from the developer:
+  does it run on the box by hand, or should the policy gain an entry so a tick can queue it?
 
 ## 2. Ask first - do not start these alone
 
@@ -24,6 +22,18 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the one-copy upload holds and the creep is gone (2026-10-30, read g and h; tick h+1).
+  g is the port-build: exit 0 in 9.6s, `stamp: port 9d08f41 (17 modified) patch 9e90de0d48d0...`,
+  15 shader modules / 78 PTX, "runs will be in sync" - so h measured the new binary. h: exit 0,
+  120 done / 0 skipped, **40.7 fps steady** (median 24.6ms) against f's 30.63 and 29-f's 40.48 -
+  the drop is fully recovered. `proxy` is flat where it used to creep: 5.4 / 6.3 / 6.6 / 6.8 ms at
+  frames 29/59/89/119 (f: 6.3 -> 21.3, e: 5.0 -> 10.2), i.e. +1.4ms over the run against +15.0,
+  and the split puts it in both halves (copy 3.5 -> 4.2, submit 1.8 -> 2.6) - neither the host
+  copy nor the submit carries the old per-frame cost. Strictly, "119 no higher than 29" misses by
+  1.4ms on four samples; read that as flat, not as a new creep. network+composite 13.3/13.4
+  (29/119) unaffected, as it should be. Headline 15.6 fps is still the frame-0 warm-up (recv max
+  4396.7ms at frame 0 of 120).
 
 * learned: the one-copy upload is queued as two entries, build then measure (2026-10-30, tick f+1;
   no run). r2026-10-30-g is the port-build (stamp must name 9e90de0d48d0) and r2026-10-30-h is the
