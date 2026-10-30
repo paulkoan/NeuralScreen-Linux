@@ -10,20 +10,6 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Verify the readback-gate fix on the pixel path (queued 2026-10-29 as d/e/f). The gate's no-pixel
-  proof landed hard: r2026-10-29-b (120 frames, no pixels) reports 34.7 fps steady at a 28.8ms
-  median, against 27-c's 14.4 fps at 69.5ms - removing the 14.7MB readback cut more than the
-  readback itself, because it also stopped the worker and client fighting over the same memory.
-  The headline is still 13.92 fps because frame 0's 3.3s PTX warm-up sits in the mean.
-  r2026-10-29-c (30 frames, pixels) then failed exit 3: `serve: write(stdout): Bad address`,
-  stopped after 0 of 14.7MB reply bytes. The cause was mine: publishImage hands sendFrame a
-  pointer into the downloaded vector when the client has no pixel channel, and that vector was
-  scoped to the if-block, so sendFrame read freed memory. Hoisted the vector so it outlives the
-  reply. d rebuilds the staged port, e retries the 30-frame pixel run (expect 30 done, 0 skipped;
-  "Bad address" again means the hoist did not take), f re-runs 120 frames to confirm the steady
-  rate survives. Quote each run's stamp line - b and c both ran patch 819bea6f149e, and d must
-  name a different sha or the fix is not in the binary.
-
 * Stop reordering colour on the CPU in the capture leg (no run yet - needs a wire flag). `grab()`
   swaps BGRA to RGBA with a fancy-index assign that costs 6.9ms a frame at 1440p, and every
   byte-touching alternative benches the same 6-7ms; only not doing it is free. The port already
@@ -172,3 +158,10 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   (`libGL.so.1` and SDL2 absent) in capture/dependency/tool tests; the 63 timing and pipeline tests
   pass. The gate needs those system libs installed (or a run on the GPU box) before the whole suite
   can be called green here.
+
+* learned: the readback-gate fix is verified (2026-10-29 d/e/f). b and c ran patch 819bea6f149e;
+  d rebuilt the staged port to patch 4b934233b924 (different sha, so the hoist is in the binary).
+  e, the 30-frame pixel run, exited 0: 30 done, 0 skipped, 19.83 fps steady, no "Bad address".
+  f, the 120-frame confirmation, exited 0: 40.48 fps steady against b's 34.7 - the steady rate
+  survives the fix and even improves. Headline 16.59 fps is still the frame-0 PTX warm-up skewing
+  the mean; quote the steady number. The top plan item is retired.
