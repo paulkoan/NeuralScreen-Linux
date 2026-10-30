@@ -1,0 +1,42 @@
+# run r2026-10-30-v
+
+runner `e44571d7dd12` · entry `minimal-small` · env from policy: NS_WORKER_CMD
+
+`xvfb-run -a uv run python -m minimal --frames 120 --headless --source synthetic --size 2560x1440 --worker-log`
+
+exit **0** after 11.1s
+
+```
+source synthetic  capture 2560x1440  ->  work 2560x1440 (work scale 1.00, NGX ceiling 2560x1440)
+params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+worker: /opt/neuralscreen/port/build/dlss5vk serve --model /opt/neuralscreen/model-small
+version: repo 5c25f3c (+19 uncommitted) · worker built from patch 0aabc30ec374 at port 9d08f41 · in sync
+frame 0 is the worker's warm-up: the window stays black until its first answer lands
+frames: 120 done, 0 skipped, 7.603s (15.78 fps headline, 32.37 fps steady), worker exit 0
+timing: capture 3.0ms  send 13.0ms  recv 45.5ms  display 0.0ms   (mean 61.5ms/frame, 16.3 fps; median 30.9ms/frame, 32.4 fps steady)
+send spread: min 10.0  median 12.8  max 18.6 ms at frame 14 of 120   (steady — a fixed interval, not contention)
+recv spread: min 12.5  median 14.9  max 3673.3 ms at frame 0 of 120   (one-off at frame 0 — the worker's warm-up, not a per-frame cost)
+
+```
+
+stderr:
+
+```
+warning: The `native-tls` setting is deprecated and will be removed in a future release. Use `system-certs` instead.
+[worker] serve: 2560x1440, model /opt/neuralscreen/model-small, shaders /opt/neuralscreen/port/build/shaders, seed 0
+[worker] serve: built from port 9d08f41 (17 modified) patch 0aabc30ec374cc01893092ebb8538d537e6cd888
+[worker] serve: device NVIDIA GeForce RTX 4080 SUPER
+[worker] serve: blend scale 0.7671 (block30.layer0.blend_scale)
+[worker] serve: graph fused (DLSS5VK_UNFUSED not set)
+[worker] serve: warming up (the PTX modules are JIT-compiled on first use)
+[worker] serve: warm-up 2950 ms
+[worker] serve: frame 0 carries reset: no history for this frame, and this frame primes the next
+[worker] serve: head -13.8828..0.4585 mean -1.45525; residual mean -0.0036 -0.0246 -0.0185 (rgb, head/4), logit mean -5.6340; non-finite 0 of 14745600; first 8 -0.2062 -0.3843 -0.4197 -6.5273 -0.1914 -0.3982 -0.4487 -6.0664
+[worker] serve frame 0: 100.7 ms (proxy 5.1 [copy 3.1, submit 1.9], network+composite 28.7, readback 66.9, reply 0.0)
+[worker] serve frame 1: 15.3 ms (proxy 6.5 [copy 3.5, submit 3.1], network+composite 8.7, readback 0.0, reply 0.0)
+[worker] serve frame 2: 17.9 ms (proxy 8.9 [copy 4.7, submit 4.2], network+composite 9.0, readback 0.0, reply 0.0)
+[worker] serve frame 29: 12.4 ms (proxy 4.4 [copy 2.7, submit 1.7], network+composite 8.0, readback 0.0, reply 0.0)
+[worker] serve frame 59: 16.1 ms (proxy 7.1 [copy 4.2, submit 3.0], network+composite 9.0, readback 0.0, reply 0.0)
+[worker] serve frame 89: 14.9 ms (proxy 6.3 [copy 3.4, submit 2.9], network+composite 8.7, readback 0.0, reply 0.0)
+
+```
