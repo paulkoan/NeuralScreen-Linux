@@ -248,6 +248,32 @@ def test_the_spread_is_reported_beside_the_mean():
         "with fewer than five frames there is no spread worth reporting")
 
 
+def test_the_steady_state_is_reported_beside_the_mean():
+    """The mean is inflated by frame 0; the median frame is the steady state.
+
+    r2026-10-13-a reported 4.68 fps, which is one 4026ms warm-up frame divided
+    by thirty. The same run's median frame was 72.5ms, i.e. 13.8 fps. Reporting
+    only the mean made a run within 4% of the 15 fps target look 3x short, so
+    the summary carries both, and the median's rate beside the mean's.
+    """
+    from minimal.loop import Pipeline
+
+    class Fake:
+        timings = {"capture": [0.001] * 29 + [0.100],
+                   "send": [0.001] * 29 + [0.100],
+                   "recv": [0.001] * 29 + [0.100],
+                   "display": [0.001] * 29 + [0.100]}
+        capture_split = {"wait": [], "read": []}
+
+    out = Pipeline.timing_summary(Fake())
+    assert out["total"] > out["total_median"], (
+        "the mean must carry the warm-up frame")
+    assert out["fps"] < out["steady_fps"], (
+        "the headline rate is the mean's; the steady rate is the median's")
+    assert out["total_median"] == 0.004
+    assert out["steady_fps"] == 250.0
+
+
 def test_the_pipeline_reports_the_workers_own_clock():
     """Both clocks, one run.
 

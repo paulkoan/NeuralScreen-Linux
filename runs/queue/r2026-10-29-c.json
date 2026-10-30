@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-29-c",
+  "entry": "minimal",
+  "args": ["--frames", "30", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--save-before", "before.png", "--save-after", "after.png", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": ["before.png", "after.png"],
+  "note": "Regression guard for the readback gate, and the only run that should still pay for pixels. It is r2026-10-27-i's exact shape, so after.png must again be byte-identical (sha256 9f13979b168dc3a0) and before.png too (82e16d3d073a5cea). If the picture moved, the gate changed what the composite produces rather than only whether it is published - that is a stop-and-fix, because b's speed would have been bought with b's output. Quote the stamp line and the steady-state timing; the point is the two shas, not the fps."
+}

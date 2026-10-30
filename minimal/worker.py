@@ -362,7 +362,8 @@ class Worker:
 
     # -- per-frame ---------------------------------------------------------
 
-    def send(self, index: int, rgba, motion, reset: bool, pts: int = 0) -> None:
+    def send(self, index: int, rgba, motion, reset: bool, pts: int = 0,
+             want_pixels: bool = True) -> None:
         """Send one frame down the pipe (colour + motion inline).
 
         A dead worker surfaces as BrokenPipeError on the write, which is not a
@@ -375,7 +376,7 @@ class Worker:
             send_frame(self.proc, index, rgba, motion, reset, pts,
                        self.shm if (self.shm is not None and self.shm.negotiated) else None,
                        motion_small=self.motion_small, bypass=self.bypass,
-                       no_motion=self.no_motion,
+                       no_motion=self.no_motion, want_pixels=want_pixels,
                        writev=self.writev)
         except (BrokenPipeError, OSError) as exc:
             raise RuntimeError(

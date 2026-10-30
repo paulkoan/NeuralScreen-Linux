@@ -48,6 +48,10 @@ def test_cli_runs_and_writes_both_pngs(cli_env, tmp_path, capsys):
     assert after.stat().st_size > 0
     assert "frames: 3 done" in out
     assert "0 skipped" in out
+    assert "fps headline" in out and "fps steady" in out, (
+        "the summary must report the steady-state rate beside the headline mean")
+    assert "median" in out, (
+        "the timing line must quote the median frame, not just the mean")
 
 
 def test_cli_before_and_after_differ(cli_env, tmp_path):

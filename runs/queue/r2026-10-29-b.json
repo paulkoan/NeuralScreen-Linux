@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-29-b",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--shm", "--send-ahead", "2", "--worker-log"],
+  "timeout_s": 420,
+  "artifacts": [],
+  "note": "Throughput, pixels NOT asked for. This is r2026-10-27-c's shape - 120 frames, shm, send-ahead 2, 2560x1440 - minus --save-before/--save-after, so the harness no longer sets FRAME_FLAG_WANT_PIXELS and the worker should stop paying the readback and the reply. Compare against c: 69.5ms/frame steady (14.4 fps), of which the worker's own line said readback 4.5-19.3ms and reply 4.2-7.9ms. Expect the worker's total to fall by ~10-12ms and steady throughput to land near 16-18 fps. Read the median, never the headline - frame 0 carries the PTX JIT. Also quote `frames: N done, 0 skipped`: a run that reports every frame skipped means the bare reply is being counted wrong, not that the worker idled."
+}
