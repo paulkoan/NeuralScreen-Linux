@@ -10,18 +10,7 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Prove the readback gate (queued 2026-10-29). The port was reading 14.7MB back and writing
-  14.7MB to the caller on every frame whether or not anything wanted the pixels: `minimal` never
-  set FRAME_FLAG_WANT_PIXELS, so the wire's own flag was dead and 12.8ms of the worker's 37ms
-  frame went into publishing a picture the harness ignored. Both sides now honour it - the
-  client asks only when it draws or saves, the port replies with a bare header otherwise, and a
-  bare reply from a run that asked for nothing counts as a completed frame rather than a skipped
-  one. Queued: r2026-10-29-a (rebuild), then b (120 frames, no pixels - expect steady ~57ms,
-  16-18 fps against 27-c's 69.5ms) and c (30 frames with pixels - after.png must still be
-  sha256 9f13979b168dc3a0). Read the medians, not the headline: frame 0 is the PTX JIT. If b
-  does not move, the readback was not on the critical path and the next candidate is the
-  client's 14.7MB colour copy into shm; if c's picture moves, the gate is wrong and b's gain is
-  void.
+* learned: r2026-10-29-b (120f, no pixels) steady 28.8ms / 34.7 fps vs 27-c's 69.5ms / 14.4 fps - readback was the bottleneck. r2026-10-29-c (30f, pixels) failed exit 3: worker `write(stdout): Bad address`, stopped after 0 of 14.7MB reply bytes; the pixel path is broken and needs a fix.
 
 * Stop reordering colour on the CPU in the capture leg (no run yet - needs a wire flag). `grab()`
   swaps BGRA to RGBA with a fancy-index assign that costs 6.9ms a frame at 1440p, and every
