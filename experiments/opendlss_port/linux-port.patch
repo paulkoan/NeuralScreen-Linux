@@ -1,4 +1,4 @@
-From 03246c10b3152caf0bdea0f094274d2449b18dbf Mon Sep 17 00:00:00 2001
+From 0aabc30ec374cc01893092ebb8538d537e6cd888 Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -100,7 +100,7 @@ Also lands: `--model`/`--shaders`/`--frames` for the mode, the warm record that 
 per-frame timing line on stderr.
 ---
  scripts/build_linux.sh       | 161 +++++++
- shaders/composite_serve.comp | 196 +++++++++
+ shaders/composite_serve.comp | 196 ++++++++
  shaders/preprocess.comp      |  26 +-
  shaders/proxy_expand.comp    |  35 ++
  src/kernels.cpp              |  54 ++-
@@ -112,10 +112,10 @@ per-frame timing line on stderr.
  src/nr_model.h               |   6 +
  src/nr_schedule.cpp          | 235 ++++++++++
  src/nr_schedule.h            |  56 +++
- src/serve.cpp                | 821 +++++++++++++++++++++++++++++++++++
+ src/serve.cpp                | 839 +++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |  71 ++-
  src/vk_context.h             |  23 +
- 16 files changed, 1858 insertions(+), 59 deletions(-)
+ 16 files changed, 1876 insertions(+), 59 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/proxy_expand.comp
@@ -1483,10 +1483,10 @@ index 0000000..8d64f1c
 +}  // namespace nr
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..55e2617
+index 0000000..888808f
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,821 @@
+@@ -0,0 +1,839 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -1509,7 +1509,7 @@ index 0000000..55e2617
 +//   * A history, reprojected and filtered. serve keeps the frame it published last, feeds it
 +//     back as lanes 7-9 (the network's temporal input) and blends it in the composite:
 +//
-+//       weight = clamp(sigmoid(head.a) * block70.layer0.blend_scale, 0, 1)
++//       weight = clamp(sigmoid(head.a) * <last block>.layer0.blend_scale, 0, 1)
 +//       neural = lerp(proxy + head.rgb / 4, history, weight)      # docs/frame.md
 +//
 +//     The composite samples that history where the client's motion field says this pixel was -
@@ -1626,6 +1626,18 @@ index 0000000..55e2617
 +// of f32 through the readback instead of the finished 14.7MB image. src/main.cpp keeps its
 +// own copy — parity compares a fixture against that one — and the shader carries the same
 +// arithmetic, so the served picture and the gate still agree.
++
++// DLSS5VK_UNFUSED=1 runs the graph the way `verify` and `parity` do: one dispatch per
++// 32-channel block from the GLSL reference kernels, no fused block variants. main.cpp has
++// had that switch since the reference route existed; serve pinned `fusedBlocks = true`,
++// which made the fused and unfused graphs impossible to compare from the worker path at
++// all - a parity run measures nothing if the only graph a served frame can have is the
++// fused one. Same variable, same spelling, so one env set in the policy's entry covers
++// both binaries.
++static bool fusedBlocksEnabled() {
++  const char* unfused = getenv("DLSS5VK_UNFUSED");
++  return !(unfused && !strcmp(unfused, "1"));
++}
 +
 +// --- shared memory ------------------------------------------------------------
 +//
@@ -1960,8 +1972,14 @@ index 0000000..55e2617
 +    const nr::Geometry geometry = nr::Geometry::fromValid(workWidth, workHeight);
 +    fullWidth = geometry.fullWidth;
 +    fullHeight = geometry.fullHeight;
++    const bool fusedBlocks = fusedBlocksEnabled();
 +    graph = std::make_unique<nr::Graph>(*context, *model, *kernels, geometry,
-+                                        nr::Graph::Options{.fusedBlocks = true});
++                                        nr::Graph::Options{.fusedBlocks = fusedBlocks});
++    // Printed because the two graphs differ in dispatch count and in which kernels they
++    // read, and a parity comparison is only meaningful against the graph it names.
++    fprintf(stderr, "serve: graph %s (DLSS5VK_UNFUSED%s)\n",
++            fusedBlocks ? "fused" : "unfused - reference kernels",
++            fusedBlocks ? " not set" : "=1");
 +    features = graph->allocate("input features", fullWidth * fullHeight, 16, nr::Format::F32);
 +    proxy = context->createBuffer((VkDeviceSize)workWidth * workHeight * 16, false, "proxy");
 +    colourBuffer =

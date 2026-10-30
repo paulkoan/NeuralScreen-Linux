@@ -398,3 +398,21 @@ def test_the_blend_scale_guard_refuses_a_read_that_moved():
             assert "REFUSED" in finished.stdout or "no longer contains" in finished.stdout, (
                 f"{label}: " + finished.stdout)
 
+
+def test_serve_can_run_the_unfused_graph_too():
+    """The unfused graph has to be reachable from the worker path, not just from parity.
+
+    `main.cpp` has honoured `DLSS5VK_UNFUSED=1` since the reference route existed, but
+    `serve` pinned `fusedBlocks = true`. That made the comparison the plan asks for
+    impossible: whatever a worker run measured, it was the fused graph, so the two graphs
+    could never be compared on the same card through the pipeline. The check is on the
+    served source because this box has no device - the run that proves parity is the box's.
+    """
+    source = patch_adds(PATCH.read_text(), "src/serve.cpp")
+    assert 'getenv("DLSS5VK_UNFUSED")' in source, "serve has to read the same switch as main.cpp"
+    assert "nr::Graph::Options{.fusedBlocks = true}" not in source, (
+        "a literal true makes the unfused graph unreachable from a served frame")
+    assert ".fusedBlocks = fusedBlocksEnabled()" in source or "fusedBlocksEnabled();" in source, (
+        "the switch has to reach the graph's options")
+    assert "serve: graph " in source, "and the run's log has to say which graph it ran"
+
