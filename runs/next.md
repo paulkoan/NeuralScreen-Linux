@@ -10,18 +10,6 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Measure the small model's real speed (310.9.16 preset 2 now runs: `r2026-10-30-m`, exit 0,
-  3 frames, worker clock 54ms/frame, `ngx-live.png` mean 140.8/std 65.4/max 234 - a real picture
-  with NGX's no-clipping signature). The gate's `--test` cannot do this: it creates through the
-  DLL and evaluates through Core, so it reports 0xBAD00004 for every DLL. Queue two 120-frame
-  runs on the live path - entry `ngx-old` at preset 1 and `ngx-new` at preset 2, each
-  `["--frames","120","--headless","--source","synthetic","--size","2560x1440",
-  "--save-after","ngx-<preset>.png","--worker-log"]`, 300s, the PNG as artifact. Both entries
-  must run under `xvfb-run -a`; `DISPLAY=:0` fails under PrivateTmp (r2026-10-30-l/m).
-  Read the median and the worker clock, not the headline, and diff the two PNGs with
-  `tools/frame_diff.py`. If the two presets produce identical pictures, the hint is ignored on
-  this runtime and the model difference cannot be measured this way.
-
 * Integrate the 310.9.16 small network into the port (decided yes, 2026-10-30). Extraction is
   done: `extract.py --magic 0x06c9dfdf` cuts 31 blocks / 77 tensors / 108.6 MiB, and
   `docs/small-network-layout.md` is the layout. This is a second schedule, not a renumbering.
@@ -53,6 +41,11 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the 120-frame preset pair is queued as r2026-10-30-o (ngx-old, preset 1) and
+  r2026-10-30-p (ngx-new, preset 2), 300s each; nothing measured yet. The next tick reads the
+  medians and worker clocks and diffs ngx-old-120.png against ngx-new-120.png; identical
+  pictures mean the hint did not switch networks.
 
 * learned: the 310.9.16 small network RUNS on the live path (r2026-10-30-m, 2026-10-30, exit 0,
   7.2s, 3 frames, 0 skipped). Worker log: `direct feature 18 ready: 2560x1440 preset=2
