@@ -10,11 +10,20 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Parity against NGX preset 2 on the same card. The steady-rate half is answered (h: 40.7 fps) and
-  g/h are read; the instrument is `tools/ngx_preset_compare.py`, which runs presets 1 and 2 back
-  to back. It cannot be queued as a run: the unit's policy pins the worker to the port and its
-  sandbox hides the Wine prefix, and nothing here has a GPU. Needs one line from the developer:
-  does it run on the box by hand, or should the policy gain an entry so a tick can queue it?
+* Integrate the 310.9.16 small network into the port (decided yes, 2026-10-30). Extraction is
+  done: `extract.py --magic 0x06c9dfdf` cuts 31 blocks / 77 tensors / 108.6 MiB, and
+  `docs/small-network-layout.md` is the layout. This is a second schedule, not a renumbering:
+  `nr_graph.h:40` pins `kBlockCount = 71`, `nr_graph.cpp:164` refuses anything else, and six
+  loops hardcode block ranges; the small model's layers are much wider (block11.layer0.layer is
+  4,194,320 bytes against 197,184). Take ONE numbered step per pass:
+  1. Loader: accept a block count that is not 71, keeping the 71-block model selectable beside
+     the small one - the big model stays the parity reference, so do not replace it.
+  2. Generic per-block schedule, no fusion, checked against the existing reference kernels. Fuse
+     only after it matches.
+  3. Port-small vs NGX preset 2 on the same card, then steady-state fps. NGX preset 1 vs 2 is
+     already measured (1.08x end-to-end, 27.7 fps steady); that number is the model's effect
+     inside NVIDIA's engine, not the port's, so it does not replace this step.
+  If the generic schedule cannot reach parity, say so and stop rather than fusing a wrong graph.
 
 ## 2. Ask first - do not start these alone
 
