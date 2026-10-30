@@ -134,10 +134,21 @@ def build_parser() -> argparse.ArgumentParser:
                         "the result pixels from another: 14.7MB each way at 2560x1440 that "
                         "otherwise go down a pipe. The native worker implements both; the "
                         "Wine worker refuses and frames stay on the pipe"),
-    p.add_argument("--no-motion", action="store_true",
-                   help="do not send the motion field: the native worker reads it and "
-                        "discards it, and at 2560x1440 it is 14.7MB of the frame. The Wine "
-                        "worker derives flow from it, so leave this off there"),
+    # Off by default because the field is not a quality trade: the MVP builds
+    # ONE all-zero field and reuses it, the native worker zero-fills its own
+    # buffer when none arrives and calls that the identity reprojection, and the
+    # pictures are byte-identical (r2026-10-30-ah vs -ad, MAD 0.0). At 1440p it
+    # is 14.7MB of zeroes per frame, 5ms of send and 7.5ms of the frame.
+    p.add_argument("--motion", dest="no_motion", action="store_false",
+                   help="send the motion field after all. Not a quality decision - the "
+                        "field is all zeros and the native worker's no-field path is "
+                        "byte-identical - but the Wine worker derives flow from it, so "
+                        "the NGX arm needs this on. Off by default: 14.7MB and ~5ms a "
+                        "frame at 2560x1440 for bytes that change no pixel")
+    p.add_argument("--no-motion", dest="no_motion", action="store_true",
+                   help="do not send the motion field (the default; kept so existing "
+                        "run requests and scripts still parse)")
+    p.set_defaults(no_motion=True)
     p.add_argument("--motion-small", action="store_true",
                    help="send the motion field at the optical-flow size "
                         "(320x180) and let the worker upscale it. NOT USABLE in "
