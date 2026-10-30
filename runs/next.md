@@ -10,13 +10,14 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Measure the port's fixed per-frame cost with a resolution sweep (reference model, fused, no
-  pixels, 120 frames each): `r2026-10-30-x` at 1280x720, `-y` at 1920x1080, `-z` at 2560x1440,
-  entry `minimal`, args `["--frames","120","--headless","--source","synthetic","--size","<WxH>",
-  "--worker-log"]`. All three are queued. Fit median ms = fixed + per-pixel * pixels; the
-  intercept is upload+submit+composite, the slope is the neural pass. Read the fit against
-  r2026-10-30-w (35.3 ms at 1440p). If z does not land near 35 ms the run-to-run spread is the
-  finding and the sweep needs repeating in one worker before any conclusion.
+* Repeat the sweep to measure the run-to-run spread, because 1440p landed 6.2 ms under w
+  (`r2026-10-30-aa` 1280x720, `-ab` 1920x1080, `-ac` 2560x1440, entry `minimal`, args
+  `["--frames","120","--headless","--source","synthetic","--size","<WxH>","--worker-log"]`,
+  same patch 0aabc30e). Only compare clients' medians against x/y/z; if 1440p still reads
+  ~29 ms against w's 35.3 then w is the outlier and the fit stands. Note that "in one worker"
+  is not expressible through this entry - one run is one worker at one size - so a true
+  single-worker sweep needs either a `minimal` option taking several sizes or a box-side
+  harness, and neither is mine to add.
 
 ## 2. Ask first - do not start these alone
 
@@ -24,6 +25,19 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the per-frame cost is linear in pixels with a tiny intercept, but the 1440p point is
+  6.2 ms under its earlier twin (r2026-10-30-x/y/z, 2026-10-30, all exit 0, 120 done / 0 skipped,
+  patch 0aabc30e in sync, reference model, fused, synthetic). Client median 9.4 / 19.9 / 29.1 ms
+  at 720p / 1080p / 1440p = 3.80 ms fixed + 7.034 ms/Mpx (residuals -0.9 / +1.5 / -0.6 ms, so
+  genuinely linear). The worker's own total fits 3.05 + 3.79 ms/Mpx and `network+composite`
+  2.05 + 2.73 ms/Mpx, i.e. the model is ~39% of the client's per-pixel cost and the fixed part
+  (upload+submit+composite) is only 2-3 ms - there is no fixed overhead worth hunting, the neural
+  pass is what scales. Steady fps 106.6 / 50.3 / 34.3 tracks 1/area (4x pixels -> 3.1x slower).
+  The finding is the spread: z's 29.1 ms at 1440p is 17.6% under r2026-10-30-w's 35.3 ms on the
+  same patch, far outside the ±1.5 ms residuals, so run-to-run spread at 1440p is ~6 ms and the
+  fit's slope is only good to a few percent - repeat the sweep before quoting either. Capture and
+  send also scale with area (0.9/1.8 ms, 2.6/5.7/10.0 ms); the 3.7 s frame-0 warm-up is constant.
 
 * learned: the small network runs in the port and is NOT the bottleneck (r2026-10-30-t/u/v/w,
   2026-10-30, all exit 0). t: 31 blocks / 77 tensors, blend_scale 0.7671. serve confirms
