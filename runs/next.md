@@ -10,36 +10,13 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Integrate the 310.9.16 small network into the port (decided yes, 2026-10-30). Extraction is
-  done: `extract.py --magic 0x06c9dfdf` cuts 31 blocks / 77 tensors / 108.6 MiB, and
-  `docs/small-network-layout.md` is the layout. This is a second schedule, not a renumbering.
-  STEP 1 IS DONE (2026-10-30 tick, "port: read the blend scale from the model's post block"):
-  the block count is the model's
-  (`blockCount_`), the stage table is derived from block signatures, and the blend scale now
-  comes from the model's POST block (`blockCount - 1`) instead of a literal block 70 - on the
-  small network that literal missed and the readout would have defaulted to 1.0 while looking
-  healthy. `dlss5vk schedule --check --model /opt/data/tmp/model-fp8` prints 13 stages, 31
-  blocks, every block in one stage. Take ONE numbered step per pass:
-  1. DONE (2026-10-30): parity with no fusion is exact. r2026-10-30-r served three frames
-     through the reference kernels (`serve: graph unfused - reference kernels`, exit 0) and
-     r2026-10-30-s served the same three frames fused (`serve: graph fused`, exit 0); the PNGs
-     are byte-identical (MAD 0.0, 0 changed pixels, PSNR inf) on the same card and binary
-     (patch 0aabc30e). Median 234.6 ms unfused vs 77.4 ms fused, as expected. Fusion may be
-     carried into the small network.
-  2. DONE (2026-10-30): the small network loads and runs in the port. `r2026-10-30-t` cut it
-     from the DLL on the box (31 blocks, 77 tensors, blend_scale 0.7671) into
-     `/opt/neuralscreen/model-small`; `serve` reports `blend scale 0.7671 (block30...)`, so it
-     is the small model, not the reference. 120-frame medians: no-pixel small 30.9 ms vs
-     reference 35.3 ms (1.14x); pixel path small 56.4 ms vs reference 50.4 ms (0.89x). The two
-     comparisons disagree in direction, so the model difference is inside run-to-run noise at
-     this length - the model is not the port's bottleneck. Also note the reference's old
-     24.7 ms (r2026-10-29-f) does not reproduce on the current binary (35.3 ms), so use
-     same-session pairs, never a number from another build.
-  Next is throughput, not the model: the port sits at 28-35 ms/frame steady and the model swap
-  moves it by less than the noise. Look at the fixed per-frame cost - upload, submit, the
-  composite and the readback gate - with an A/B inside one worker so two models or two paths
-  are measured in the same session.
-  If the generic schedule cannot reach parity, say so and stop rather than fusing a wrong graph.
+* Measure the port's fixed per-frame cost with a resolution sweep (reference model, fused, no
+  pixels, 120 frames each): `r2026-10-30-x` at 1280x720, `-y` at 1920x1080, `-z` at 2560x1440,
+  entry `minimal`, args `["--frames","120","--headless","--source","synthetic","--size","<WxH>",
+  "--worker-log"]`. All three are queued. Fit median ms = fixed + per-pixel * pixels; the
+  intercept is upload+submit+composite, the slope is the neural pass. Read the fit against
+  r2026-10-30-w (35.3 ms at 1440p). If z does not land near 35 ms the run-to-run spread is the
+  finding and the sweep needs repeating in one worker before any conclusion.
 
 ## 2. Ask first - do not start these alone
 
