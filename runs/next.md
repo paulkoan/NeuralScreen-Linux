@@ -10,16 +10,6 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Read the NGX control matrix verdict from `runs/done/r2026-10-30-k/stdout.log` (queued 2026-10-30
-  tick on the `ngx-matrix` entry, 300s, no args/artifacts; `-j` never started so this is the first
-  attempt with `xvfb-run` present). The `SUMMARY` line names every row and its verdict. Act on it:
-  * **old passes, bundled fails** -> the harness is fine and 310.9.16 changed the create/evaluate
-    contract; the next item is host-side instrumentation of `dlss5-feed-host64.cpp`.
-  * **old fails too** (or the control row is missing) -> the harness, prefix or driver changed;
-    do not chase the DLL. If the row is missing, say which path was searched.
-  * **spoof on differs from off** -> the architecture spoof is part of the failure.
-  Leave the verdict and the exact codes as one `learned:` line. Do not queue anything else.
-
 * Integrate the 310.9.16 small network into the port (decided yes, 2026-10-30). Extraction is
   done: `extract.py --magic 0x06c9dfdf` cuts 31 blocks / 77 tensors / 108.6 MiB, and
   `docs/small-network-layout.md` is the layout. This is a second schedule, not a renumbering.
@@ -51,6 +41,18 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the control matrix ran and the harness, prefix or driver changed - not the DLL
+  (r2026-10-30-k, 2026-10-30, exit 1 in 14.3s, first attempt under `xvfb-run`). All four rows
+  passed init and create, then failed evaluate: bundled-p0-direct-spoof1 = 0xBAD00004,
+  bundled-p0-direct-spoof0 = 0xBAD00004, old-p0-direct-spoof1 = 0xBAD00004, and
+  bundled-p0-core-spoof1 failed earlier at create = 0xBAD0000B. So the old DLL fails exactly as
+  the bundled one does (same code, same stage) and the architecture spoof changes nothing
+  (spoof1 and spoof0 both 0xBAD00004) - the 310.9.16 DLL is not implicated and must not be
+  chased. Note what this does NOT say: the failure is in the harness/prefix/driver, and the
+  `via core` row died one stage earlier, which points at the wrapped-create route rather than at
+  evaluation. Nothing queued; the next step is box-side on the Wine prefix, which stays in
+  "Ask first" until someone says which way to go.
 
 * learned: the NGX control matrix is queued a second time as `r2026-10-30-k` (2026-10-30 tick,
   entry `ngx-matrix`, 300s, no args/artifacts, id `-j` spent on the argv[0] exec failure) because
