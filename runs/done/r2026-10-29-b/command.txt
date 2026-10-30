@@ -1,0 +1,1 @@
+uv run python -m minimal --frames 120 --headless --source synthetic --size 2560x1440 --shm --send-ahead 2 --worker-log
