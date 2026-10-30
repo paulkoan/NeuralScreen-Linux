@@ -39,6 +39,8 @@ def load_extract():
 
 
 def describe(path: Path) -> dict:
+    if path.is_dir():
+        path = path / "manifest.json"
     manifest = json.loads(path.read_text())
     totals = manifest.get("totals", {})
     return {
@@ -85,8 +87,10 @@ def list_leaves(dll: Path, limit: int = 8) -> None:
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "compare model manifests").split("\n")[0])
-    ap.add_argument("--old", required=True, help="manifest.json of the model in use today")
-    ap.add_argument("--new", required=True, help="manifest.json of the freshly extracted model")
+    ap.add_argument("--old", required=True,
+                    help="model directory or manifest.json of the model in use today")
+    ap.add_argument("--new", required=True,
+                    help="model directory or manifest.json of the freshly extracted model")
     ap.add_argument("--dll", help="also list this DLL's largest resources (optional)")
     args = ap.parse_args(argv)
     if args.dll:
