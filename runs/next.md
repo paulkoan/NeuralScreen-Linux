@@ -10,17 +10,13 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* serve's host upload path: a frame is copied three times before the GPU sees it - /dev/shm ->
-  the `colour` vector (`serve.cpp`), `colour` -> the 256MB `staging_` window (`Context::upload`),
-  staging -> device - and colour and motion get their own command buffer each, both ending in
-  `vkQueueWaitIdle`, so two full submits and waits per frame. Make it one copy and one submit:
-  copy the shm frame straight into the staging window (no intermediate vector for the shm path)
-  and put the colour and motion copies in one command buffer with a single wait; then split the
-  `proxy` timer into `copy` and `submit` so the next run says which half moves. Edit only
-  `experiments/opendlss_port/linux-port.patch` (its `src/serve.cpp` and `src/vk_context.{h,cpp}`
-  sections), rebuild through `rebuild.sh`, pytest green. Accept when the per-frame `proxy` at
-  frame 119 is no higher than at frame 29 (f read 6.3 -> 21.3, e 5.0 -> 10.2) and the steady rate
-  is back above 30.63 fps.
+* Measure the one-copy / one-submit upload (commit 284b11d, patch 9e90de0d48d0) on the box, then
+  decide whether the creep is gone. The binary the box runs must be built from this patch first,
+  or the run measures the old one again: queue the port-build, then a 120-frame run in f's shape
+  (`--frames 120 --headless --source synthetic --size 2560x1440 --shm --worker-log`). Accept when
+  per-frame `proxy` (now printed as `proxy X [copy Y, submit Z]`) at frame 119 is no higher than
+  at frame 29 (f read 6.3 -> 21.3, e 5.0 -> 10.2) and the steady rate is back above 30.63 fps;
+  the split says which half moved. The code change itself is done and pushed.
   After that: parity against NGX preset 2 on the same card (`tools/ngx_preset_compare.py` runs
   presets 1 and 2 back to back), then steady-state fps.
 
@@ -280,6 +276,22 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   f, the 120-frame confirmation, exited 0: 40.48 fps steady against b's 34.7 - the steady rate
   survives the fix and even improves. Headline 16.59 fps is still the frame-0 PTX warm-up skewing
   the mean; quote the steady number. The top plan item is retired.
+
+* learned: the shm frame is copied once and both copies share one submit (2026-10-30, commit
+  284b11d, patch `9e90de0d48d0`). `serve.cpp` no longer memcpys a mapped frame into `colour` (it
+  only does when a bypass reply wants the client's own pixels back); `Context::uploadAll` fans the
+  colour and motion jobs into ONE staging pass, ONE command buffer and ONE wait, and reports the
+  two halves, so the worker line is now `proxy X [copy Y, submit Z]`. `colour`'s pipe path and the
+  old `upload` are unchanged; >staging-window jobs fall back to the old per-buffer path. Verified
+  here: the patch applies to a pristine 9d08f41 and `/opt/data/tmp/odl-verify4` rebuilds in sync
+  (17 files, 78 PTX); `pytest tests/` 327 pass, 32 skip, and the 9 failures are the same libGL/SDL2
+  import errors this box always has. NOT verified: the GPU path (no device here) and the shaders -
+  glslang is not installed in this container, so the build reused the existing SPIR-V; no shader
+  was touched. Two things for the next tick: `tests/test_native_serve_shm.py` now fails one case
+  with `NS_ODL_NATIVE_BIN` set because it asserts inline pixels for a frame sent with
+  `want_pixels=False` - that expectation predates c66c7e8 (2026-10-29) and is unrelated to this
+  change, but it means "pytest green with the native binary" is not a claim anyone can make yet;
+  and the box must rebuild the port before the measuring run, or it measures 7b827810f679 again.
 
 * learned: the port's block-count guard is relaxed (nr_graph.h/.cpp): `kBlockCount` became a
   member `blockCount_`, set from the model, so a non-71 model loads beside the 71-block parity
