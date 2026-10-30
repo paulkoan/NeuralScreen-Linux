@@ -10,7 +10,9 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Run the NGX control matrix from the tick (the `ngx-matrix` policy entry now exists, running
+* QUEUED 2026-10-30 as `r2026-10-30-j` - still the top item: next tick reads its
+  `runs/done/r2026-10-30-j/stdout.log` and acts on the `SUMMARY` line (do not queue it again).
+  Run the NGX control matrix from the tick (the `ngx-matrix` policy entry now exists, running
   `xvfb-run -a uv run python tools/ngx_matrix.py --baseline`). Queue exactly one request:
   `{"id": "<next r-id>", "entry": "ngx-matrix", "args": [], "timeout_s": 300, "artifacts": [],
   "note": "baseline: old vs bundled DLL, spoof on/off, direct vs core"}`. Then read
@@ -53,6 +55,12 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the NGX control matrix is queued as `r2026-10-30-j` (2026-10-30 tick, entry
+  `ngx-matrix`, 300s, no args/artifacts) and nothing was measured yet. The item stays at the top
+  of the plan so the next tick reads `runs/done/r2026-10-30-j/stdout.log` and acts on its
+  `SUMMARY` line rather than queuing it a second time. The port-build `r2026-10-30-i` landed
+  first, so the harness is being run on the current binary.
 
 * learned: the unfused-parity build half is done and in sync (r2026-10-30-i, 2026-10-30 tick).
   Exit 0 in 8.8s, `port: /opt/neuralscreen/port (9d08f41)`, `patch ... 0aabc30ec374`, 17 files
