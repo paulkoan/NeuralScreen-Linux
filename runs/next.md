@@ -26,10 +26,11 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
      patch is on main, and a port-build run is still needed before anything measures it).
      What is left is the comparison itself: a served unfused frame against `verify`/`parity`,
      which already run `fusedBlocks = false`, on the same card. Fuse only after it matches.
-  2. Port-small vs NGX preset 2 on the same card, then steady-state fps. The earlier preset
-     1-vs-2 comparison (1.08x, 10:02) ran before the 310.9.16 DLL was in place, so it measured
-     the old runtime's preset hint, not the small model - void until the control matrix says
-     which DLL the harness is actually running.
+  2. Port-small vs NGX preset 2 on the same card, then steady-state fps. The NGX pair is now
+     measured on the current DLL (r2026-10-30-o/p, both exit 0, 120 frames): preset 1
+     57.48 ms/frame, preset 2 52.65 ms/frame, **1.09x**, pictures differ (MAD 4.4661, p99 18).
+     The model is ~11 ms of a ~57 ms Wine frame, so 1.78x at the model lands as ~5 ms; the NGX
+     arm remains 17-19 fps against the port's 40.5. The port comparison is the one that matters.
   Step 2 cannot be queued from here: it needs the box to hold the small model at the directory
   the executor passes to `serve --model` (that path is the policy's, not this repo's). Stage it
   on the box, or say which path to name, before a run is written.
@@ -41,6 +42,11 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the 310.9.16 small model is real and only ~9% faster end-to-end in NGX
+  (r2026-10-30-o/p: preset 1 57.48 ms/frame, preset 2 52.65 ms/frame, 1.09x; pictures differ
+  MAD 4.4661, p99 18; old mean [145.8,131.6,142.6], new [146.0,128.4,148.4]). Both entries run
+  under xvfb-run. The gain is small because the model is ~11 ms of a ~57 ms Wine frame.
 
 * learned: the 120-frame preset pair is queued as r2026-10-30-o (ngx-old, preset 1) and
   r2026-10-30-p (ngx-new, preset 2), 300s each; nothing measured yet. The next tick reads the
