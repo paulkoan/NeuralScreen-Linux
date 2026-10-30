@@ -1,4 +1,4 @@
-From 6e66812e80849cecb9779d50c6e71a6ba56a999a Mon Sep 17 00:00:00 2001
+From 7b827810f679da1d16390c62e6f4677bd5688d09 Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -105,17 +105,22 @@ per-frame timing line on stderr.
  shaders/proxy_expand.comp    |  35 ++
  src/kernels.cpp              |  54 ++-
  src/kernels.h                |  38 +-
- src/main.cpp                 |   6 +-
- src/nr_graph.cpp             |   7 +-
- src/nr_graph.h               |   2 +-
- src/nr_model.h               |   1 +
+ src/main.cpp                 |  69 ++-
+ src/nr_graph.cpp             | 109 +++--
+ src/nr_graph.h               |   6 +-
+ src/nr_model.cpp             |  11 +
+ src/nr_model.h               |   6 +
+ src/nr_schedule.cpp          | 235 +++++++++++
+ src/nr_schedule.h            |  56 +++
  src/serve.cpp                | 786 +++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |  26 +-
  src/vk_context.h             |   3 +
- 13 files changed, 1322 insertions(+), 19 deletions(-)
+ 16 files changed, 1758 insertions(+), 59 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/proxy_expand.comp
+ create mode 100644 src/nr_schedule.cpp
+ create mode 100644 src/nr_schedule.h
  create mode 100644 src/serve.cpp
 
 diff --git a/scripts/build_linux.sh b/scripts/build_linux.sh
@@ -737,10 +742,18 @@ index 472bd36..cfa52b8 100644
                         uint32_t scaleByteOffset, Activation& normalized, uint32_t tokens, uint32_t heads);
    void windowAttend(VkCommandBuffer commands, const Activation& normalized, const vk::Buffer& prior,
 diff --git a/src/main.cpp b/src/main.cpp
-index 6d57e3a..d03680c 100644
+index 6d57e3a..3a7adbd 100644
 --- a/src/main.cpp
 +++ b/src/main.cpp
-@@ -615,6 +615,8 @@ int runBench(int argc, char** argv) {
+@@ -20,6 +20,7 @@
+ #include "kernels.h"
+ #include "nr_graph.h"
+ #include "nr_model.h"
++#include "nr_schedule.h"
+ #include "numeric.h"
+ #include "reference.h"
+ #include "vk_context.h"
+@@ -615,6 +616,8 @@ int runBench(int argc, char** argv) {
  }  // namespace
  
  int runVerify(int argc, char** argv);
@@ -749,22 +762,90 @@ index 6d57e3a..d03680c 100644
  
  namespace {
  int runShaderInfo(int argc, char** argv) {
-@@ -737,7 +739,9 @@ int runCommand(int argc, char** argv) {
+@@ -731,13 +734,77 @@ int runProfile(int argc, char** argv) {
+ }
+ }  // namespace
+ 
++namespace {
++
++// The 71-block ranges the recorder used to hard-code (`{5,8}`, `9..14`, `15..22`, `23..30`, the ViT
++// chain `31..38`, the projection block 39, `40..47`, the four decoder stages and the post block).
++// Keeping them here, as data, is what lets `schedule --check` still prove that the derivation
++// reproduces the schedule the port shipped - the numbers are no longer in record(), but they are
++// still the reference the derivation has to hit.
++struct ReferenceStage { const char* name; uint32_t channels; int first, last; };
++const ReferenceStage kReference71[] = {
++    {"pre", 32, 0, 0},          {"encoder-32", 32, 1, 4},        {"encoder-64", 64, 5, 8},
++    {"encoder-128", 128, 9, 14}, {"encoder-256", 256, 15, 22},   {"encoder-512", 512, 23, 30},
++    {"vit", 1024, 31, 38},      {"transition-38-39", 512, 39, 39}, {"decoder-512", 512, 40, 47},
++    {"decoder-256", 256, 48, 55}, {"decoder-128", 128, 56, 61},  {"decoder-64", 64, 62, 65},
++    {"decoder-32", 32, 66, 69}, {"post", 32, 70, 70},
++};
++
++int runSchedule(int argc, char** argv) {
++  std::string modelDir = argValue(argc, argv, "--model");
++  const bool check = hasFlag(argc, argv, "--check");
++  if (modelDir.empty()) { fprintf(stderr, "usage: dlss5vk schedule --model <dir> [--check]\n"); return 2; }
++  uint32_t blockCount = 0;
++  nr::Schedule schedule = nr::readSchedule(modelDir, &blockCount);
++  printf("%s", nr::renderSchedule(schedule).c_str());
++  if (!check) return 0;
++  std::vector<std::string> problems;
++  std::vector<int> covered;
++  for (const nr::Stage& entry : schedule.stages)
++    for (int block = entry.first; block <= entry.last; ++block) covered.push_back(block);
++  std::sort(covered.begin(), covered.end());
++  for (uint32_t block = 0; block < blockCount; ++block) {
++    const auto count = std::count(covered.begin(), covered.end(), (int)block);
++    if (count != 1)
++      problems.push_back("block " + std::to_string(block) + " is covered " + std::to_string(count) + " times");
++  }
++  if (blockCount == 71) {
++    const size_t expected = sizeof(kReference71) / sizeof(kReference71[0]);
++    if (schedule.stages.size() != expected)
++      problems.push_back("derived " + std::to_string(schedule.stages.size()) + " stages, the port shipped " +
++                         std::to_string(expected));
++    for (size_t index = 0; index < schedule.stages.size() && index < expected; ++index) {
++      const nr::Stage& got = schedule.stages[index];
++      const ReferenceStage& want = kReference71[index];
++      if (got.name != want.name || got.channels != want.channels || got.first != want.first || got.last != want.last)
++        problems.push_back("stage " + std::to_string(index) + ": derived " + got.name + " " +
++                           std::to_string(got.channels) + " " + std::to_string(got.first) + ".." +
++                           std::to_string(got.last) + ", shipped " + want.name + " " +
++                           std::to_string(want.channels) + " " + std::to_string(want.first) + ".." +
++                           std::to_string(want.last));
++    }
++  }
++  if (!problems.empty()) {
++    for (const std::string& problem : problems) printf("FAIL %s\n", problem.c_str());
++    return 1;
++  }
++  printf("schedule: ok (%u blocks, every block in one stage, %s)\n", blockCount,
++         blockCount == 71 ? "the table equals the ranges the port shipped" : "no reference for this model's size");
++  return 0;
++}
++
++}  // namespace
++
+ int runCommand(int argc, char** argv) {
+   if (argc >= 2 && !strcmp(argv[1], "verify")) return runVerify(argc, argv);
+   if (argc >= 2 && !strcmp(argv[1], "shaderinfo")) return runShaderInfo(argc, argv);
    if (argc >= 2 && !strcmp(argv[1], "profile")) return runProfile(argc, argv);
    if (argc >= 2 && !strcmp(argv[1], "parity")) return runParity(argc, argv);
    if (argc >= 2 && !strcmp(argv[1], "bench")) return runBench(argc, argv);
 -  fprintf(stderr, "usage: dlss5vk parity|verify|bench|profile|shaderinfo --model <dir> ...\n");
 +  if (argc >= 2 && !strcmp(argv[1], "serve")) return runServe(argc, argv);
++  if (argc >= 2 && !strcmp(argv[1], "schedule")) return runSchedule(argc, argv);
 +  if (argc >= 2 && !strcmp(argv[1], "stamp")) return runStamp(argc, argv);
-+  fprintf(stderr, "usage: dlss5vk parity|verify|bench|profile|shaderinfo|serve|stamp --model <dir> ...\n");
++  fprintf(stderr, "usage: dlss5vk parity|verify|bench|profile|shaderinfo|serve|schedule|stamp --model <dir> ...\n");
    return 2;
  }
  
 diff --git a/src/nr_graph.cpp b/src/nr_graph.cpp
-index 5c8a2e1..0cac1e4 100644
+index 5c8a2e1..36aa7df 100644
 --- a/src/nr_graph.cpp
 +++ b/src/nr_graph.cpp
-@@ -141,8 +141,8 @@ Graph::Routes Graph::routesFromEnvironment() {
+@@ -141,8 +141,16 @@ Graph::Routes Graph::routesFromEnvironment() {
  }
  
  Graph::Graph(vk::Context& context, Model& model, Kernels& kernels, const Geometry& geometry, Options options)
@@ -772,10 +853,18 @@ index 5c8a2e1..0cac1e4 100644
 -      routes_(routesFromEnvironment()) {
 +    : blockCount_(model.blockCount()), context_(context), model_(model), kernels_(kernels), geometry_(geometry),
 +      options_(options), routes_(routesFromEnvironment()) {
++  // The stages come from the model, not from a table written for one model: every block is classified by
++  // the byte lengths of its tensors and the blocks are walked into encoder levels, bottleneck, decoder
++  // levels and post. An unrecognised block throws here, before anything is recorded.
++  {
++    std::vector<BlockSignature> blocks;
++    for (const std::vector<uint32_t>& layers : model_.blockSignatures()) blocks.push_back({layers});
++    schedule_ = deriveSchedule(blocks);
++  }
    // Chaining links consecutive PTX launches through device counters and drops the barrier between them, so every
    // launch in the chain must take its PTX route. Any switch that sends one kernel family (or one fused block)
    // back to GLSL takes the whole graph back to barriers.
-@@ -161,9 +161,6 @@ Graph::Graph(vk::Context& context, Model& model, Kernels& kernels, const Geometr
+@@ -161,9 +169,6 @@ Graph::Graph(vk::Context& context, Model& model, Kernels& kernels, const Geometr
              geometry_.fullHeight, tallestRow, Kernels::kSyncCountersPerRegion);
      routes_.chain = routes_.vitChain = false;
    }
@@ -785,21 +874,281 @@ index 5c8a2e1..0cac1e4 100644
  }
  
  Graph::~Graph() {
+@@ -592,7 +597,8 @@ void Graph::encodeVit(VkCommandBuffer commands, Activation& state, uint32_t toke
+   // the producer's column-group count at kSyncRows + 4 * {0 expand, 1 contract, 2 qkv, 4 projection}).
+   const bool chain = routes_.vitChain;
+   auto vitCounter = [&](int block, int op) { return kernels_.syncAddress(block, Kernels::kSyncRows) + 4 * op; };
+-  for (int block = 31; block <= 38; ++block) {
++  const int first = (int)schedule_.vitFirst(), last = (int)schedule_.vitLast();
++  for (int block = first; block <= last; ++block) {
+     kernels_.setStageLabel("block " + std::to_string(block) + " vit");
+     const Tensor& expand = model_.tensor(block, 0);
+     const Tensor& contract = model_.tensor(block, 1);
+@@ -604,7 +610,7 @@ void Graph::encodeVit(VkCommandBuffer commands, Activation& state, uint32_t toke
+     e.output = expanded; e.silu = true; e.quantize = true;
+     e.chainSingle = true;
+     if (chain) {
+-      if (block > 31) { e.chainWaitRows = vitCounter(block - 1, 4); e.chainWaitExpected = Kernels::vitGemmSignals(tokens, channels); }
++      if (block > first) { e.chainWaitRows = vitCounter(block - 1, 4); e.chainWaitExpected = Kernels::vitGemmSignals(tokens, channels); }
+       e.chainSignal = vitCounter(block, 0); e.chained = true;
+     }
+     kernels_.gemmFp8(commands, e);
+@@ -661,7 +667,7 @@ void Graph::encodeVit(VkCommandBuffer commands, Activation& state, uint32_t toke
+     p.output = &state; p.quantize = true;
+     p.residual = ffnResidual; p.scaleResidual = true; p.auxTensor = &projection; p.auxByteOffset = channels * channels;
+     if (chain && attnPtx) { p.chainWaitRows = vitCounter(block, 3); p.chainWaitExpected = heads * (padded / 64); }
+-    if (chain && block < 38) { p.chainSignal = vitCounter(block, 4); p.chained = true; }   // the next block's expand waits
++    if (chain && block < last) { p.chainSignal = vitCounter(block, 4); p.chained = true; }   // the next block's expand waits
+     kernels_.gemmFp8(commands, p);
+     capture(commands, "block-" + std::to_string(block), state);
+   }
+@@ -757,11 +763,13 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
+   const uint32_t rows1 = d1.width * d1.height;
+   Activation* downsampled32 = allocate("encoder 32 downsample", rows1, 32, Format::E4);
+   const bool poolBlock4 = options_.fusedBlocks && !options_.captureIntermediates && fusePool;
+-  for (int block = 1; block <= 4; ++block) {
++  const Stage& enc32 = schedule_.stage("encoder-32");
++  for (int block = enc32.first; block <= enc32.last; ++block) {
++    const bool last = block == enc32.last, first = block == enc32.first;
+     encodeFusedBlock(commands, latentTemps, *state, scratch, block, 32, d0.width, d0.height, takeWindowPhase(0),
+-                     fusedLayout(32), model_.tensor(block), nullptr, (block == 4 && !poolBlock4) ? transitionRaw32 : nullptr,
+-                     (block == 4 && poolBlock4) ? downsampled32 : nullptr, d1.width, false, true, true,
+-                     block == 1 ? 1u : 0u, block != 4);
++                     fusedLayout(32), model_.tensor(block), nullptr, (last && !poolBlock4) ? transitionRaw32 : nullptr,
++                     (last && poolBlock4) ? downsampled32 : nullptr, d1.width, false, true, true,
++                     first ? 1u : 0u, !last);
+     std::swap(state, scratch);
+     capture(commands, "block-" + std::to_string(block), *state);
+   }
+@@ -779,12 +787,17 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
+   }
+   capture(commands, "transition-4-5", *next64);
+ 
+-  // ---- Encoder fused stages 64 / 128 / 256.
++  // ---- Encoder fused stages 64 / 128 / 256, from the derived table.
+   struct FusedStage { Geometry::Level level, next; uint32_t channels; int first, last, levelIndex; };
+-  const FusedStage encoderStages[] = {{d1, d2, 64, 5, 8, 1}, {d2, d3, 128, 9, 14, 2}, {d3, d4, 256, 15, 22, 3}};
+-  Activation* skips[3] = {};
++  std::vector<FusedStage> encoderStages;
++  for (const Stage& entry : schedule_.stages)
++    if (entry.kind == StageKind::Level && entry.encoder && entry.channels >= 64 && entry.channels <= 256)
++      encoderStages.push_back({g.levels[entry.level], g.levels[entry.level + 1], entry.channels, entry.first,
++                               entry.last, entry.level});
++  Activation* skips[6] = {};   // the encoder output each decoder stage merges, one per level
++  skips[0] = skip32;
+   Activation* stageInput = next64;
+-  for (int s = 0; s < 3; ++s) {
++  for (size_t s = 0; s < encoderStages.size(); ++s) {
+     const FusedStage& stage = encoderStages[s];
+     const uint32_t rows = stage.level.width * stage.level.height;
+     const uint32_t nextRows = stage.next.width * stage.next.height;
+@@ -802,7 +815,7 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
+       std::swap(st, sc);
+       if (!hasPendingProjection_) capture(commands, "block-" + std::to_string(block), *st);
+     }
+-    skips[s] = st;
++    skips[stage.levelIndex] = st;
+     kernels_.setStageLabel("transition " + std::to_string(stage.last));
+     Activation* pooled = allocate(label + " downsample", nextRows, stage.channels, Format::E4);
+     kernels_.downsample2x(commands, *raw, *pooled, stage.level.width, stage.level.height, stage.next.width,
+@@ -818,67 +831,72 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
+     capture(commands, "transition-" + std::to_string(stage.last) + "-" + std::to_string(stage.last + 1), *next);
+     stageInput = next;
+   }
+-  Activation* skip64 = skips[0];
+-  Activation* skip128 = skips[1];
+-  Activation* skip256 = skips[2];
+-
+-  // ---- Encoder 512 (split blocks 23-30) and the pooled ViT input.
++  // ---- Encoder 512 (the split blocks) and the pooled ViT input.
++  const Stage& enc512 = schedule_.stage("encoder-512");
+   const uint32_t rows4 = d4.width * d4.height;
+   {
+     Activation* st = stageInput;
+     Activation* sc = allocate("encoder 512 state", rows4, 512, Format::E4);
+     Activation* raw = allocate("encoder 512 raw transition", rows4, 512, Format::F16);
+     SplitTemporaries temps = createSplitTemporaries("encoder 512", rows4);
+-    for (int block = 23; block <= 30; ++block) {
+-      encodeSplitBlock(commands, temps, *st, sc, block, d4.width, d4.height, takeWindowPhase(4),
+-                       block == 30 ? raw : nullptr, block == 23, block == 30);
++    for (int block = enc512.first; block <= enc512.last; ++block) {
++      encodeSplitBlock(commands, temps, *st, sc, block, d4.width, d4.height, takeWindowPhase(enc512.level),
++                       block == enc512.last ? raw : nullptr, block == enc512.first, block == enc512.last);
+       std::swap(st, sc);
+       capture(commands, "block-" + std::to_string(block), *st);
+     }
+     Activation* skip512 = st;
+-    kernels_.setStageLabel("transition 30-31");
++    skips[enc512.level] = skip512;
++    kernels_.setStageLabel("transition " + std::to_string(enc512.last) + "-" + std::to_string(enc512.last + 1));
+     const uint32_t tokens = g.vitTokens();
+     Activation* pooled = allocate("encoder 512 pooled", tokens, 512, Format::E4);
+     kernels_.downsample2x(commands, *raw, *pooled, d4.width, d4.height, d5.width, d5.height);
+     Activation* vitState = allocate("ViT state", tokens, 1024, Format::E4);
+     GemmFp8Args t;
+     t.input = pooled; t.rows = tokens; t.K = 512; t.N = 1024;
+-    t.weights = &model_.fp8Matrix(model_.tensor(30, 4), 0, 512, 1024); t.Nmatrix = 1024;
++    t.weights = &model_.fp8Matrix(model_.tensor(enc512.last, 4), 0, 512, 1024); t.Nmatrix = 1024;
+     t.output = vitState; t.quantize = true;
+     kernels_.gemmFp8(commands, t);
+ 
+-    // ---- ViT 31-38.
++    // ---- The ViT bottleneck, then the projected ViT output upsampled onto the encoder skip.
+     encodeVit(commands, *vitState, tokens);
+ 
+-    // ---- Decoder 512 (39-47): projected ViT output upsampled onto the encoder skip.
+-    kernels_.setStageLabel("transition 38-39");
++    const Stage& projection = schedule_.stage("transition-38-39");
++    const Stage& dec512 = schedule_.stage("decoder-512");
++    kernels_.setStageLabel("transition " + std::to_string(projection.first));
+     Activation* projected512 = allocate("decoder 512 projection", tokens, 512, Format::F16);
+     GemmFp8Args p;
+     p.input = vitState; p.rows = tokens; p.K = 1024; p.N = 512; p.partition = 256;
+-    p.weights = &model_.fp8Matrix(model_.tensor(39), 0, 1024, 512); p.Nmatrix = 512;
++    p.weights = &model_.fp8Matrix(model_.tensor(projection.first), 0, 1024, 512); p.Nmatrix = 512;
+     p.output = projected512; p.quantize = false;
+     kernels_.gemmFp8(commands, p);
+     Activation* merged = allocate("decoder 512 skip merge", rows4, 512, Format::E4);
+-    kernels_.upsampleResidual(commands, *projected512, *skip512, model_.tensor(39), 1024 * 512, *merged, nullptr,
+-                              d5.width, d5.height, d4.width, d4.height);
+-    capture(commands, "block-39", *merged);
++    kernels_.upsampleResidual(commands, *projected512, *skip512, model_.tensor(projection.first), 1024 * 512, *merged,
++                              nullptr, d5.width, d5.height, d4.width, d4.height);
++    capture(commands, "block-" + std::to_string(projection.first), *merged);
+     Activation* dst = merged;
+     Activation* dsc = allocate("decoder 512 state", rows4, 512, Format::E4);
+     SplitTemporaries dtemps = createSplitTemporaries("decoder 512", rows4);
+-    for (int block = 40; block <= 47; ++block) {
+-      encodeSplitBlock(commands, dtemps, *dst, dsc, block, d4.width, d4.height, takeWindowPhase(4), nullptr,
+-                       block == 40, block == 47);
++    for (int block = dec512.first; block <= dec512.last; ++block) {
++      encodeSplitBlock(commands, dtemps, *dst, dsc, block, d4.width, d4.height, takeWindowPhase(dec512.level), nullptr,
++                       block == dec512.first, block == dec512.last);
+       std::swap(dst, dsc);
+       capture(commands, "block-" + std::to_string(block), *dst);
+     }
+     stageInput = dst;
+   }
+ 
+-  // ---- Decoder fused stages 256 / 128 / 64 / 32.
++  // ---- Decoder fused stages 256 / 128 / 64 / 32, from the derived table: each merges the encoder
++  // output of its own level, upsamples from the level above.
+   struct DecoderStage { Geometry::Level low, high; uint32_t channels; int first, last, levelIndex; Activation* skip; };
+-  const DecoderStage decoderStages[] = {{d4, d3, 256, 48, 55, 3, skip256}, {d3, d2, 128, 56, 61, 2, skip128},
+-                                        {d2, d1, 64, 62, 65, 1, skip64}, {d1, d0, 32, 66, 69, 0, skip32}};
++  std::vector<DecoderStage> decoderStages;
++  for (const Stage& entry : schedule_.stages)
++    if (entry.kind == StageKind::Level && !entry.encoder)
++      decoderStages.push_back({g.levels[entry.level + 1], g.levels[entry.level], entry.channels, entry.first,
++                               entry.last, entry.level, skips[entry.level]});
+   for (const DecoderStage& stage : decoderStages) {
++    if (!stage.skip) throw std::runtime_error("decoder stage " + std::to_string(stage.channels) +
++                                              " has no encoder skip to merge");
+     const uint32_t lowRows = stage.low.width * stage.low.height;
+     const uint32_t rows = stage.high.width * stage.high.height;
+     std::string label = "decoder " + std::to_string(stage.channels);
+@@ -946,12 +964,13 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
+     stageInput = st;
+   }
+ 
+-  // ---- Full-resolution post block 70 and the RGBA head.
++  // ---- Full-resolution post block and the RGBA head.
+   {
+-    const Tensor& tensor = model_.tensor(70);
++    const int post = schedule_.stage("post").first;
++    const Tensor& tensor = model_.tensor(post);
+     kernels_.setStageLabel("post");
+     FusedLayout layout = postFusedLayout();
+-    if (tensor.byteLength != layout.endWithoutPadding) throw std::runtime_error("unexpected block70 layout");
++    if (tensor.byteLength != layout.endWithoutPadding) throw std::runtime_error("unexpected post block layout");
+     head_ = allocate("RGBA neural head", fullRows, 4, Format::F32);
+     if (options_.fusedBlocks && !options_.captureIntermediates && routes_.fusePost) {
+       // The post blend (2x upsample of block 69 + block 0, learned scales) feeds block 70 in registers and the
+@@ -980,7 +999,7 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
+       f.attentionScaleByteOffset = layout.scale;
+       f.headWeights = &headWeights; f.head = head_;
+       f.width = g.fullWidth; f.height = g.fullHeight; f.shiftX = shiftX; f.shiftY = shiftY;
+-      chainBlock32(f, 70, 2, false);
++      chainBlock32(f, post, 2, false);
+       kernels_.fusedBlock32(commands, f);
+     } else {
+       Activation* rawMerged = allocate("post raw merge", fullRows, 32, Format::F16);
+@@ -989,7 +1008,7 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
+                          *merged, d0.width, d0.height, g.fullWidth, g.fullHeight);
+       Activation* rawBlockOutput = allocate("post raw block output", fullRows, 32, Format::F16);
+       Temporaries temps = createTemporaries("post", fullRows, 32);
+-      encodeFusedBlock(commands, temps, *merged, nullptr, 70, 32, g.fullWidth, g.fullHeight,
++      encodeFusedBlock(commands, temps, *merged, nullptr, post, 32, g.fullWidth, g.fullHeight,
+                        takeWindowPhase(kFullLevel), layout, tensor, rawMerged, rawBlockOutput);
+       kernels_.setStageLabel("head");
+       uint32_t paddedN = 0;
 diff --git a/src/nr_graph.h b/src/nr_graph.h
-index a21ae0f..66c1619 100644
+index a21ae0f..5fc9e17 100644
 --- a/src/nr_graph.h
 +++ b/src/nr_graph.h
-@@ -37,7 +37,7 @@ FusedLayout postFusedLayout();
+@@ -10,6 +10,7 @@
+ 
+ #include "kernels.h"
+ #include "nr_model.h"
++#include "nr_schedule.h"
+ 
+ namespace nr {
+ 
+@@ -37,7 +38,10 @@ FusedLayout postFusedLayout();
  
  class Graph {
   public:
 -  static constexpr uint32_t kBlockCount = 71;   // blocks 0..70; the graph's stage boundaries are hard-coded
-+  uint32_t blockCount_ = 71;   // the model's block count; the graph's stage boundaries are hard-coded
++  uint32_t blockCount_ = 71;   // the model's block count
++  // The stage table derived from the model's block signatures: block ranges, channels and levels per
++  // stage. The recorder walks this, so the six ranges and the `block < 38` ViT chain constant are gone.
++  Schedule schedule_;
  
    struct Options {
      bool captureBoundaries = false;  // copy every block/transition output for parity checks
+diff --git a/src/nr_model.cpp b/src/nr_model.cpp
+index 9f4eb9f..3dd5564 100644
+--- a/src/nr_model.cpp
++++ b/src/nr_model.cpp
+@@ -1,5 +1,6 @@
+ #include "nr_model.h"
+ 
++#include <algorithm>
+ #include <cassert>
+ #include <fstream>
+ #include <sstream>
+@@ -87,12 +88,17 @@ Model::Model(vk::Context& context, const std::string& directory, bool verifyHash
+     }
+     stages_.push_back(std::move(loaded));
+   }
++  std::vector<std::vector<std::pair<std::string, uint32_t>>> blockBody(blockCount_);
+   for (const json::Value& entry : manifest["tensors"].array) {
+     Tensor tensor;
+     tensor.name = entry["name"].str();
+     tensor.block = (int)entry["block"].integer();
+     tensor.layer = (int)entry["layer"].integer();
+     tensor.parameter = entry["parameter"].str();
++    // The layer field is "layer0", not an integer: keep the string so the signature is in the
++    // manifest's own layer order (the reference schedule sorts on it).
++    if (tensor.parameter == "layer" && (size_t)tensor.block < blockBody.size())
++      blockBody[(size_t)tensor.block].push_back({entry["layer"].str(), (uint32_t)entry["byteLength"].integer()});
+     tensor.stage = entry["stage"].str();
+     tensor.stageOffset = (uint32_t)entry["stageOffset"].integer();
+     tensor.byteLength = (uint32_t)entry["byteLength"].integer();
+@@ -110,6 +116,11 @@ Model::Model(vk::Context& context, const std::string& directory, bool verifyHash
+     context_.upload(tensor.raw, paddedBytes.data(), padded);
+     tensors_[tensor.name] = std::move(tensor);
+   }
++  blockSignatures_.resize(blockCount_);
++  for (size_t block = 0; block < blockBody.size(); ++block) {
++    std::sort(blockBody[block].begin(), blockBody[block].end());
++    for (const auto& [layer, length] : blockBody[block]) blockSignatures_[block].push_back(length);
++  }
+   for (uint32_t k = 0; k < 64; ++k) {
+     if (inversePackedInputIndex(packedInputIndex(k)) != k)
+       throw std::runtime_error("chained index permutation is not invertible");
 diff --git a/src/nr_model.h b/src/nr_model.h
-index 867c97e..66f2175 100644
+index 867c97e..7c71096 100644
 --- a/src/nr_model.h
 +++ b/src/nr_model.h
 @@ -1,6 +1,7 @@
@@ -810,6 +1159,328 @@ index 867c97e..66f2175 100644
  #include <map>
  #include <memory>
  #include <string>
+@@ -57,6 +58,10 @@ class Model {
+ 
+   size_t nanWeightsReplaced() const { return nanWeights_; }
+   uint32_t blockCount() const { return blockCount_; }
++  // Every block's body signature (its `layer` tensors' byte lengths, in layer order), read from the
++  // manifest. The schedule is derived from these, so a model is walked by its own layout rather than
++  // by ranges written for the 71-block one.
++  const std::vector<std::vector<uint32_t>>& blockSignatures() const { return blockSignatures_; }
+ 
+  private:
+   struct Stage {
+@@ -69,6 +74,7 @@ class Model {
+   std::map<std::string, vk::Buffer> matrices_;
+   size_t nanWeights_ = 0;
+   uint32_t blockCount_ = 0;
++  std::vector<std::vector<uint32_t>> blockSignatures_;
+ };
+ 
+ // Exact float16 load of the aux (per-column) vectors stored inside a tensor.
+diff --git a/src/nr_schedule.cpp b/src/nr_schedule.cpp
+new file mode 100644
+index 0000000..6b06e2f
+--- /dev/null
++++ b/src/nr_schedule.cpp
+@@ -0,0 +1,235 @@
++#include "nr_schedule.h"
++
++#include <algorithm>
++#include <cstdio>
++#include <fstream>
++#include <map>
++#include <sstream>
++#include <stdexcept>
++
++#include "json.h"
++#include "nr_graph.h"
++
++namespace nr {
++namespace {
++
++// The channels of the six levels, and the levels themselves: 0 is full resolution, 5 is the
++// ViT bottleneck. `tools/nr_schedule.py` calls this table LEVELS.
++int levelOf(uint32_t channels) {
++  switch (channels) {
++    case 32: return 0;
++    case 64: return 1;
++    case 128: return 2;
++    case 256: return 3;
++    case 512: return 4;
++    case 1024: return 5;
++  }
++  throw std::runtime_error("no level for " + std::to_string(channels) + " channels");
++}
++
++const char* kindName(StageKind kind) {
++  switch (kind) {
++    case StageKind::Pre: return "pre";
++    case StageKind::Level: return "level";
++    case StageKind::Split: return "split";
++    case StageKind::Vit: return "vit";
++    case StageKind::Projection: return "projection";
++    case StageKind::Post: return "post";
++  }
++  return "?";
++}
++
++struct Classified {
++  std::string kind;   // "pre", "block", "encoder-transition", "decoder-transition", "split", ...
++  uint32_t channels = 0;
++  bool isSplit() const { return kind == "split" || kind == "split-512x1024"; }
++};
++
++bool sameSignature(const std::vector<uint32_t>& a, const std::vector<uint32_t>& b) { return a == b; }
++
++std::vector<uint32_t> concat4(uint32_t a, uint32_t b, uint32_t c, uint32_t d) { return {a, b, c, d}; }
++
++// The expected signature of every kind the port lays out. Mirrors `signatures()` in
++// tools/nr_schedule.py; the formulas are the port's own `fusedLayout` so a layout change
++// makes the classifier refuse the model instead of recording a graph from a stale table.
++std::vector<std::pair<std::vector<uint32_t>, Classified>> signatureTable() {
++  std::vector<std::pair<std::vector<uint32_t>, Classified>> table;
++  auto add = [&](std::vector<uint32_t> lengths, const char* kind, uint32_t channels) {
++    table.push_back({std::move(lengths), Classified{kind, channels}});
++  };
++
++  add({preFusedLayout().endWithoutPadding + 16}, "pre", 32);
++  for (uint32_t c : {32u, 64u, 128u, 256u}) add({fusedLayout(c).endWithoutPadding + 16}, "block", c);
++  // Encoder transition: the stage's last block also carries the 2C x C upsample matrix.
++  for (uint32_t c : {32u, 64u, 128u, 256u})
++    add({fusedLayout(c).endWithoutPadding + 2 * c * c + (c == 32 ? 16u : 0u)}, "encoder-transition", c);
++  // Decoder transition: the stage's first block carries the 2C -> C upsample; the 32-channel
++  // one is 16 bytes wider for the narrow-buffer padding.
++  for (auto [c, extra] : std::vector<std::pair<uint32_t, uint32_t>>{{32, 80}, {64, 112}, {128, 240}, {256, 496}})
++    add({fusedLayout(c).endWithoutPadding + 2 * c * c + extra}, "decoder-transition", c);
++  const std::vector<uint32_t> split = concat4(524288, 263168, 917568, 263168);
++  add(split, "split", 512);
++  {
++    std::vector<uint32_t> wider = split;
++    wider.push_back(524304);   // also carries the 512 -> 1024 matrix
++    add(std::move(wider), "split-512x1024", 512);
++  }
++  add({4194320, 4196352, 3145856, 2, 1050624}, "vit", 1024);
++  add({525312}, "projection", 512);   // block 39: the 1024 -> 512 matrix plus its skip scale
++  add({postFusedLayout().endWithoutPadding}, "post", 32);
++  return table;
++}
++
++Classified classify(const std::vector<uint32_t>& signature) {
++  static const auto table = signatureTable();
++  for (const auto& [lengths, classified] : table)
++    if (sameSignature(lengths, signature)) return classified;
++  std::string joined;
++  for (uint32_t length : signature) joined += (joined.empty() ? "" : ",") + std::to_string(length);
++  throw std::runtime_error("unrecognised block signature (" + std::to_string(signature.size()) + " layers: " + joined + ")");
++}
++
++}  // namespace
++
++const Stage* Schedule::find(const std::string& name) const {
++  for (const Stage& entry : stages)
++    if (entry.name == name) return &entry;
++  return nullptr;
++}
++
++const Stage& Schedule::stage(const std::string& name) const {
++  const Stage* found = find(name);
++  if (!found) throw std::runtime_error("the model's schedule has no stage " + name);
++  return *found;
++}
++
++const Stage& Schedule::ofKind(StageKind kind, uint32_t channels) const {
++  for (const Stage& entry : stages)
++    if (entry.kind == kind && entry.channels == channels) return entry;
++  throw std::runtime_error("the model's schedule has no " + std::string(kindName(kind)) + "-" +
++                           std::to_string(channels) + " stage");
++}
++
++uint32_t Schedule::vitFirst() const { return (uint32_t)ofKind(StageKind::Vit, 1024).first; }
++uint32_t Schedule::vitLast() const { return (uint32_t)ofKind(StageKind::Vit, 1024).last; }
++
++Schedule deriveSchedule(const std::vector<BlockSignature>& blocks) {
++  if (blocks.empty()) throw std::runtime_error("the model has no blocks");
++  std::vector<Classified> kinds;
++  kinds.reserve(blocks.size());
++  for (size_t i = 0; i < blocks.size(); ++i) {
++    try {
++      kinds.push_back(classify(blocks[i].layerBytes));
++    } catch (const std::exception& error) {
++      throw std::runtime_error("block " + std::to_string(i) + ": " + error.what());
++    }
++  }
++
++  Schedule schedule;
++  schedule.blockCount = (uint32_t)blocks.size();
++  bool encoder = true;
++  size_t index = 0;
++  while (index < blocks.size()) {
++    const int block = (int)index;
++    const Classified here = kinds[index];
++    if (here.kind == "pre") {
++      schedule.stages.push_back({"pre", 32, block, block, levelOf(32), StageKind::Pre, true, "pre"});
++      ++index;
++      continue;
++    }
++    if (here.kind == "post") {
++      schedule.stages.push_back({"post", 32, block, block, levelOf(32), StageKind::Post, false, "post"});
++      ++index;
++      continue;
++    }
++    if (here.kind == "projection") {
++      schedule.stages.push_back({"transition-38-39", 512, block, block, levelOf(512), StageKind::Projection, false,
++                                 "projection"});
++      encoder = false;
++      ++index;
++      continue;
++    }
++    if (here.kind == "vit") {
++      const int first = block;
++      while (index < blocks.size() && kinds[index].kind == "vit") ++index;
++      schedule.stages.push_back({"vit", 1024, first, (int)index - 1, 5, StageKind::Vit, false, "vit"});
++      continue;
++    }
++    if (here.isSplit()) {
++      const int first = block;
++      while (index < blocks.size() && kinds[index].isSplit()) ++index;
++      const std::string lastKind = kinds[index - 1].kind;
++      const bool encoderSide = encoder && lastKind == "split-512x1024";
++      schedule.stages.push_back({std::string(encoderSide ? "encoder" : "decoder") + "-512", 512, first,
++                                 (int)index - 1, levelOf(512), StageKind::Split, encoderSide,
++                                 lastKind == "split-512x1024" ? "split-512x1024" : "split"});
++      continue;
++    }
++    // A U-Net level: blocks up to and including the transition block. On the decoder side the
++    // transition block opens the stage and the count is one fewer per level.
++    const uint32_t channels = here.channels;
++    const int first = block;
++    while (index < blocks.size()) {
++      const Classified& next = kinds[index];
++      if (next.channels != channels || (next.kind != "block" && next.kind != "encoder-transition" &&
++                                        next.kind != "decoder-transition"))
++        break;
++      const std::string kindHere = next.kind;
++      ++index;
++      if (kindHere == "encoder-transition")
++        break;   // the encoder stage owns its transition; a decoder's opens it and keeps going
++    }
++    const int last = (int)index - 1;
++    const std::string transition = kinds[index - 1].kind;
++    if (kinds[first].kind == "decoder-transition") encoder = false;
++    schedule.stages.push_back({std::string(encoder ? "encoder" : "decoder") + "-" + std::to_string(channels), channels,
++                               first, last, levelOf(channels), StageKind::Level, encoder, transition});
++  }
++  return schedule;
++}
++
++namespace {
++std::string readText(const std::string& path) {
++  std::ifstream file(path, std::ios::binary);
++  if (!file) throw std::runtime_error("cannot read " + path);
++  std::stringstream stream;
++  stream << file.rdbuf();
++  return stream.str();
++}
++}  // namespace
++
++Schedule readSchedule(const std::string& directory, uint32_t* blockCountOut) {
++  json::Value manifest = json::parse(readText(directory + "/manifest.json"));
++  const uint32_t blockCount = (uint32_t)manifest["totals"]["blockCount"].integer();
++  // The manifest names a layer "layer0", "layer1", ...; the reference sorts on that string, so this
++  // does too (sorting on an integer parse of it silently collapses every layer to 0).
++  std::vector<std::vector<std::pair<std::string, uint32_t>>> layers(blockCount);
++  for (const json::Value& entry : manifest["tensors"].array) {
++    if (entry["parameter"].str() != "layer") continue;
++    const auto block = (size_t)entry["block"].integer();
++    if (block >= layers.size()) continue;   // not a block body tensor
++    layers[block].push_back({entry["layer"].str(), (uint32_t)entry["byteLength"].integer()});
++  }
++  std::vector<BlockSignature> blocks(blockCount);
++  for (size_t block = 0; block < layers.size(); ++block) {
++    std::sort(layers[block].begin(), layers[block].end());
++    for (const auto& [layer, length] : layers[block]) blocks[block].layerBytes.push_back(length);
++  }
++  if (blockCountOut) *blockCountOut = blockCount;
++  return deriveSchedule(blocks);
++}
++
++std::string renderSchedule(const Schedule& schedule) {
++  std::string out = std::to_string(schedule.blockCount) + " blocks\n";
++  char line[160];
++  snprintf(line, sizeof(line), "%-20s%6s%7s%6s%7s  %s\n", "stage", "ch", "first", "last", "level", "kind");
++  out += line;
++  for (const Stage& entry : schedule.stages) {
++    snprintf(line, sizeof(line), "%-20s%6u%7d%6d%7d  %s\n", entry.name.c_str(), entry.channels, entry.first,
++             entry.last, entry.level, entry.variant.c_str());
++    out += line;
++  }
++  return out;
++}
++
++}  // namespace nr
+diff --git a/src/nr_schedule.h b/src/nr_schedule.h
+new file mode 100644
+index 0000000..8d64f1c
+--- /dev/null
++++ b/src/nr_schedule.h
+@@ -0,0 +1,56 @@
++// The NR graph's stage schedule, derived from the model instead of hard-coded.
++//
++// The graph used to walk six literal block ranges (`{5,8}`, `9..14`, `15..22`, `23..30`,
++// the ViT chain `31..38` and its `block < 38` chain constant, `40..47`) plus four decoder
++// stages keyed on `48`, `56`, `62`, `66`. Those numbers are the 71-block model's block
++// counts per U-Net level, not the architecture: every block's tensor is laid out by
++// `fusedLayout(channels)` and the kinds repeat. `tools/nr_schedule.py` is the reference
++// implementation of that classification; this is the port's mirror of it, so the recorder
++// walks a table derived from whatever model it was handed.
++#pragma once
++#include <cstdint>
++#include <string>
++#include <vector>
++
++namespace nr {
++
++enum class StageKind { Pre, Level, Split, Vit, Projection, Post };
++
++struct Stage {
++  std::string name;     // "pre", "encoder-32", ..., "vit", "transition-38-39", "decoder-32", "post"
++  uint32_t channels = 0;
++  int first = 0, last = 0;
++  int level = 0;        // Geometry::levels index; 5 is the ViT bottleneck, 6 is un-pooled
++  StageKind kind = StageKind::Level;
++  bool encoder = true;  // direction of a U-Net level stage
++  std::string variant;  // the classified kind: "block", "split", "vit", ...
++};
++
++// One block's body signature: the byte lengths of its `layer` tensors in layer order.
++struct BlockSignature {
++  std::vector<uint32_t> layerBytes;
++};
++
++struct Schedule {
++  uint32_t blockCount = 0;
++  std::vector<Stage> stages;
++
++  const Stage& stage(const std::string& name) const;   // throws when the model has no such stage
++  const Stage* find(const std::string& name) const;
++  const Stage& ofKind(StageKind kind, uint32_t channels) const;  // the single stage of that kind/channels
++  uint32_t vitLast() const;                                          // last ViT block (the chain constant)
++  uint32_t vitFirst() const;
++};
++
++// Classify one block by its tensors' byte lengths and walk the blocks into stage order:
++// encoder levels, bottleneck, decoder levels, post. Throws when a block's signature is not
++// one the port can lay out - a wrong schedule must fail at startup, not record the wrong graph.
++Schedule deriveSchedule(const std::vector<BlockSignature>& blocks);
++
++// Device-free: read `directory/manifest.json` and return the block signatures it describes.
++Schedule readSchedule(const std::string& directory, uint32_t* blockCountOut = nullptr);
++
++// The table as text, the same columns `tools/nr_schedule.py` prints, so the two can be diffed.
++std::string renderSchedule(const Schedule& schedule);
++
++}  // namespace nr
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
 index 0000000..43008ec

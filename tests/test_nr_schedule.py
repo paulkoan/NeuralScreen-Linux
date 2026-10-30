@@ -14,6 +14,8 @@ wrong schedule look right:
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -37,7 +39,9 @@ def manifest_from(kinds: list[tuple[str, int]]) -> dict:
     for block, (kind, channels) in enumerate(kinds):
         lengths = KINDS[(kind, channels)]
         for layer, length in enumerate(lengths):
-            tensors.append({"name": f"block{block}.layer{layer}.layer", "block": block, "layer": layer,
+            # The layer field is "layer0" in the extractor's manifests, not an int; the port sorts on
+            # that string, so the fixtures say the same thing the real manifest does.
+            tensors.append({"name": f"block{block}.layer{layer}.layer", "block": block, "layer": f"layer{layer}",
                             "parameter": "layer", "stage": "stage00", "stageOffset": 0,
                             "byteLength": length})
     return {"totals": {"blockCount": len(kinds), "tensorCount": len(tensors), "stageCount": 1},
@@ -119,6 +123,38 @@ def test_the_extracted_71_block_network_matches_the_port():
     manifest = json.loads(REAL_71.read_text())
     assert manifest["totals"]["blockCount"] == 71
     assert check(manifest) == []
+
+
+def port_binary() -> Path:
+    return Path(os.environ.get("NS_ODL_NATIVE_BIN", "/opt/neuralscreen/port/build/dlss5vk"))
+
+
+def port_table(binary: Path, manifest: dict, directory: Path) -> list[tuple[str, int, int, int]]:
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "manifest.json").write_text(json.dumps(manifest))
+    done = subprocess.run([str(binary), "schedule", "--model", str(directory), "--check"],
+                          capture_output=True, text=True)
+    assert done.returncode == 0, done.stdout + done.stderr
+    rows = []
+    for line in done.stdout.splitlines()[1:]:
+        fields = line.split()
+        if len(fields) == 6 and fields[1].isdigit():   # skip the column header
+            rows.append((fields[0], int(fields[1]), int(fields[2]), int(fields[3])))
+    return rows
+
+
+@pytest.mark.skipif(not port_binary().exists(), reason="needs a built dlss5vk (NS_ODL_NATIVE_BIN)")
+def test_the_port_derives_the_same_table_the_reference_tool_does(tmp_path):
+    # The recorder walks the port's own derivation of the table, so the thing that would quietly
+    # diverge is that derivation. Both models, through the binary's device-free `schedule` mode,
+    # against the reference tool's table - and `--check` also proves the 71-block one equals the
+    # ranges the recorder used to hard-code.
+    for name, kinds, expected in (("large", KINDS_71, REFERENCE_71), ("small", KINDS_31, None)):
+        manifest = manifest_from(kinds)
+        table = stage_table(manifest)
+        want = expected if expected is not None else [
+            (e["stage"], e["channels"], e["first"], e["last"]) for e in table]
+        assert port_table(port_binary(), manifest, tmp_path / name) == want
 
 
 @pytest.mark.skipif(not REAL_31.exists(), reason="needs the extracted 310.9.16 networks")
