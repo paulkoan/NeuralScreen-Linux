@@ -1,0 +1,8 @@
+{
+  "id": "r2026-10-30-j",
+  "entry": "ngx-matrix",
+  "args": [],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "baseline: old vs bundled DLL, spoof on/off, direct vs core"
+}
