@@ -1,4 +1,4 @@
-From 819bea6f149ee975b922cfea802402d1bd9b7111 Mon Sep 17 00:00:00 2001
+From 4b934233b9241aa3ea39cab42de9f9ee68ff0f29 Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -99,7 +99,7 @@ Also lands: `--model`/`--shaders`/`--frames` for the mode, the warm record that 
 249-kernel JIT burst on a zero proxy where the log can say what the wait was, and a
 per-frame timing line on stderr.
 ---
- scripts/build_linux.sh       | 161 ++++++++
+ scripts/build_linux.sh       | 161 +++++++
  shaders/composite_serve.comp | 196 +++++++++
  shaders/preprocess.comp      |  26 +-
  shaders/proxy_expand.comp    |  32 ++
@@ -107,10 +107,10 @@ per-frame timing line on stderr.
  src/kernels.h                |  37 +-
  src/main.cpp                 |   6 +-
  src/nr_model.h               |   1 +
- src/serve.cpp                | 777 +++++++++++++++++++++++++++++++++++
+ src/serve.cpp                | 784 +++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |  26 +-
  src/vk_context.h             |   3 +
- 11 files changed, 1305 insertions(+), 13 deletions(-)
+ 11 files changed, 1312 insertions(+), 13 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/proxy_expand.comp
@@ -767,10 +767,10 @@ index 867c97e..66f2175 100644
  #include <string>
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..091ef78
+index 0000000..eefb1c9
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,777 @@
+@@ -0,0 +1,784 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -1507,12 +1507,19 @@ index 0000000..091ef78
 +
 +        const std::vector<uint8_t>* inlinePixels = nullptr;
 +        uint32_t replyBytes = 0;
++        // The downloaded pixels must outlive the block below: publishImage hands sendFrame a
++        // pointer into them when the client did not open a pixel channel, and a pointer into a
++        // destroyed local is not a reply, it is EFAULT on write(stdout). This is the bug that
++        // killed r2026-10-29-c ("serve: write(stdout): Bad address") on the pixel path only.
++        std::vector<uint8_t> image;
++        std::chrono::steady_clock::time_point afterDownload;
 +        if (wantPixels) {
-+          const std::vector<uint8_t> image =
-+              context->download(imageBuffer, (VkDeviceSize)workWidth * workHeight * 4);
++          image = context->download(imageBuffer, (VkDeviceSize)workWidth * workHeight * 4);
++          afterDownload = std::chrono::steady_clock::now();
 +          publishImage(output, image, &inlinePixels, &replyBytes);
++        } else {
++          afterDownload = std::chrono::steady_clock::now();
 +        }
-+        const std::chrono::steady_clock::time_point afterDownload = std::chrono::steady_clock::now();
 +        frames++;
 +        sendFrame(index, 1, replyBytes, 0, pts, inlinePixels);
 +        // What this frame published is the history the next frame reads.
