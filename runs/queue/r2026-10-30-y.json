@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-y",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "1920x1080",
+           "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "Resolution sweep, point 2 of 3: 1080p, reference model, fused, no pixels. Use with x and z to fit median = fixed + per-pixel * pixels."
+}
