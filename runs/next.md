@@ -26,16 +26,19 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
      are byte-identical (MAD 0.0, 0 changed pixels, PSNR inf) on the same card and binary
      (patch 0aabc30e). Median 234.6 ms unfused vs 77.4 ms fused, as expected. Fusion may be
      carried into the small network.
-  2. Port-small vs NGX preset 2 on the same card, then steady-state fps. The NGX pair is now
-     measured on the current DLL (r2026-10-30-o/p, both exit 0, 120 frames): preset 1
-     57.48 ms/frame, preset 2 52.65 ms/frame, **1.09x**, pictures differ (MAD 4.4661, p99 18).
-     The model is ~11 ms of a ~57 ms Wine frame, so 1.78x at the model lands as ~5 ms; the NGX
-     arm remains 17-19 fps against the port's 40.5. The port comparison is the one that matters.
-  Step 2 cannot be queued from here: it needs the box to hold the small model at a path an entry
-  passes to `serve --model` (that path is the policy's, not this repo's). The DLL is already on
-  the box, so no upload is needed - `extract.py --magic 0x06c9dfdf --out /opt/neuralscreen/model-small`
-  cuts it there from `native/nvngx_dlssnr.dll`, then an entry must pass that path. Do not swap
-  `/opt/neuralscreen/model`: the reference model stays.
+  2. DONE (2026-10-30): the small network loads and runs in the port. `r2026-10-30-t` cut it
+     from the DLL on the box (31 blocks, 77 tensors, blend_scale 0.7671) into
+     `/opt/neuralscreen/model-small`; `serve` reports `blend scale 0.7671 (block30...)`, so it
+     is the small model, not the reference. 120-frame medians: no-pixel small 30.9 ms vs
+     reference 35.3 ms (1.14x); pixel path small 56.4 ms vs reference 50.4 ms (0.89x). The two
+     comparisons disagree in direction, so the model difference is inside run-to-run noise at
+     this length - the model is not the port's bottleneck. Also note the reference's old
+     24.7 ms (r2026-10-29-f) does not reproduce on the current binary (35.3 ms), so use
+     same-session pairs, never a number from another build.
+  Next is throughput, not the model: the port sits at 28-35 ms/frame steady and the model swap
+  moves it by less than the noise. Look at the fixed per-frame cost - upload, submit, the
+  composite and the readback gate - with an A/B inside one worker so two models or two paths
+  are measured in the same session.
   If the generic schedule cannot reach parity, say so and stop rather than fusing a wrong graph.
 
 ## 2. Ask first - do not start these alone
@@ -44,6 +47,14 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the small network runs in the port and is NOT the bottleneck (r2026-10-30-t/u/v/w,
+  2026-10-30, all exit 0). t: 31 blocks / 77 tensors, blend_scale 0.7671. serve confirms
+  `blend scale 0.7671 (block30...)`, so the path is real. 120-frame medians, same binary:
+  no-pixel small 30.9 ms vs reference 35.3 ms (1.14x); pixel path small 56.4 ms vs reference
+  50.4 ms (0.89x). The directions disagree, so the model difference is within noise. The old
+  reference figure of 24.7 ms (r2026-10-29-f) did not reproduce (35.3 ms on 0aabc30e); never
+  compare across builds - run the pair in one session.
 
 * learned: fused and unfused are byte-identical on the port (r2026-10-30-r vs -s, 2026-10-30,
   both exit 0, three frames, 2560x1440, same card). `serve: graph unfused - reference kernels`
