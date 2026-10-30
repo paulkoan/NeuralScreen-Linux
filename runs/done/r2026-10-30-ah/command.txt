@@ -1,0 +1,1 @@
+uv run python -m minimal --frames 30 --headless --source synthetic --size 2560x1440 --no-motion --save-after nomotion.png --worker-log
