@@ -10,23 +10,21 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Verify the table-driven recorder. **Re-armed 2026-10-30-b: r2026-10-30-a and -b are void as
-  verification** - both stamped `patch 4b934233b924` and printed `OUT OF SYNC` against the
-  checkout's `7b827810f679`, so the worker never contained step 1 (a's pixels are byte-identical
-  to 29-e's, which is only the old build behaving). r2026-10-30-c (port-build) is queued to put
-  the schedule change in the binary. When it lands, require exit 0 and stamp 7b827810f679, then
-  re-queue one 30-frame `--save-before --save-after` run (after.png against 29-e's, sha
-  1975cb4479) and one 120-frame steady-fps run (expect ~40.5 steady against f's 40.48). Then
-  step 2. Step 1 is implemented (commit 56cfb43):
+* Verify the table-driven recorder. **c LANDED (2026-10-30): exit 0, 9.6s, stamp
+  `patch 7b827810f679`, 15 shader modules, 78 PTX kernels - the schedule change is in the binary
+  now. r2026-10-30-d (30-frame `--save-before --save-after`, after.png must match 29-e's sha
+  1975cb4479) and r2026-10-30-e (120-frame steady fps, expect ~40.5 against f's 40.48) are
+  queued to prove the recorded graph is the same one. Next tick: read d and e. If both agree,
+  retire this item and take step 2; if either disagrees, fix or revert step 1 before anything
+  else.** (a and b remain void: old binary, 4b934233b924.) Step 1 is implemented (commit
+  56cfb43):
   `Graph::record` takes every block range from a schedule derived from the model's block
   signatures (`src/nr_schedule.{h,cpp}`, mirroring `tools/nr_schedule.py`), the six hard-coded
   ranges and the `block < 38` ViT constant are gone, and the 71-block derivation is pinned to
   the old ranges by `dlss5vk schedule --check` (ok on both extracted models, 71 and 31 blocks).
-  What is NOT yet proven is that the graph records the same work on the GPU. Read the two
-  queued runs first: r2026-10-30-a (30 frames, `after.png` must be byte-identical to 29-e's)
-  and r2026-10-30-b (120 frames, ~40.5 fps steady). If either disagrees, fix or revert step 1
-  before anything else. If both agree, take step 2: parity against NGX preset 2 on the same
-  card (`tools/ngx_preset_compare.py` runs presets 1 and 2 back to back), then steady-state fps.
+  What is NOT yet proven is that the graph records the same work on the GPU - that is d and e.
+  If both agree, take step 2: parity against NGX preset 2 on the same card
+  (`tools/ngx_preset_compare.py` runs presets 1 and 2 back to back), then steady-state fps.
 
 ## 2. Ask first - do not start these alone
 
@@ -34,6 +32,11 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the port-build the schedule change needed has landed and is in sync (r2026-10-30-c,
+  2026-10-30): exit 0 in 9.6s, `stamp: port 9d08f41 (17 modified) patch 7b827810f679...`, 15
+  shader modules / 78 PTX kernels, and the binary's own stamp line says "runs will be in sync".
+  So r2026-10-30-d/-e are the first runs that can say anything about the table; a/b still cannot.
 
 * learned: a queued verification run is only as good as the binary the box last built (2026-10-30,
   ticks a/b). 56cfb43 changed the recorder and 47d64fb queued the two runs to prove it, but no

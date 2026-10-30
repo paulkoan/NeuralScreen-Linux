@@ -1,0 +1,15 @@
+{
+  "id": "r2026-10-30-e",
+  "entry": "minimal",
+  "args": [
+    "--frames", "120",
+    "--headless",
+    "--source", "synthetic",
+    "--size", "2560x1440",
+    "--shm",
+    "--worker-log"
+  ],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "Steady-fps confirmation for the table-driven schedule (step 1), re-queued after r2026-10-30-c rebuilt the port to patch 7b827810f679: r2026-10-30-b is void (old binary, 35.17 fps steady). Same shape as r2026-10-29-f, which measured 40.48 fps steady. Require stamp 7b827810f679 and ~40.5 fps steady; quote steady, not the frame-0-warm-up headline."
+}

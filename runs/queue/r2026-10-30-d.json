@@ -1,0 +1,17 @@
+{
+  "id": "r2026-10-30-d",
+  "entry": "minimal",
+  "args": [
+    "--frames", "30",
+    "--headless",
+    "--source", "synthetic",
+    "--size", "2560x1440",
+    "--shm",
+    "--worker-log",
+    "--save-before", "before.png",
+    "--save-after", "after.png"
+  ],
+  "timeout_s": 300,
+  "artifacts": ["before.png", "after.png"],
+  "note": "Recorder parity for the table-driven schedule (step 1), re-queued after r2026-10-30-c rebuilt the port to patch 7b827810f679: r2026-10-30-a and -b are void because they stamped 4b934233b924 (OUT OF SYNC). Same fixture and frame count as r2026-10-29-e. Require exit 0, stamp 7b827810f679, and after.png byte-identical to 29-e's after.png (sha256 starting 1975cb4479). Quote the stamp line and the frames line."
+}
