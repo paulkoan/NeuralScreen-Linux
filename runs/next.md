@@ -10,21 +10,18 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Verify the table-driven recorder. **c LANDED (2026-10-30): exit 0, 9.6s, stamp
-  `patch 7b827810f679`, 15 shader modules, 78 PTX kernels - the schedule change is in the binary
-  now. r2026-10-30-d (30-frame `--save-before --save-after`, after.png must match 29-e's sha
-  1975cb4479) and r2026-10-30-e (120-frame steady fps, expect ~40.5 against f's 40.48) are
-  queued to prove the recorded graph is the same one. Next tick: read d and e. If both agree,
-  retire this item and take step 2; if either disagrees, fix or revert step 1 before anything
-  else.** (a and b remain void: old binary, 4b934233b924.) Step 1 is implemented (commit
-  56cfb43):
-  `Graph::record` takes every block range from a schedule derived from the model's block
-  signatures (`src/nr_schedule.{h,cpp}`, mirroring `tools/nr_schedule.py`), the six hard-coded
-  ranges and the `block < 38` ViT constant are gone, and the 71-block derivation is pinned to
-  the old ranges by `dlss5vk schedule --check` (ok on both extracted models, 71 and 31 blocks).
-  What is NOT yet proven is that the graph records the same work on the GPU - that is d and e.
-  If both agree, take step 2: parity against NGX preset 2 on the same card
-  (`tools/ngx_preset_compare.py` runs presets 1 and 2 back to back), then steady-state fps.
+* Queue r2026-10-30-f: the same 120-frame shape as r2026-10-30-e
+  (`--frames 120 --headless --source synthetic --size 2560x1440 --shm --worker-log`), written to
+  runs/queue/r2026-10-30-f.json. Why: d/e closed the step-1 verification on pixels - d's
+  before/after blobs are byte-identical to 29-e's (a1bafe2d07 / 1975cb4479), so the table-driven
+  recorder publishes the same frame - and e's `network+composite` is flat (12.9/13.4ms at frames
+  29/119 against f's 12.7/12.9), but e's steady rate is 34.51 fps against f's 40.48 with the whole
+  gap in `proxy` (5.0ms at frame 29 -> 10.2ms at frame 119, where f holds 3.7-5.8). One repeat
+  separates proxy creep from contention on the box. If it reproduces under ~38 fps the next item
+  is the proxy stage, not a revert of step 1 - the recorder is not implicated: it moves no pixels
+  and costs nothing in the model stage.
+  After that: parity against NGX preset 2 on the same card (`tools/ngx_preset_compare.py` runs
+  presets 1 and 2 back to back), then steady-state fps.
 
 ## 2. Ask first - do not start these alone
 
@@ -32,6 +29,16 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the table-driven recorder publishes the same frame (2026-10-30, read d and e). d, on
+  stamp `patch 7b827810f679`, wrote before.png/after.png whose blobs are byte-identical to 29-e's
+  (a1bafe2d07 / 1975cb4479): the schedule change moved no pixel, so the recorded graph is the
+  same work. e, same stamp, exit 0, 120 done / 0 skipped: 14.73 fps headline (frame-0 recv
+  4260.5ms) and 34.51 fps steady against 29-f's 40.48. The worker's own lines locate the loss:
+  network+composite is flat (12.9/13.4ms at frames 29/119 vs 12.7/12.9 in f) while `proxy` climbs
+  5.0 -> 10.2ms across the run where f holds 3.7-5.8, and client recv median rises 19.9 -> 22.9.
+  A 15% steady drop whose whole size sits in preprocess is not evidence against the recorder, so
+  step 1 was not reverted; r2026-10-30-f repeats the shape to see whether it reproduces.
 
 * learned: the port-build the schedule change needed has landed and is in sync (r2026-10-30-c,
   2026-10-30): exit 0 in 9.6s, `stamp: port 9d08f41 (17 modified) patch 7b827810f679...`, 15
