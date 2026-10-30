@@ -1,0 +1,30 @@
+{
+  "exit_code": 0,
+  "seconds": 16.935,
+  "argv": [
+    "xvfb-run",
+    "-a",
+    "uv",
+    "run",
+    "python",
+    "-m",
+    "minimal",
+    "--frames",
+    "120",
+    "--headless",
+    "--source",
+    "synthetic",
+    "--size",
+    "2560x1440",
+    "--save-after",
+    "small-120.png",
+    "--worker-log"
+  ],
+  "artifacts": [
+    "small-120.png"
+  ],
+  "runner": "e44571d7dd12",
+  "entry_env": [
+    "NS_WORKER_CMD"
+  ]
+}
