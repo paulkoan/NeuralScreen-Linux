@@ -10,15 +10,13 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Measure the one-copy / one-submit upload (commit 284b11d, patch 9e90de0d48d0) on the box, then
-  decide whether the creep is gone. The binary the box runs must be built from this patch first,
-  or the run measures the old one again: queue the port-build, then a 120-frame run in f's shape
-  (`--frames 120 --headless --source synthetic --size 2560x1440 --shm --worker-log`). Accept when
-  per-frame `proxy` (now printed as `proxy X [copy Y, submit Z]`) at frame 119 is no higher than
-  at frame 29 (f read 6.3 -> 21.3, e 5.0 -> 10.2) and the steady rate is back above 30.63 fps;
-  the split says which half moved. The code change itself is done and pushed.
-  After that: parity against NGX preset 2 on the same card (`tools/ngx_preset_compare.py` runs
-  presets 1 and 2 back to back), then steady-state fps.
+* Read r2026-10-30-g (port-build) and r2026-10-30-h (120-frame measure of the one-copy /
+  one-submit upload, patch 9e90de0d48d0) now queued. Accept when per-frame `proxy` at frame 119
+  is no higher than at frame 29 (f read 6.3 -> 21.3, e 5.0 -> 10.2) and the steady rate is back
+  above 30.63 fps; the printed split `proxy X [copy Y, submit Z]` says whether the host copy or
+  the submit moved. If g's stamp is not 9e90de0d48d0, h is measuring the old binary - rebuild
+  before reading h. Then: parity against NGX preset 2 on the same card
+  (`tools/ngx_preset_compare.py` runs presets 1 and 2 back to back), then steady-state fps.
 
 ## 2. Ask first - do not start these alone
 
@@ -26,6 +24,12 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the one-copy upload is queued as two entries, build then measure (2026-10-30, tick f+1;
+  no run). r2026-10-30-g is the port-build (stamp must name 9e90de0d48d0) and r2026-10-30-h is the
+  120-frame f-shaped run; the pair exists because a verification run queued without a build
+  measures the previous binary (the a/b lesson). Nothing read yet - accept only on h's numbers,
+  and read g's stamp first.
 
 * learned: the creep is in the host copies, not in preprocess, and the upload path cannot hold
   state (2026-10-30, read d/e/f against 29-f; no run). `proxy` is `since(began, afterUpload)` -
