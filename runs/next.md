@@ -10,14 +10,6 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Stop reordering colour on the CPU in the capture leg (no run yet - needs a wire flag). `grab()`
-  swaps BGRA to RGBA with a fancy-index assign that costs 6.9ms a frame at 1440p, and every
-  byte-touching alternative benches the same 6-7ms; only not doing it is free. The port already
-  uploads the frame and expands it in `expandRgba8ToProxy`, so the swizzle belongs there: add a
-  frame flag for "the colour is BGRA", set it from the capture source's own format, and let the
-  shader read .bgra. Cheap for the port, zero for the client. Do this AFTER the readback gate is
-  verified, so a picture regression has one cause rather than two.
-
 ## 2. Ask first - do not start these alone
 
 * Porting the 310.9.16 small/FP8 network into dlss5vk (decided 2026-10-30?): the second
@@ -28,6 +20,11 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the BGRA handoff is implemented: the capture leg returns BGRA and sets
+  FRAME_FLAG_COLOR_BGRA (0x80); the port's expand shader reads .bgra when the push constant's
+  pad0 is 1. The wire flag is in protocol.py and serve.cpp. The tests still have the 9
+  pre-existing import failures (libGL/SDL2 absent) but 320 pass.
 
 * learned: the 310.9.16 DLL carries two networks and only the first is a drop-in (2026-10-30,
   offline in the sandbox; file sha256 cdfa6c1e..., 276,162,560 bytes). Its largest resource
