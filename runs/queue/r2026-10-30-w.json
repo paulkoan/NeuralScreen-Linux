@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-w",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "Reference network, no pixels, on the current binary (patch 0aabc30e) - the control for r2026-10-30-v. r2026-10-29-f gave 40.5 fps / 24.7 ms on patch 4b934233; the binary changed since (generic schedule), so re-measure rather than compare across builds."
+}
