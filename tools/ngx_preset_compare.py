@@ -220,8 +220,12 @@ def main(argv: list[str]) -> int:
               f"{str(info['exit_code']):>4}  {fr.get('done', '?'):>7}  "
               f"{fr.get('skipped', '?'):>7}  {info['elapsed_s']:>7.2f}s  "
               f"{tm.get('median', float('nan')):>9.1f}  {tm.get('median_fps', float('nan')):>10.1f}  "
-              f"{tm.get('headline', float('nan')):>8.2f}  "
+              f"{float(fr.get('headline', float('nan'))):>8.2f}  "
               f"{info['preset'] if info['preset'] is not None else '?':>11}")
+
+    print()
+    for info in (old, new):
+        print(f"engine preset {info['preset']}: {info['worker'] or '(no worker: line)'}")
 
     if old["timing"] and new["timing"] and old["timing"]["median"] and new["timing"]["median"]:
         speedup = old["timing"]["median"] / new["timing"]["median"]
