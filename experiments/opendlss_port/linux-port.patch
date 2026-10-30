@@ -1,4 +1,4 @@
-From 9e90de0d48d076c36b22959fc21d40d82ad62e32 Mon Sep 17 00:00:00 2001
+From 03246c10b3152caf0bdea0f094274d2449b18dbf Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -112,10 +112,10 @@ per-frame timing line on stderr.
  src/nr_model.h               |   6 +
  src/nr_schedule.cpp          | 235 ++++++++++
  src/nr_schedule.h            |  56 +++
- src/serve.cpp                | 814 +++++++++++++++++++++++++++++++++++
+ src/serve.cpp                | 821 +++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |  71 ++-
  src/vk_context.h             |  23 +
- 16 files changed, 1851 insertions(+), 59 deletions(-)
+ 16 files changed, 1858 insertions(+), 59 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/proxy_expand.comp
@@ -1483,10 +1483,10 @@ index 0000000..8d64f1c
 +}  // namespace nr
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..2d9be67
+index 0000000..55e2617
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,814 @@
+@@ -0,0 +1,821 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -1928,13 +1928,17 @@ index 0000000..2d9be67
 +    // input to this whole path that nobody can look at. It costs a few seconds, once.
 +    model = std::make_unique<nr::Model>(*context, modelDir, true);
 +    // The temporal blend's learned cap, out of the model the way the demo reads it
-+    // (demo/nr_pass.cpp): one f16 at the front of block 70's blend_scale tensor. Absent or
-+    // short, the demo's own fallback of 1.0 stands - and it is printed either way, so a
-+    // weight that did not arrive is visible in the log before a picture is questioned.
++    // (demo/nr_pass.cpp): one f16 at the front of the post block's blend_scale tensor. The
++    // post block is the model's last, 70 of 71 and 30 of 31, so the index comes from the
++    // model's own block count - a literal 70 would default the small network's weight to
++    // 1.0 and print a healthy-looking line. Absent or short, the demo's own fallback of
++    // 1.0 stands - and it is printed either way, so a weight that did not arrive is
++    // visible in the log before a picture is questioned.
 +    {
 +      bool found = false;
++      const uint32_t postBlock = model->blockCount() > 0 ? model->blockCount() - 1 : 0;
 +      try {
-+        const nr::Tensor& blend = model->tensor(70, 0, "blend_scale");
++        const nr::Tensor& blend = model->tensor(postBlock, 0, "blend_scale");
 +        if (blend.byteLength >= 2) {
 +          blendScale = num::f16ToF32(nr::auxHalf(blend, 0, 0));
 +          found = true;
@@ -1945,8 +1949,11 @@ index 0000000..2d9be67
 +        // purpose - the only thing that can come out of here is the lookup above, and
 +        // refusing to serve over it would be a hard failure for a soft reason.
 +      }
-+      fprintf(stderr, "serve: blend scale %.4f (%s)\n", blendScale,
-+              found ? "block70.layer0.blend_scale" : "absent - defaulted to 1.0, the demo's fallback");
++      if (found)
++        fprintf(stderr, "serve: blend scale %.4f (block%u.layer0.blend_scale)\n", blendScale, postBlock);
++      else
++        fprintf(stderr, "serve: blend scale %.4f (absent - defaulted to 1.0, the demo's fallback)\n",
++                blendScale);
 +    }
 +    kernels = std::make_unique<nr::Kernels>(*context, shaderDir);
 +    kernels->setSiluTable(ref::siluTable());
