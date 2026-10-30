@@ -1,0 +1,15 @@
+source synthetic  capture 2560x1440  ->  work 2560x1440 (work scale 1.00, NGX ceiling 2560x1440)
+params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+worker: /opt/neuralscreen/port/build/dlss5vk serve --model /opt/neuralscreen/model
+version: repo 47d64fb (+12 uncommitted) · worker built from patch 4b934233b924 at port 9d08f41 · OUT OF SYNC — the worker was built from patch 4b934233b924, this checkout has 7b827810f679: re-apply the patch and rebuild, the run below is not the code in this checkout
+version: OUT OF SYNC — the worker was built from patch 4b934233b924, this checkout has 7b827810f679: re-apply the patch and rebuild, the run below is not the code in this checkout
+[main] shared memory agreed: 29.5 MB, the frame does not go through the pipe
+frame 0 is the worker's warm-up: the window stays black until its first answer lands
+pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+frames: 30 done, 0 skipped, 5.57s (5.39 fps headline, 26.59 fps steady), worker exit 0
+timing: capture 3.1ms  send 2.7ms  recv 170.1ms  display 2.6ms   (mean 178.4ms/frame, 5.6 fps; median 37.6ms/frame, 26.6 fps steady)
+send spread: min 1.8  median 2.5  max 10.2 ms at frame 0 of 30   (one-off at frame 0 — the worker's warm-up, not a per-frame cost)
+recv spread: min 27.0  median 29.5  max 4245.7 ms at frame 0 of 30   (one-off at frame 0 — the worker's warm-up, not a per-frame cost)
+  before -> before.png
+  after  -> after.png

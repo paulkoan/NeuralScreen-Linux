@@ -32,7 +32,13 @@ class CaptureError(RuntimeError):
 
 
 class Capture:
-    """Grab the screen on X11 through mss, converted to RGBA."""
+    """Grab the screen on X11 through mss, returning BGRA.
+
+    The port's expand shader reads the colour as BGRA when the frame carries
+    FRAME_FLAG_COLOR_BGRA, so the host no longer swaps the channels.
+    """
+
+    bgra = True
 
     #: Split of the grab into "waiting for the producer" and "copying the
     #: bytes", when the source can tell the difference. None means it cannot:
@@ -69,14 +75,12 @@ class Capture:
         return self.width, self.height
 
     def grab(self) -> np.ndarray:
-        """One frame as (H, W, 4) uint8 RGBA.
+        """One frame as (H, W, 4) uint8 BGRA.
 
-        mss hands back BGRA; the worker's colour input is RGBA, so the two
-        colour channels are swapped. The alpha channel is left as captured.
+        mss hands back BGRA; the port's expand shader reads it as BGRA when the
+        frame carries FRAME_FLAG_COLOR_BGRA. The alpha channel is left as captured.
         """
-        shot = np.asarray(self._sct.grab(self._monitor))
-        # mss gives (H, W, 4) as BGRA. Reverse B and R in place.
-        return shot[:, :, [2, 1, 0, 3]].copy()
+        return np.asarray(self._sct.grab(self._monitor))
 
     def close(self) -> None:
         try:
@@ -115,6 +119,8 @@ class SyntheticCapture:
     horizontal red ramp, a vertical green ramp, blue interference stripes for
     local structure, and a bar that moves each grab so consecutive frames differ.
     """
+
+    bgra = False
 
     def __init__(self, width: int = 1280, height: int = 720):
         self.width = int(width)
