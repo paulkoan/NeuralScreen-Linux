@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-af",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--no-motion", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "Where the 10 ms send goes. At 1440p the split is capture 2.7 / send 10.1 / recv 16.5, and 14.7 MB into shared memory benchmarked at 1.6 ms - so the send is not the copy. The motion field is the prime suspect: it is computed on the CPU every frame from the full-size frame, and the port's neural pass may not consume it. --no-motion removes it. If send falls to ~2 ms, dropping the field for the port path is ~8 ms/frame; if it does not move, the cost is the frame build itself and the next place to look is worker.send_frame."
+}

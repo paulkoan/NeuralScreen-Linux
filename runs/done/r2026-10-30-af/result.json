@@ -1,0 +1,25 @@
+{
+  "exit_code": 0,
+  "seconds": 7.265,
+  "argv": [
+    "uv",
+    "run",
+    "python",
+    "-m",
+    "minimal",
+    "--frames",
+    "120",
+    "--headless",
+    "--source",
+    "synthetic",
+    "--size",
+    "2560x1440",
+    "--no-motion",
+    "--worker-log"
+  ],
+  "artifacts": [],
+  "runner": "e44571d7dd12",
+  "entry_env": [
+    "NS_WORKER_CMD"
+  ]
+}
