@@ -10,16 +10,11 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* BLOCKED 2026-10-30: the NGX control matrix run `r2026-10-30-j` never started. Runner exit
-  125, `report.md` is "The runner failed. `FileNotFoundError(2, 'No such file or directory')`",
-  and `runs/done/r2026-10-30-j/` holds only `command.txt`, `report.md`, `request.json`,
-  `revision.txt` - no `stdout.log`, `stderr.log` or `result.json`, so there is no `SUMMARY`.
-  `command.txt` is `xvfb-run -a uv run python tools/ngx_matrix.py --baseline`; the exec of
-  argv[0] failed, i.e. `xvfb-run` is not on the runner's PATH on the box (or the policy's
-  `ngx-matrix` argv carries the line as one un-split string). The fix is box-side - install
-  `xvfb-run`/Xvfb from the distro, or rewrite the policy argv to a display the box has - and
-  is not done from this repo. Do not queue `r2026-10-30-j` again; once the entry can exec, read
-  `runs/done/<new id>/stdout.log` and act on its `SUMMARY`:
+* Queue the NGX control matrix now that `xvfb-run` exists (installed 2026-10-30; `r2026-10-30-j`
+  never started because argv[0] was missing, so that id is spent - queue a NEW one). One request:
+  `{"id": "<next r-id>", "entry": "ngx-matrix", "args": [], "timeout_s": 300, "artifacts": [],
+  "note": "baseline: old vs bundled DLL, spoof on/off, direct vs core"}`. Then read
+  `runs/done/<id>/stdout.log`: the `SUMMARY` line names every row and its verdict. Act on it:
   * **old passes, bundled fails** -> the harness is fine and 310.9.16 changed the create/evaluate
     contract; the next item is host-side instrumentation of `dlss5-feed-host64.cpp`.
   * **old fails too** (or the control row is missing) -> the harness, prefix or driver changed;
