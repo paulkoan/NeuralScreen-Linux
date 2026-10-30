@@ -23,6 +23,12 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* learned: `--motion-small` hangs the port at init, reproducibly (r2026-10-30-ag and -ai,
+  2026-10-30, both exit 3): serve prints 2560x1440/model/shaders/seed and the build stamp, then
+  never reaches `serve: device`, and the client times out on frame 0 after 60 s. Two runs, same
+  shape, so it is not a flake and not resource contention (ae/af/ah ran between them). Do not
+  queue it again without fixing the init path.
+
 * learned: `--motion-small` is dead in the pipe path, reproducibly (r2026-10-30-ai, 2026-10-30,
   exit 3 after 60.5s). It repeats ag exactly: the worker logs its two init lines and then its
   `serve: 2560x1440, model ...` banner, never reaches the device line, and the client times out
