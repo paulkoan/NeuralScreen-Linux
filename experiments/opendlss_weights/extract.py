@@ -52,6 +52,10 @@ import sys
 from pathlib import Path
 
 MAGIC = 0x08CDA732
+# The 310.9.16 DLL carries a second, smaller network under a different table magic. Both use the
+# same record layout (name length eight bytes before the name, fields after it), which is why one
+# parser can read both - only the magic differs, and it is what says which network a blob is.
+MAGICS = {0x08CDA732: "large (310.8.0)", 0x06C9DFDF: "small (310.9.16 preset 2)"}
 # The DLL is 159 MiB and NVIDIA's, so it is gitignored and lives in whatever clone
 # has it: native/nvngx_dlssnr.dll at this file's repository root. Resolved from
 # __file__ rather than written out, which is how this shipped with one machine's
@@ -137,7 +141,7 @@ def resource_leaves(data: bytes) -> list[tuple[tuple[str, ...], int, int, int]]:
     return walk(0)
 
 
-def find_weight_blob(data: bytes) -> tuple[int, int]:
+def find_weight_blob(data: bytes, magic: int | None = None) -> tuple[int, int]:
     """The RCDATA leaf that holds the network. Behaviour, not faith, decides.
 
     The largest resource is taken, then checked for the magic — a DLL whose
@@ -146,13 +150,25 @@ def find_weight_blob(data: bytes) -> tuple[int, int]:
     leaves = resource_leaves(data)
     if not leaves:
         raise ExtractionError("no resources at all")
-    path, off, size, _ = max(leaves, key=lambda x: x[2])
-    magic, = struct.unpack_from("<I", data, off)
-    if magic != MAGIC:
+    wanted = magic
+    candidates = []
+    for path, off, size, _ in leaves:
+        magic_here, = struct.unpack_from("<I", data, off)
+        if magic_here in MAGICS and (wanted is None or magic_here == wanted):
+            candidates.append((path, off, size, magic_here))
+    if not candidates:
+        biggest = max(leaves, key=lambda x: x[2])
+        magic_here, = struct.unpack_from("<I", data, biggest[1])
         raise ExtractionError(
-            f"biggest resource is {'/'.join(path)} ({size:,} bytes) but its magic "
-            f"is {magic:#010x}, not {MAGIC:#010x} — not the weight table")
-    return off, size
+            f"no resource carries a known weight-table magic (biggest is "
+            f"{'/'.join(biggest[0])} at {biggest[2]:,} bytes, magic {magic_here:#010x}; "
+            f"known: {', '.join(hex(m) for m in MAGICS)})")
+    chosen = max(candidates, key=lambda x: x[2])
+    if len(candidates) > 1 and wanted is None:
+        print(f"note: {len(candidates)} weight tables present; taking the largest "
+              f"({MAGICS[chosen[3]]}, {chosen[2]:,} bytes). Use --magic to pick another.",
+              file=sys.stderr)
+    return chosen[1], chosen[2]
 
 
 def parse_records(blob: bytes, fields: int = DEFAULT_FIELDS) -> list[dict]:
@@ -166,9 +182,10 @@ def parse_records(blob: bytes, fields: int = DEFAULT_FIELDS) -> list[dict]:
     if fields not in FIELD_SPLITS:
         raise ExtractionError(f"field split {fields} is not one of {FIELD_SPLITS}")
     magic, = struct.unpack_from("<I", blob, 0)
-    if magic != MAGIC:
+    if magic not in MAGICS:
         raise ExtractionError(
-            f"blob magic is {magic:#010x}, not {MAGIC:#010x}: not this table")
+            f"blob magic is {magic:#010x}, not one of "
+            f"{', '.join(hex(m) for m in MAGICS)}: not this table")
     out = []
     for m in NAME_RE.finditer(blob):
         off = m.start()
@@ -240,13 +257,15 @@ def blend_scale(blob: bytes) -> dict:
     """
     for fields in FIELD_SPLITS:
         record = next((r for r in parse_records(blob, fields)
-                       if r["name"] == "block70.layer0.blend_scale"), None)
+                       if r["name"].endswith(".blend_scale")), None)
         if record is None:
             return {"error": "no blend_scale record in the table"}
         payload = blob[record["payload_offset"]:record["payload_offset"] + record["byteLength"]]
         value = struct.unpack_from("<e", payload + b"\0\0", 0)[0] if len(payload) >= 2 else None
-        if value is not None and abs(value - 0.7397) < 1e-3:
-            return {"fields_that_read_0.7397": fields, "value": value}
+        pinned = record["name"] == "block70.layer0.blend_scale"
+        if value is not None and (not pinned or abs(value - 0.7397) < 1e-3):
+            return {"name": record["name"], "fields_that_read_0.7397": fields,
+                    "value": value, "documented_pin": pinned}
     return {"fields_that_read_0.7397": None,
             "note": "no candidate split reads the documented 0.7397 — the layout changed, "
                     "or this is not the same model build as the documentation describes"}
@@ -333,6 +352,9 @@ def main(argv: list[str]) -> int:
                          "reading the records state: the u64 at +0 and the u64 at +8 "
                          "both equal the payload length plus 40, in all 153 of them")
     ap.add_argument("--stages", type=int, default=11)
+    ap.add_argument("--magic", default=None,
+                    help="which weight table to cut, as hex (e.g. 0x06c9dfdf). Default: the "
+                         "largest known table.")
     args = ap.parse_args(argv)
 
     dll = Path(args.dll)
@@ -348,7 +370,8 @@ def main(argv: list[str]) -> int:
         return 2
 
     data = dll.read_bytes()
-    off, size = find_weight_blob(data)
+    magic = int(args.magic, 16) if args.magic else None
+    off, size = find_weight_blob(data, magic)
     blob = data[off:off + size]
     print(f"dll      : {args.dll}  ({len(data):,} bytes)")
     print(f"weight blob: offset {off:,}  size {size:,}")
@@ -364,8 +387,13 @@ def main(argv: list[str]) -> int:
               f"  at {r['payload_offset']:>12,}")
     pin = info["blend_scale"]
     if pin.get("fields_that_read_0.7397") == args.fields:
-        print(f"\nfield split pinned at {args.fields}: block70.layer0.blend_scale reads "
-              f"{pin['value']!r}, the value docs/frame.md names for the shipped model")
+        name = pin.get("name", "blend_scale")
+        if pin.get("documented_pin"):
+            print(f"\nfield split pinned at {args.fields}: {name} reads "
+                  f"{pin['value']!r}, the value docs/frame.md names for the shipped model")
+        else:
+            print(f"\nfield split pinned at {args.fields}: {name} reads {pin['value']!r} "
+                  f"(a different model's constant, so it pins the split but not the value)")
     else:
         print(f"\nWARNING: the documented blend_scale (0.7397) does not read at "
               f"{args.fields} bytes of fields — it reads at "
