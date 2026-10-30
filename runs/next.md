@@ -10,14 +10,17 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* The proxy stage, offline: find out why `proxy` climbs across a run. r2026-10-30-f reproduced
-  the drop (30.63 fps steady against 40.48 on 29-f) with `network+composite` flat at
-  13.4/13.4/14.6ms but `proxy` 6.3 / 5.7 / 21.3ms at frames 29/59/89, so the loss is entirely in
-  preprocess, and it grows late in the run rather than from the start. Read the proxy path in
-  patch 7b827810f679 (`serve.cpp`'s preprocess dispatch, `preprocess.comp`, and whatever allocates
-  or rewrites descriptors per frame) and identify the per-frame growth: allocation, a re-upload,
-  a barrier, or descriptor indexing that degrades. This is a read-and-report item - no code change
-  and no run; write the concrete fix up as an item here when the cause is named.
+* serve's host upload path: a frame is copied three times before the GPU sees it - /dev/shm ->
+  the `colour` vector (`serve.cpp`), `colour` -> the 256MB `staging_` window (`Context::upload`),
+  staging -> device - and colour and motion get their own command buffer each, both ending in
+  `vkQueueWaitIdle`, so two full submits and waits per frame. Make it one copy and one submit:
+  copy the shm frame straight into the staging window (no intermediate vector for the shm path)
+  and put the colour and motion copies in one command buffer with a single wait; then split the
+  `proxy` timer into `copy` and `submit` so the next run says which half moves. Edit only
+  `experiments/opendlss_port/linux-port.patch` (its `src/serve.cpp` and `src/vk_context.{h,cpp}`
+  sections), rebuild through `rebuild.sh`, pytest green. Accept when the per-frame `proxy` at
+  frame 119 is no higher than at frame 29 (f read 6.3 -> 21.3, e 5.0 -> 10.2) and the steady rate
+  is back above 30.63 fps.
   After that: parity against NGX preset 2 on the same card (`tools/ngx_preset_compare.py` runs
   presets 1 and 2 back to back), then steady-state fps.
 
@@ -27,6 +30,24 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the creep is in the host copies, not in preprocess, and the upload path cannot hold
+  state (2026-10-30, read d/e/f against 29-f; no run). `proxy` is `since(began, afterUpload)` -
+  the two `Context::upload` calls only; the expand and preprocess dispatches are inside
+  `network+composite`. That upload code is byte-identical between the fast build (4b934233b924,
+  29-f, 40.48 fps) and the slow one (7b827810f679, d/e/f): the 0305d1a..56cfb43 diff adds
+  nr_schedule/nr_graph/nr_model and leaves serve.cpp, vk_context.cpp and kernels.cpp's upload
+  path untouched, and upload allocates nothing per frame (staging_ is created once; every command
+  buffer is freed after its wait). What does move is every 29.5MB host copy around /dev/shm: the
+  client's own send doubled (median 2.0 -> 3.9ms, min 1.7 -> 2.7) and the worker's proxy memory
+  copy climbed (5.0 -> 10.2 in e, 6.3 -> 21.3 in f) while every GPU stage stayed flat
+  (network+composite 12.7/12.7/12.8/12.9 in 29-f against 13.4/13.4/14.6 in f). "The loss is
+  entirely in preprocess" was also wrong arithmetic: worker totals are 18.5 of 29-f's 24.7ms
+  median frame and 19.6 of f's 32.6, so the +7.9ms/frame is capture +0.6, send +1.9, recv +5.5
+  (worker only +1.1). And f's 21.3ms proxy is one sample at frame 89 on a frame that took 35.9ms
+  overall - read it as one bad frame until a run prints more than four samples. Why the copies
+  slow across a run is still unattributed (page pressure, CPU contention with the client, THP);
+  the next item removes two of the three copies and splits the timer so a run can say which half.
 
 * learned: the proxy creep reproduces, so it is not box contention (r2026-10-30-f, 2026-10-30).
   Exit 0 in 9.6s, 120 done / 0 skipped, stamp `patch 7b827810f679` in sync. Steady 30.63 fps
