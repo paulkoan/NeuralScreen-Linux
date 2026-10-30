@@ -1,4 +1,4 @@
-From 7b827810f679da1d16390c62e6f4677bd5688d09 Mon Sep 17 00:00:00 2001
+From 9e90de0d48d076c36b22959fc21d40d82ad62e32 Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -110,12 +110,12 @@ per-frame timing line on stderr.
  src/nr_graph.h               |   6 +-
  src/nr_model.cpp             |  11 +
  src/nr_model.h               |   6 +
- src/nr_schedule.cpp          | 235 +++++++++++
+ src/nr_schedule.cpp          | 235 ++++++++++
  src/nr_schedule.h            |  56 +++
- src/serve.cpp                | 786 +++++++++++++++++++++++++++++++++++
- src/vk_context.cpp           |  26 +-
- src/vk_context.h             |   3 +
- 16 files changed, 1758 insertions(+), 59 deletions(-)
+ src/serve.cpp                | 814 +++++++++++++++++++++++++++++++++++
+ src/vk_context.cpp           |  71 ++-
+ src/vk_context.h             |  23 +
+ 16 files changed, 1851 insertions(+), 59 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/proxy_expand.comp
@@ -1483,10 +1483,10 @@ index 0000000..8d64f1c
 +}  // namespace nr
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..43008ec
+index 0000000..2d9be67
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,786 @@
+@@ -0,0 +1,814 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -2096,8 +2096,14 @@ index 0000000..43008ec
 +                        "serve: and the five-tap history filter is the centre tap, which is the pixel\n"
 +                        "serve: itself - so no published byte can move for it\n");
 +      }
-+      if ((flags & kFrameFlagShm) && input.map) {
-+        // The frame is in the mapping: only its header came down the pipe.
++      // Where this frame's bytes are. A shared-mapping frame stays in the mapping and goes
++      // straight into the upload's staging window below; a pipe frame lands in `colour` and
++      // `motion`. `colour` used to be filled on both paths, which made a mapped frame
++      // 29.5MB -> colour -> staging -> device: a third full copy of the frame with no reader
++      // (the reply's pixels come back from the GPU, not from here).
++      const bool mapped = (flags & kFrameFlagShm) && input.map != nullptr;
++      if (mapped) {
++        // Only the header came down the pipe.
 +        if (input.colourCapacity < colour.size() || input.motionCapacity < motion.size()) {
 +          fprintf(stderr,
 +                  "serve: the frame channel is %zu+%zu bytes, a %ux%u frame needs %zu+%zu\n",
@@ -2105,8 +2111,6 @@ index 0000000..43008ec
 +                  colour.size(), motion.size());
 +          return 2;
 +        }
-+        memcpy(colour.data(), input.map, colour.size());
-+        if (!noMotion) memcpy(motion.data(), input.map + input.colourCapacity, motion.size());
 +      } else {
 +        if (!readExact(colour.data(), colour.size())) {
 +          fprintf(stderr, "serve: the stream ended inside frame %u's colour\n", index);
@@ -2127,7 +2131,12 @@ index 0000000..43008ec
 +        frames++;
 +        const std::vector<uint8_t>* inlinePixels = nullptr;
 +        uint32_t replyBytes = 0;
-+        if (wantPixels) publishImage(output, colour, &inlinePixels, &replyBytes);
++        // The reply's pixels are the client's own bytes, handed back: on the mapping path
++        // they still have to be brought into `colour` for that, but only when asked for.
++        if (wantPixels) {
++          if (mapped) memcpy(colour.data(), input.map, colour.size());
++          publishImage(output, colour, &inlinePixels, &replyBytes);
++        }
 +        sendFrame(index, 1, replyBytes, 0, pts, inlinePixels);
 +      } else {
 +        if (!context) startEngine();
@@ -2140,13 +2149,27 @@ index 0000000..43008ec
 +        // The proxy, on the GPU: the frame goes up as it was captured (RGBA8, 3.7MB - a
 +        // quarter of the f32 proxy, which was 11M float writes a frame down here) and one
 +        // dispatch expands it to what preprocess.comp reads. The rounding to f16 is
-+        // preprocess's own, so it is not repeated here.
-+        context->upload(colourBuffer, colour.data(), (VkDeviceSize)colour.size());
++        // preprocess's own, so it is not repeated here. The colour and motion copies share
++        // one staging pass, one command buffer, one submit and one wait: they are independent
++        // and the client waits for both, so two submits bought nothing.
++        vk::Context::UploadJob uploads[2];
++        size_t uploadCount = 0;
++        const uint8_t* mappedBytes = static_cast<const uint8_t*>(input.map);
++        uploads[uploadCount++] = {&colourBuffer,
++                                  mapped ? static_cast<const void*>(mappedBytes) : (const void*)colour.data(),
++                                  (VkDeviceSize)colour.size(), 0};
 +        // And the motion field, when the caller sent one. It goes up in the wire's own layout,
 +        // so the shader reads the field the client computed rather than a conversion of it; a
 +        // caller that declared no field leaves the buffer zeroed from startup, which is the
 +        // identity reprojection at no cost per frame.
-+        if (!noMotion) context->upload(motionBuffer, motion.data(), (VkDeviceSize)motion.size());
++        if (!noMotion)
++          uploads[uploadCount++] = {
++              &motionBuffer,
++              mapped ? static_cast<const void*>(mappedBytes + input.colourCapacity)
++                     : (const void*)motion.data(),
++              (VkDeviceSize)motion.size(), 0};
++        vk::Context::UploadTimes uploadTimes;
++        context->uploadAll(uploads, uploadCount, &uploadTimes);
 +        const std::chrono::steady_clock::time_point afterUpload = std::chrono::steady_clock::now();
 +        context->resetDescriptorPool();
 +        VkCommandBuffer commands = context->beginCommands();
@@ -2255,12 +2278,17 @@ index 0000000..43008ec
 +        // readback alone is 60MB at 1440p, and whether that costs 6ms or 600ms decides
 +        // where the next hour goes. Printed for the first few frames (where the JIT lands)
 +        // and then sparsely.
++        // `proxy` is the upload, split into its two halves: the host memcpy into staging and
++        // the record+submit+wait. A per-frame cost that grows across a run can only be one of
++        // them - the memcpy moves host bytes, the submit is the queue - and the sum alone
++        // cannot say which.
 +        if (frames <= 3 || frames % 30 == 0)
 +          fprintf(stderr,
-+                  "serve frame %u: %.1f ms (proxy %.1f, network+composite %.1f, readback %.1f, "
-+                  "reply %.1f)\n",
-+                  index, ms, since(began, afterUpload), since(afterUpload, afterRecord),
-+                  since(afterRecord, afterDownload), since(afterDownload, afterSend));
++                  "serve frame %u: %.1f ms (proxy %.1f [copy %.1f, submit %.1f], "
++                  "network+composite %.1f, readback %.1f, reply %.1f)\n",
++                  index, ms, since(began, afterUpload), uploadTimes.copyMs, uploadTimes.submitMs,
++                  since(afterUpload, afterRecord), since(afterRecord, afterDownload),
++                  since(afterDownload, afterSend));
 +      }
 +
 +      if (frameLimit > 0 && (int)frames >= frameLimit) {
@@ -2275,10 +2303,18 @@ index 0000000..43008ec
 +}
 \ No newline at end of file
 diff --git a/src/vk_context.cpp b/src/vk_context.cpp
-index 5b02732..a50cd29 100644
+index 5b02732..0ad9598 100644
 --- a/src/vk_context.cpp
 +++ b/src/vk_context.cpp
-@@ -301,6 +301,22 @@ uint32_t Context::findMemoryType(uint32_t typeBits, VkMemoryPropertyFlags requir
+@@ -2,6 +2,7 @@
+ 
+ #include <algorithm>
+ #include <atomic>
++#include <chrono>
+ #include <cstring>
+ #include <fstream>
+ 
+@@ -301,6 +302,22 @@ uint32_t Context::findMemoryType(uint32_t typeBits, VkMemoryPropertyFlags requir
    throw std::runtime_error("no suitable memory type");
  }
  
@@ -2301,7 +2337,7 @@ index 5b02732..a50cd29 100644
  Buffer Context::createBuffer(VkDeviceSize size, bool hostVisible, const char* label, VkBufferUsageFlags extra) {
    Buffer result;
    result.size = std::max<VkDeviceSize>(size, 16);
-@@ -319,10 +335,12 @@ Buffer Context::createBuffer(VkDeviceSize size, bool hostVisible, const char* la
+@@ -319,10 +336,12 @@ Buffer Context::createBuffer(VkDeviceSize size, bool hostVisible, const char* la
    VkMemoryAllocateInfo allocateInfo{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
    allocateInfo.pNext = &allocateFlags;
    allocateInfo.allocationSize = requirements.size;
@@ -2318,8 +2354,59 @@ index 5b02732..a50cd29 100644
    VK_CHECK(vkAllocateMemory(device_, &allocateInfo, nullptr, &result.memory));
    VK_CHECK(vkBindBufferMemory(device_, result.buffer, result.memory, 0));
    if (hostVisible) VK_CHECK(vkMapMemory(device_, result.memory, 0, VK_WHOLE_SIZE, 0, &result.mapped));
+@@ -351,6 +370,50 @@ void Context::upload(const Buffer& target, const void* data, VkDeviceSize size,
+   }
+ }
+ 
++void Context::uploadAll(const UploadJob* jobs, size_t count, UploadTimes* times) {
++  if (times) *times = UploadTimes{};
++  if (!count) return;
++  VkDeviceSize total = 0;
++  for (size_t i = 0; i < count; ++i) {
++    const UploadJob& job = jobs[i];
++    if (!job.target) throw std::runtime_error("upload job without a target");
++    if (job.offset + job.size > job.target->size)
++      throw std::runtime_error(std::string("upload overflows ") + job.target->label);
++    total += job.size;
++  }
++  // More host bytes than the window holds: keep the old one-submit-per-buffer path rather
++  // than growing a second, chunked implementation nobody's frame reaches.
++  if (total > staging_.size) {
++    for (size_t i = 0; i < count; ++i)
++      upload(*jobs[i].target, jobs[i].data, jobs[i].size, jobs[i].offset);
++    return;
++  }
++  const auto clockNow = [] { return std::chrono::steady_clock::now(); };
++  const auto millis = [](const std::chrono::steady_clock::time_point& from,
++                         const std::chrono::steady_clock::time_point& to) {
++    return std::chrono::duration<double, std::milli>(to - from).count();
++  };
++  auto started = clockNow();
++  VkDeviceSize at = 0;
++  for (size_t i = 0; i < count; ++i) {
++    memcpy(static_cast<uint8_t*>(staging_.mapped) + at, jobs[i].data, (size_t)jobs[i].size);
++    at += jobs[i].size;
++  }
++  const auto copied = clockNow();
++  VkCommandBuffer commands = beginCommands();
++  at = 0;
++  for (size_t i = 0; i < count; ++i) {
++    VkBufferCopy region{at, jobs[i].offset, jobs[i].size};
++    vkCmdCopyBuffer(commands, staging_.buffer, jobs[i].target->buffer, 1, &region);
++    at += jobs[i].size;
++  }
++  endAndSubmit(commands, true);
++  if (times) {
++    times->copyMs = millis(started, copied);
++    times->submitMs = millis(copied, clockNow());
++  }
++}
++
+ void Context::fillZero(const Buffer& target) {
+   VkCommandBuffer commands = beginCommands();
+   vkCmdFillBuffer(commands, target.buffer, 0, VK_WHOLE_SIZE, 0);
 diff --git a/src/vk_context.h b/src/vk_context.h
-index 13a19e9..9560dc6 100644
+index 13a19e9..e16c1e7 100644
 --- a/src/vk_context.h
 +++ b/src/vk_context.h
 @@ -7,6 +7,7 @@
@@ -2330,7 +2417,34 @@ index 13a19e9..9560dc6 100644
  #include <stdexcept>
  #include <string>
  #include <vector>
-@@ -146,6 +147,8 @@ class Context {
+@@ -102,6 +103,26 @@ class Context {
+   void destroyBuffer(Buffer& buffer);
+   // Upload through a staging buffer and wait for completion.
+   void upload(const Buffer& target, const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
++  // Several buffers in one staging pass: the host bytes are copied first and then every
++  // copy is recorded into ONE command buffer with one submit and one wait. This exists
++  // because a frame is two buffers (colour and motion) and doing that with two `upload`
++  // calls cost two full queue submits and two waits per frame for no reason - the copies
++  // are independent and the client is waiting for both. `times`, when given, says how much
++  // of the wall time was the host memcpy and how much was the submit+wait, which is the
++  // question a growing per-frame cost has to answer.
++  struct UploadJob {
++    const Buffer* target = nullptr;
++    const void* data = nullptr;
++    VkDeviceSize size = 0;
++    VkDeviceSize offset = 0;
++  };
++  struct UploadTimes {
++    double copyMs = 0.0;    // host memcpy into the staging window
++    double submitMs = 0.0;  // record + submit + wait
++  };
++  // Falls back to one `upload` per job (times left zero) when the jobs together exceed the
++  // staging window, which no frame at the sizes this serves does.
++  void uploadAll(const UploadJob* jobs, size_t count, UploadTimes* times = nullptr);
+   void fillZero(const Buffer& target);
+   // Download via staging buffer and wait for completion.
+   std::vector<uint8_t> download(const Buffer& source, VkDeviceSize size, VkDeviceSize offset = 0);
+@@ -146,6 +167,8 @@ class Context {
  
   private:
    uint32_t findMemoryType(uint32_t typeBits, VkMemoryPropertyFlags required);

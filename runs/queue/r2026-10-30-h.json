@@ -1,0 +1,15 @@
+{
+  "id": "r2026-10-30-h",
+  "entry": "minimal",
+  "args": [
+    "--frames", "120",
+    "--headless",
+    "--source", "synthetic",
+    "--size", "2560x1440",
+    "--shm",
+    "--worker-log"
+  ],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "Measure the one-copy / one-submit upload (284b11d, patch 9e90de0d48d0) in f's shape. Accept when per-frame proxy at frame 119 is no higher than at frame 29 (f read 6.3 -> 21.3ms, e 5.0 -> 10.2) and steady fps is back above 30.63 (29-f was 40.48). The worker line prints 'proxy X [copy Y, submit Z]', so quote both halves to say which moved. Ignore the frame-0 headline; quote steady. Require stamp 9e90de0d48d0 - if it shows the old sha, g did not take and this is not evidence."
+}
