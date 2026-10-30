@@ -78,7 +78,16 @@ def default_launcher() -> list[str]:
     override = os.environ.get("NS_WORKER_CMD")
     if override:
         import shlex
-        return shlex.split(override)
+        parts = shlex.split(override)
+        # A worker command is configured in the policy, outside the repo, so a relative script
+        # path would resolve against whatever cwd the process inherited - and under `xvfb-run`
+        # that is not the repository ("bash: native/run_worker.sh: No such file or directory",
+        # r2026-10-30-l). Resolve it against the repo root here, where the answer is known.
+        if len(parts) >= 2 and not os.path.isabs(parts[1]):
+            candidate = NATIVE_DIR.parent / parts[1]
+            if candidate.exists():
+                parts[1] = str(candidate)
+        return parts
     return ["bash", str(NATIVE_DIR / "run_worker.sh")]
 
 
