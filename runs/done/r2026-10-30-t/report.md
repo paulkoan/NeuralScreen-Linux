@@ -1,0 +1,45 @@
+# run r2026-10-30-t
+
+runner `e44571d7dd12` · entry `model-small-extract` · env from policy: none
+
+`uv run python experiments/opendlss_weights/extract.py --dll native/nvngx_dlssnr.dll --magic 0x06c9dfdf --out /opt/neuralscreen/model-small`
+
+exit **0** after 1.2s
+
+```
+dll      : native/nvngx_dlssnr.dll  (276,162,560 bytes)
+weight blob: offset 152,515,824  size 113,893,343
+  blob_bytes                   113893343
+  magic                        0x6c9dfdf
+  records                      77
+  blocks                       31
+  block_range                  (0, 30)
+  parameters                   ['blend_scale', 'layer']
+  payload_total                113887490
+  payload_total_mib            108.61157417297363
+  table_overhead               5853
+  splits_that_fit_every_record {28: True, 32: True, 40: True, 48: True, 56: True}
+  field_split_chain_test_is_degenerate True
+  field_split                  28
+  blend_scale                  {'name': 'block30.layer0.blend_scale', 'fields_that_read_0.7397': 28, 'value': 0.76708984375, 'documented_pin': False}
+
+records parsed with a 28-byte field header: 77
+  block0.layer0.layer          block  0  payload     21,696  at           63
+  block1.layer0.layer          block  1  payload     20,672  at       21,834
+  block10.layer0.layer         block 10  payload    524,288  at       42,582
+  block9.layer2.layer          block  9  payload    917,568  at  112,712,512
+  block9.layer3.layer          block  9  payload    263,168  at  113,630,155
+
+field split pinned at 28: block30.layer0.blend_scale reads 0.76708984375 (a different model's constant, so it pins the split but not the value)
+
+wrote /opt/neuralscreen/model-small/manifest.json with 11 stages and 77 tensors
+blockCount 31 (OpenDLSS-NR refuses any other)
+
+```
+
+stderr:
+
+```
+warning: The `native-tls` setting is deprecated and will be removed in a future release. Use `system-certs` instead.
+
+```

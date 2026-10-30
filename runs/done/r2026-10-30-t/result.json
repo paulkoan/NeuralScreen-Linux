@@ -1,0 +1,19 @@
+{
+  "exit_code": 0,
+  "seconds": 1.153,
+  "argv": [
+    "uv",
+    "run",
+    "python",
+    "experiments/opendlss_weights/extract.py",
+    "--dll",
+    "native/nvngx_dlssnr.dll",
+    "--magic",
+    "0x06c9dfdf",
+    "--out",
+    "/opt/neuralscreen/model-small"
+  ],
+  "artifacts": [],
+  "runner": "e44571d7dd12",
+  "entry_env": []
+}
