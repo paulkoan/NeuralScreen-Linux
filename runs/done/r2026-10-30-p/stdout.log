@@ -1,0 +1,13 @@
+source synthetic  capture 2560x1440  ->  work 2560x1440 (work scale 1.00, NGX ceiling 2560x1440)
+params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+worker: bash /opt/neuralscreen/state/repo/native/run_worker.sh --prefix /opt/neuralscreen/wine
+version: repo 5847809 (+2305 uncommitted) · worker reports no stamp · unknown — the worker reports no stamp (not the native mode, or not rebuilt)
+frame 0 is the worker's warm-up: the window stays black until its first answer lands
+pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+frames: 120 done, 0 skipped, 9.219s (13.02 fps headline, 19.33 fps steady), worker exit 0
+timing: capture 3.7ms  send 36.9ms  recv 30.4ms  display 3.2ms   (mean 74.1ms/frame, 13.5 fps; median 51.7ms/frame, 19.3 fps steady)
+send spread: min 11.7  median 15.4  max 2581.1 ms at frame 0 of 120   (one-off at frame 0 — the worker's warm-up, not a per-frame cost)
+recv spread: min 23.5  median 29.6  max 51.6 ms at frame 0 of 120   (one-off at frame 0 — the worker's warm-up, not a per-frame cost)
+worker clock: 119 frames in 6.265s = 52.65 ms/frame (19 fps, from the worker's own timestamps)
+  after  -> ngx-new-120.png
