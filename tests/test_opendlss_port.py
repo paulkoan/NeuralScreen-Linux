@@ -334,6 +334,8 @@ def test_the_blend_scale_readout_is_the_models_weight_and_not_the_default():
     nothing else here would notice. check_blend_scale.py reads the readout out of the patch
     and the value out of the DLL's weight table and refuses (exit 2) if the read does not
     land on docs/frame.md's 0.7397, or if the bytes one half along read the same thing.
+    The block index is the model's last one (`model->blockCount() - 1`), so the same line
+    is right on the 31-block network, where block 70 does not exist.
     """
     script = PORT / "check_blend_scale.py"
     assert script.exists(), "the readout's value is checked, not asserted"
@@ -361,32 +363,56 @@ def test_the_blend_scale_guard_refuses_a_read_that_moved():
     """
     script = PORT / "check_blend_scale.py"
     patch = PATCH.read_text()
-    read = '        const nr::Tensor& blend = model->tensor(70, 0, "blend_scale");\n'
+    read = '        const nr::Tensor& blend = model->tensor(postBlock, 0, "blend_scale");\n'
+    index = "      const uint32_t postBlock = model->blockCount() > 0 ? model->blockCount() - 1 : 0;\n"
     aux = "nr::auxHalf(blend, 0, 0)"
-    for line in (read, aux):
+    for line in (read, index, aux):
         assert line in patch, "the readout moved; update this test with it"
 
     with tempfile.TemporaryDirectory() as tmp:
         broken = Path(tmp) / "linux-port.patch"
 
-        # The read removed: the source is what moved, so this needs no model.
-        broken.write_text(patch.replace(read, ""))
-        finished = subprocess.run([sys.executable, str(script), str(broken)],
-                                  capture_output=True, text=True)
-        assert finished.returncode == 2, finished.stdout + finished.stderr
-        assert "no longer contains" in finished.stdout, finished.stdout
+        # The read removed, and the index removed: the source is what moved, so these need
+        # no model. The second is the bug this guard exists for - a read pinned to a block
+        # number is healthy on the 71-block model and silently defaulted on the 31-block one.
+        for label, old in (("the read", read), ("the index", index)):
+            broken.write_text(patch.replace(old, ""))
+            finished = subprocess.run([sys.executable, str(script), str(broken)],
+                                      capture_output=True, text=True)
+            assert finished.returncode == 2, f"{label}: " + finished.stdout + finished.stderr
+            assert "no longer contains" in finished.stdout, f"{label}: " + finished.stdout
 
-        # A read pointed at a different offset: only the model can refuse this one.
+        # A read pointed at a different offset or a literal block: the model or the source
+        # can refuse these.
         dll = ROOT / "native" / "nvngx_dlssnr.dll"
         if not dll.is_file():
             return
         for label, old, new in (("the next half", aux, "nr::auxHalf(blend, 2, 0)"),
                                 ("column 1", aux, "nr::auxHalf(blend, 0, 1)"),
-                                ("another tensor", read, read.replace("(70, 0,", "(69, 0,"))):
+                                ("a literal block", read,
+                                 read.replace("model->tensor(postBlock,", "model->tensor(70,"))):
             broken.write_text(patch.replace(old, new))
             finished = subprocess.run([sys.executable, str(script), str(broken)],
                                       capture_output=True, text=True)
             assert finished.returncode == 2, f"{label}: " + finished.stdout + finished.stderr
             assert "REFUSED" in finished.stdout or "no longer contains" in finished.stdout, (
                 f"{label}: " + finished.stdout)
+
+
+def test_serve_can_run_the_unfused_graph_too():
+    """The unfused graph has to be reachable from the worker path, not just from parity.
+
+    `main.cpp` has honoured `DLSS5VK_UNFUSED=1` since the reference route existed, but
+    `serve` pinned `fusedBlocks = true`. That made the comparison the plan asks for
+    impossible: whatever a worker run measured, it was the fused graph, so the two graphs
+    could never be compared on the same card through the pipeline. The check is on the
+    served source because this box has no device - the run that proves parity is the box's.
+    """
+    source = patch_adds(PATCH.read_text(), "src/serve.cpp")
+    assert 'getenv("DLSS5VK_UNFUSED")' in source, "serve has to read the same switch as main.cpp"
+    assert "nr::Graph::Options{.fusedBlocks = true}" not in source, (
+        "a literal true makes the unfused graph unreachable from a served frame")
+    assert ".fusedBlocks = fusedBlocksEnabled()" in source or "fusedBlocksEnabled();" in source, (
+        "the switch has to reach the graph's options")
+    assert "serve: graph " in source, "and the run's log has to say which graph it ran"
 

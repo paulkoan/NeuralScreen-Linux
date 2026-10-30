@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "seconds": 8.824,
+  "argv": [
+    "bash",
+    "experiments/opendlss_port/rebuild.sh"
+  ],
+  "artifacts": [],
+  "runner": "e44571d7dd12",
+  "entry_env": []
+}

@@ -15,15 +15,22 @@ the loop's numbers are the loop's numbers, and the only thing that changed is a 
 that never arrived. r2026-10-12-d's whole claim about the blend being free rests on the
 value being 0.7397 and not the default.
 
+The block the weight lives in is the model's LAST block, not block 70: 70 of 71 in the
+shipped network, 30 of 31 in the 310.9.16 small one. `serve` therefore derives the index
+from `model->blockCount() - 1`, and this file checks that derivation as well as the value —
+a literal 70 is exactly the shape of bug that reads as healthy on the small model, where
+the lookup would miss and the default would print.
+
 Two authorities, checked here and neither asserted:
 
-  * the source, out of linux-port.patch's src/serve.cpp — the tensor the readout looks up
-    (`model->tensor(70, 0, "blend_scale")`), the f16 load inside it
+  * the source, out of linux-port.patch's src/serve.cpp — the index the readout derives
+    (`postBlock = model->blockCount() - 1`, guarded), the tensor the readout looks up
+    (`model->tensor(postBlock, 0, "blend_scale")`), the f16 load inside it
     (`nr::auxHalf(blend, 0, 0)` — byteOffset 0, column 0, the front of the tensor), the
-    width guard, and the two strings that make "read" and "defaulted" different lines.
-    A read that was removed, renamed, moved to another tensor or pointed at a different
-    half in the tensor does not contain what this file transliterates, and this file says
-    so and stops.
+    width guard, and the two lines that make "read" and "defaulted" different lines.
+    A read that was removed, renamed, moved to another tensor, pointed at a different
+    half, or pinned to a block number does not contain what this file transliterates, and
+    this file says so and stops.
   * the model — `native/nvngx_dlssnr.dll`, whose weight table `extract.py` walks. The
     payload of `block70.layer0.blend_scale` is `eb 39`, which as f16 is 0.73974609375:
     docs/frame.md's documented 0.7397, the value the readout printed on the box. The same
@@ -52,9 +59,16 @@ import extract  # noqa: E402
 PIN = 0.7397
 TENSOR = "block70.layer0.blend_scale"
 
-TENSOR_RE = re.compile(r'model->tensor\(\s*(\d+)\s*,\s*(\d+)\s*,\s*"([^"]+)"\s*\)')
+INDEX_RE = re.compile(r"const\s+uint32_t\s+postBlock\s*=\s*model->blockCount\(\)\s*>\s*0\s*\?"
+                      r"\s*model->blockCount\(\)\s*-\s*1\s*:\s*0\s*;")
+TENSOR_RE = re.compile(r'model->tensor\(\s*(\w+)\s*,\s*(\d+)\s*,\s*"([^"]+)"\s*\)')
 BIND_RE = re.compile(r"Tensor&\s*(\w+)\s*=\s*model->tensor")
 AUX_RE = re.compile(r"auxHalf\(\s*(\w+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)")
+BLOCK_RE = re.compile(r"block(\d+)\.")
+
+FOUND_LINE = ('fprintf(stderr, "serve: blend scale %.4f (block%u.layer0.blend_scale)\\n", '
+              'blendScale, postBlock);')
+FALLBACK_LINE = '"serve: blend scale %.4f (absent - defaulted to 1.0, the demo\'s fallback)\\n"'
 
 
 def patch_adds(patch_text: str, path: str) -> str:
@@ -78,6 +92,10 @@ def main() -> int:
     container = Path(sys.argv[2]) if len(sys.argv) > 2 else DEFAULT_DLL
     source = patch_adds(patch.read_text(), "src/serve.cpp")
 
+    index = INDEX_RE.search(source)
+    if index is None:
+        return refuse("the post block's index (postBlock = model->blockCount() - 1, guarded)")
+
     read = TENSOR_RE.search(source)
     if read is None:
         return refuse("the blend_scale tensor lookup (model->tensor(..))")
@@ -86,10 +104,14 @@ def main() -> int:
         return refuse("the binding of the looked-up tensor to a name")
 
     block, layer, parameter = read.group(1), read.group(2), read.group(3)
-    if f"block{block}.layer{layer}.{parameter}" != TENSOR:
+    if block != "postBlock":
         return refuse(
             f"the lookup it transliterates: model->tensor({block}, {layer}, \"{parameter}\") "
-            f"is not {TENSOR}")
+            f"does not use the model's post block")
+    if (layer, parameter) != ("0", "blend_scale"):
+        return refuse(
+            f"the lookup it transliterates: model->tensor(postBlock, {layer}, \"{parameter}\") "
+            f"is not the post block's layer0 blend_scale")
 
     aux = AUX_RE.search(source)
     if aux is None:
@@ -103,16 +125,21 @@ def main() -> int:
     for needed, why in (
             ("float blendScale = 1.0f;", "the declared default"),
             ("if (blend.byteLength >= 2)", "the width guard on the f16"),
-            (f'"{TENSOR}"', "the string that names what was read"),
-            ('"absent - defaulted to 1.0', "the string the fallback prints")):
+            (FOUND_LINE, "the line that names the block it read")):
         if needed not in source:
             return refuse(f"{why} ({needed})")
 
-    # The two strings have to be two arms of one expression: a fallback printed
-    # unconditionally is a line that reads the same whether the weight arrived or not.
-    fallback = next((ln for ln in source.splitlines() if "absent - defaulted to 1.0" in ln), "")
-    if "found ?" not in fallback:
-        return refuse("the fallback as the else arm of `found ? .. : ..`")
+    # The read's line and the fallback's line have to be two arms of one if: a fallback
+    # printed unconditionally is a line that reads the same whether the weight arrived or
+    # not, and one that also names a block would claim a read that did not happen.
+    found_arm = source.find("if (found)")
+    else_arm = source.find("else", max(found_arm, 0))
+    fallback = source.find(FALLBACK_LINE)
+    if found_arm < 0 or else_arm < 0 or fallback < 0 or fallback < else_arm:
+        return refuse("the fallback as the else arm of `if (found)`")
+    fallback_line = next((ln for ln in source.splitlines() if 'absent - defaulted to 1.0' in ln), "")
+    if "blend_scale" in fallback_line:
+        return refuse("the fallback naming a tensor it never read")
 
     if not container.is_file():
         print(f"no such file: {container}")
@@ -129,6 +156,19 @@ def main() -> int:
         return 2
     blob = data[off:off + size]
     records = extract.parse_records(blob, extract.DEFAULT_FIELDS)
+
+    # The post block is the model's own last block; the pinned tensor has to be that one,
+    # or the model and the pin disagree and neither the value nor the coordinates mean
+    # anything.
+    blocks = sorted({int(m.group(1)) for r in records if (m := BLOCK_RE.match(r["name"]))})
+    if not blocks:
+        print(f"{container} carries no blockN. records to find a post block in")
+        return 2
+    post = blocks[-1]
+    if f"block{post}.layer{layer}.{parameter}" != TENSOR:
+        print(f"the model's post block is block{post}, whose {parameter} is not {TENSOR}")
+        return 2
+
     record = next((r for r in records if r["name"] == TENSOR), None)
     if record is None:
         print(f"the model has no {TENSOR} record to read")
@@ -143,7 +183,7 @@ def main() -> int:
 
     value = read_half(byte_offset, column)
     print(f"the readout, out of {patch.name}: model->tensor({block}, {layer}, \"{parameter}\"), "
-          f"auxHalf(blend, {byte_offset}, {column})")
+          f"auxHalf(blend, {byte_offset}, {column}) - {block} is block{post} of {post + 1}")
     print(f"the model, out of {container.name}: {TENSOR} at {payload:,}, "
           f"{record['byteLength']} bytes wide, {'/'.join(f'{b:02x}' for b in blob[payload:payload + record['byteLength']])}")
 
