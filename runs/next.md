@@ -10,7 +10,14 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Verify the table-driven recorder, then step 2. Step 1 is implemented (commit 56cfb43):
+* Verify the table-driven recorder. **Re-armed 2026-10-30-b: r2026-10-30-a and -b are void as
+  verification** - both stamped `patch 4b934233b924` and printed `OUT OF SYNC` against the
+  checkout's `7b827810f679`, so the worker never contained step 1 (a's pixels are byte-identical
+  to 29-e's, which is only the old build behaving). r2026-10-30-c (port-build) is queued to put
+  the schedule change in the binary. When it lands, require exit 0 and stamp 7b827810f679, then
+  re-queue one 30-frame `--save-before --save-after` run (after.png against 29-e's, sha
+  1975cb4479) and one 120-frame steady-fps run (expect ~40.5 steady against f's 40.48). Then
+  step 2. Step 1 is implemented (commit 56cfb43):
   `Graph::record` takes every block range from a schedule derived from the model's block
   signatures (`src/nr_schedule.{h,cpp}`, mirroring `tools/nr_schedule.py`), the six hard-coded
   ranges and the `block < 38` ViT constant are gone, and the 71-block derivation is pinned to
@@ -27,6 +34,15 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: a queued verification run is only as good as the binary the box last built (2026-10-30,
+  ticks a/b). 56cfb43 changed the recorder and 47d64fb queued the two runs to prove it, but no
+  port-build was queued between them, so both runs stamped the previous patch 4b934233b924 and
+  said OUT OF SYNC (checkout 7b827810f679). a's before/after are byte-identical to 29-e's
+  (blobs a1bafe2d07 / 1975cb4479) and b's steady rate 35.17 fps sits under f's 40.48 - both
+  consistent with the old build, neither evidence about the table. When a commit changes the
+  port, the same pass that queues the verification must queue a port-build first, or the runs
+  measure the old binary and report a clean exit 0 while proving nothing.
 
 * learned: the recorder now walks a table, and the table is verifiable without a GPU (2026-10-30).
   `src/nr_schedule.{h,cpp}` classifies each block from its `layer` tensors' byte lengths (the
