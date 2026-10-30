@@ -10,14 +10,15 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Remove the CPU BGRA->RGBA swap from the capture leg and swizzle in the port's expansion
-  instead. The sweep already settles the fit (3.80 ms + 7.03 ms/Mpx, residuals under 1.5 ms);
-  w's 35.3 ms at 1440p is the outlier against z's 29.1 ms, so a repeat sweep buys nothing. The
-  swap is 6.9 ms of a 29 ms 1440p frame and `0baa2fe` already established the BGRA flag and
-  the shader swizzle. Work in `minimal/loop.py` (stop converting before send) and the port's
-  `expandRgba8ToProxy` (accept BGRA), in that order. Keep `--save-after` byte-identical to
-  `9f13979b168dc3a0` on the standard card and measure 1440p no-pixel median against 29.1 ms
-  (r2026-10-30-z). Revert if the picture moves: 6 ms is not worth a colour regression.
+* Measure the BGRA handoff at 1440p. The loop half landed (it now forwards the source's
+  channel order; `0baa2fe` had already done the capture leg and the port's shader), so the
+  only thing left is the number. **The stock synthetic card is RGBA, so it cannot exercise the
+  path at all** — a run on it would measure the same 29.1 ms and prove nothing. The run needs a
+  BGRA source on the box: `--source screen` (the XWayland grab is black on Wayland but is still
+  BGRA, so a no-pixel timing run is valid evidence) or `--source image` with a saved PNG.
+  Decision needed: which source, and whether a black-frame timing run counts. Then queue
+  120 frames at 2560x1440 with `--worker-log` and compare the no-pixel median against z's
+  29.1 ms, and confirm `--save-after` on the synthetic card is still `9f13979b168dc3a0`.
 
 ## 2. Ask first - do not start these alone
 
@@ -25,6 +26,19 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the BGRA handoff was only half wired. `0baa2fe` made the capture leg return BGRA
+  (`minimal/capture.py`), added `FRAME_FLAG_COLOR_BGRA = 0x80` and the port's
+  `expandRgba8ToProxy(..., bgra)` shader swizzle, and gave `Worker.send` a `bgra=` argument —
+  but `minimal/loop.py` never passed it, so every real screen frame went out labelled RGBA and
+  the port did no swizzle. Nothing caught it because every run so far used the synthetic card
+  (`bgra = False`) or the mock. Fixed: `Pipeline.bgra` is read from the source, forwarded on
+  both the serial and pipelined send paths, and `_save_rgba` converts at save time (a BGRA
+  `--save-before` used to be written with red and blue swapped). Tests: 339 pass, 32 skip, and
+  the 9 failures are the same libGL/SDL2 import errors this box always has; the new tests drive
+  both loops with a recording worker (3 cases). NOT verified: the 1440p number — the standard
+  card is RGBA and cannot exercise the path, and no device here, so the 6.9 ms claim is still
+  the `swapbench.py` figure from the earlier tick, not a measured end-to-end gain.
 
 * learned: the per-frame cost is linear in pixels with a tiny intercept, but the 1440p point is
   6.2 ms under its earlier twin (r2026-10-30-x/y/z, 2026-10-30, all exit 0, 120 done / 0 skipped,
