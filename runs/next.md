@@ -23,6 +23,14 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* learned: 60 fps is a resolution question, and 1080p already clears it (r2026-10-30-aj/-ak,
+  2026-10-30, both exit 0, no pixels, `--no-motion`). 1080p **14.5 ms = 69.0 fps** (capture 1.9
+  / send 2.9 / recv 10.0); 720p 7.3 ms = 137.8 fps. With motion on, 1080p was 19.9 ms (50 fps),
+  so motion costs the 60 fps margin at 1080p and 1440p alike. 1440p no-motion is 21.8 ms
+  (45.9 fps): 60 fps needs 16.7 ms, i.e. 5.1 ms (23%) off the GPU pass. The small network
+  measured ~1.14x on that pass (~2 ms), so on its own it does not close 1440p; 1080p does not
+  need it.
+
 * learned: `--motion-small` hangs the port at init, reproducibly (r2026-10-30-ag and -ai,
   2026-10-30, both exit 3): serve prints 2560x1440/model/shaders/seed and the build stamp, then
   never reaches `serve: device`, and the client times out on frame 0 after 60 s. Two runs, same
