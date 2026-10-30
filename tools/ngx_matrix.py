@@ -201,6 +201,8 @@ def main(argv: list[str]) -> int:
 
     failed = [r for r in rows if verdict(r) != "PASS"]
     print()
+    # One line the progress tick can quote without parsing the table.
+    print("SUMMARY " + "  ".join(f"{r['tag']}={verdict(r)}" for r in rows))
     if not failed:
         print(f"all {len(rows)} combinations passed. matrix: {out_dir}/matrix.json")
         return 0
