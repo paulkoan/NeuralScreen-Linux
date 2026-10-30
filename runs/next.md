@@ -42,17 +42,18 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
-* learned: the control matrix ran and the harness, prefix or driver changed - not the DLL
-  (r2026-10-30-k, 2026-10-30, exit 1 in 14.3s, first attempt under `xvfb-run`). All four rows
-  passed init and create, then failed evaluate: bundled-p0-direct-spoof1 = 0xBAD00004,
-  bundled-p0-direct-spoof0 = 0xBAD00004, old-p0-direct-spoof1 = 0xBAD00004, and
-  bundled-p0-core-spoof1 failed earlier at create = 0xBAD0000B. So the old DLL fails exactly as
-  the bundled one does (same code, same stage) and the architecture spoof changes nothing
-  (spoof1 and spoof0 both 0xBAD00004) - the 310.9.16 DLL is not implicated and must not be
-  chased. Note what this does NOT say: the failure is in the harness/prefix/driver, and the
-  `via core` row died one stage earlier, which points at the wrapped-create route rather than at
-  evaluation. Nothing queued; the next step is box-side on the Wine prefix, which stays in
-  "Ask first" until someone says which way to go.
+* learned: the control matrix measured the GATE, not the DLL (r2026-10-30-k, 2026-10-30, exit 1
+  in 14.3s). Every direct row failed evaluate 0xBAD00004 for both DLLs and both spoof settings;
+  the core row failed earlier at create 0xBAD0000B. The cause is in
+  `native/dlss5-feed-host64.cpp`: `CreateFeature` calls `g_nr_create` (the DLL's own
+  `NVSDK_NGX_D3D12_CreateFeature`), while `Evaluate()` - the `--test` path - calls
+  `SafeEvaluateDLSS`, i.e. `NGX_D3D12_EVALUATE_DLSS_EXT`, which ends in the NGX Core entry point.
+  A handle created by the DLL is not known to Core, so it is FeatureNotFound for every preset,
+  every DLL and with or without the arch spoof. `EvaluateVideo` (the live path) calls
+  `g_nr_evaluate` directly and does not have the bug, which is why the earlier live runs worked.
+  So the matrix is not a DLL instrument until the gate's evaluate is fixed; the earlier
+  "harness/driver changed" reading of this run was wrong. `r2026-10-30-l` (entry `ngx-live`)
+  tests the real path at preset 2 and is the run that decides whether 310.9.16 works.
 
 * learned: the NGX control matrix is queued a second time as `r2026-10-30-k` (2026-10-30 tick,
   entry `ngx-matrix`, 300s, no args/artifacts, id `-j` spent on the argv[0] exec failure) because
