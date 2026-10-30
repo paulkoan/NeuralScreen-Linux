@@ -20,10 +20,29 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 2. Ask first - do not start these alone
 
+* Porting the 310.9.16 small/FP8 network into dlss5vk (decided 2026-10-30?): the second
+  network is 52 tensors / 20 blocks against the current 153 / 71, with different tensor shapes,
+  and the port's loader refuses a non-71 block count. This is loader + shader work, not a weight
+  swap. Say yes and it gets scoped; say no and the NGX measurement stands as the answer.
 * Decided (2026-10-11): the fixture keeps the whole frame. No crop.
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the 310.9.16 DLL carries two networks and only the first is a drop-in (2026-10-30,
+  offline in the sandbox; file sha256 cdfa6c1e..., 276,162,560 bytes). Its largest resource
+  (147,695,410 bytes, magic 0x08cda732) is byte-identical to the 310.8.0 network already in
+  /opt/neuralscreen/model - same 11 stages, 153 tensors, 71 blocks, same blend_scale. So the
+  first extraction found nothing new. The second resource (113,893,343 bytes at offset
+  152,515,824, magic 0x06c9dfdf) is the small/FP8 network: 52 tensors, 20 distinct block numbers
+  over 0-30 with gaps, 68.7MiB of payload. Its layer arrangement and tensor byte lengths differ
+  from the old model (block10.layer0.layer is 524,288 bytes there against 197,184 in the old
+  one; blocks 11-18 carry four layers each), and its magic is not the one extract.py accepts.
+  **The port's loader refuses any blockCount but 71, so this is not a weight swap** - adopting
+  the new model in dlss5vk means extending extract.py for the second magic, then changing the
+  loader and shaders for a different, smaller architecture. The NGX arm already runs it, and
+  measured 1.08x end-to-end (27.7 fps steady against the port's 40.5), so the model's own speed
+  only pays if it is ported. That is a scope decision, not a run.
 
 * learned: comparing two NGX model presets is now one command (commit c17b5c0):
   `uv run python tools/ngx_preset_compare.py` runs presets 1 and 2 back to back, parses the
