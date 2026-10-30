@@ -10,6 +10,18 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
+* Run the NGX control matrix from the tick (the `ngx-matrix` policy entry now exists, running
+  `xvfb-run -a uv run python tools/ngx_matrix.py --baseline`). Queue exactly one request:
+  `{"id": "<next r-id>", "entry": "ngx-matrix", "args": [], "timeout_s": 300, "artifacts": [],
+  "note": "baseline: old vs bundled DLL, spoof on/off, direct vs core"}`. Then read
+  `runs/done/<id>/stdout.log`: the `SUMMARY` line names every row and its verdict. Act on it:
+  * **old passes, bundled fails** -> the harness is fine and 310.9.16 changed the create/evaluate
+    contract; the next item is host-side instrumentation of `dlss5-feed-host64.cpp`.
+  * **old fails too** (or the control row is missing) -> the harness, prefix or driver changed;
+    do not chase the DLL. If the row is missing, say which path was searched.
+  * **spoof on differs from off** -> the architecture spoof is part of the failure.
+  Leave the verdict and the exact codes as one `learned:` line. Do not queue anything else.
+
 * Integrate the 310.9.16 small network into the port (decided yes, 2026-10-30). Extraction is
   done: `extract.py --magic 0x06c9dfdf` cuts 31 blocks / 77 tensors / 108.6 MiB, and
   `docs/small-network-layout.md` is the layout. This is a second schedule, not a renumbering.
@@ -26,9 +38,10 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
      patch is on main, and a port-build run is still needed before anything measures it).
      What is left is the comparison itself: a served unfused frame against `verify`/`parity`,
      which already run `fusedBlocks = false`, on the same card. Fuse only after it matches.
-  2. Port-small vs NGX preset 2 on the same card, then steady-state fps. NGX preset 1 vs 2 is
-     already measured (1.08x end-to-end, 27.7 fps steady); that number is the model's effect
-     inside NVIDIA's engine, not the port's, so it does not replace this step.
+  2. Port-small vs NGX preset 2 on the same card, then steady-state fps. The earlier preset
+     1-vs-2 comparison (1.08x, 10:02) ran before the 310.9.16 DLL was in place, so it measured
+     the old runtime's preset hint, not the small model - void until the control matrix says
+     which DLL the harness is actually running.
   Step 2 cannot be queued from here: it needs the box to hold the small model at the directory
   the executor passes to `serve --model` (that path is the policy's, not this repo's). Stage it
   on the box, or say which path to name, before a run is written.
