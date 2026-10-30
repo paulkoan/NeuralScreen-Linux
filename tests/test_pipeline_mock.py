@@ -537,6 +537,90 @@ def test_the_workers_own_log_can_be_watched_live(fake_capture, fake_display,
         "the echo has to be opt-in: a measurement run should not carry it")
 
 
+class _RecordingWorker:
+    """Stand-in for Worker that records what the loop sends and answers nothing."""
+
+    class _Proc:
+        returncode = 0
+
+    def __init__(self):
+        self.proc = self._Proc()
+        self.logs: list[str] = []
+        self.sends: list[dict] = []
+        self._waiting: list[int] = []
+
+    def start(self):
+        pass
+
+    def stop(self, timeout=None):
+        self.proc.returncode = 0
+
+    def is_alive(self):
+        return True
+
+    def send(self, index, frame, motion, reset, pts=0, want_pixels=True, bgra=False):
+        self.sends.append({"index": index, "bgra": bgra})
+        self._waiting.append(index)
+
+    def recv(self, index, timeout=60.0):
+        self._waiting.remove(index)
+        return None                 # a bare reply: no pixels were asked for
+
+    def recv_any(self, timeout=60.0):
+        return self._waiting.pop(0), None
+
+
+@pytest.mark.parametrize("send_ahead", [1, 3])
+def test_the_sources_channel_order_goes_out_on_the_wire(fake_display,
+                                                        mock_worker_cmd, send_ahead):
+    """A BGRA source must be announced as BGRA, in both loops.
+
+    The capture leg stopped swapping channels in 0baa2fe (6.9ms of a 29ms 1440p
+    frame) and the port swizzles in its expand shader, but the loop never told the
+    worker the bytes were BGRA — so a real screen frame was served as if it were
+    RGBA and the picture came back with red and blue exchanged. The synthetic card
+    is RGBA, which is why no saved after.png ever showed it.
+    """
+    from tests.conftest import FakeCapture
+
+    bgra = FakeCapture()
+    bgra.bgra = True                       # type: ignore[attr-defined]
+    pipe = Pipeline(capture=bgra, display=fake_display, headless=True,
+                    worker_cmd=mock_worker_cmd, worker_cwd=REPO,
+                    want_pixels=False, send_ahead=send_ahead)
+    recorder = _RecordingWorker()
+    pipe.worker = recorder
+
+    pipe.run(frames=3)
+
+    assert [s["index"] for s in recorder.sends] == [0, 1, 2]
+    assert all(s["bgra"] is True for s in recorder.sends), (
+        "a BGRA source was sent as RGBA; the port will not swizzle and the "
+        "picture comes back with red and blue exchanged")
+
+    rgba = FakeCapture()                      # no `bgra` attribute: RGBA
+    plain = Pipeline(capture=rgba, display=fake_display, headless=True,
+                     worker_cmd=mock_worker_cmd, worker_cwd=REPO,
+                     want_pixels=False, send_ahead=send_ahead)
+    recorder2 = _RecordingWorker()
+    plain.worker = recorder2
+    plain.run(frames=2)
+    assert all(s["bgra"] is False for s in recorder2.sends)
+
+
+def test_a_saved_before_frame_is_written_in_rgba_order():
+    """The PNG path converts at save time, so BGRA input does not swap a file."""
+    from minimal.loop import _to_rgba
+
+    frame = np.zeros((2, 2, 4), dtype=np.uint8)
+    frame[..., 0], frame[..., 1], frame[..., 2] = 1, 2, 3   # BGRA: B=1 G=2 R=3
+
+    assert _to_rgba(frame) is frame, "an RGBA frame must not be copied"
+    swapped = _to_rgba(frame, bgra=True)
+    assert swapped[0, 0].tolist() == [3, 2, 1, frame[0, 0, 3]]
+    assert frame[0, 0, 0] == 1, "the capture buffer must not be modified in place"
+
+
 def test_a_real_run_says_the_first_frame_is_the_warm_up(fake_capture, fake_display,
                                                        mock_worker_cmd, capsys):
     """Say why the window is black and why nothing has been printed yet.
