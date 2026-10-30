@@ -10,13 +10,16 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* QUEUED 2026-10-30 as `r2026-10-30-j` - still the top item: next tick reads its
-  `runs/done/r2026-10-30-j/stdout.log` and acts on the `SUMMARY` line (do not queue it again).
-  Run the NGX control matrix from the tick (the `ngx-matrix` policy entry now exists, running
-  `xvfb-run -a uv run python tools/ngx_matrix.py --baseline`). Queue exactly one request:
-  `{"id": "<next r-id>", "entry": "ngx-matrix", "args": [], "timeout_s": 300, "artifacts": [],
-  "note": "baseline: old vs bundled DLL, spoof on/off, direct vs core"}`. Then read
-  `runs/done/<id>/stdout.log`: the `SUMMARY` line names every row and its verdict. Act on it:
+* BLOCKED 2026-10-30: the NGX control matrix run `r2026-10-30-j` never started. Runner exit
+  125, `report.md` is "The runner failed. `FileNotFoundError(2, 'No such file or directory')`",
+  and `runs/done/r2026-10-30-j/` holds only `command.txt`, `report.md`, `request.json`,
+  `revision.txt` - no `stdout.log`, `stderr.log` or `result.json`, so there is no `SUMMARY`.
+  `command.txt` is `xvfb-run -a uv run python tools/ngx_matrix.py --baseline`; the exec of
+  argv[0] failed, i.e. `xvfb-run` is not on the runner's PATH on the box (or the policy's
+  `ngx-matrix` argv carries the line as one un-split string). The fix is box-side - install
+  `xvfb-run`/Xvfb from the distro, or rewrite the policy argv to a display the box has - and
+  is not done from this repo. Do not queue `r2026-10-30-j` again; once the entry can exec, read
+  `runs/done/<new id>/stdout.log` and act on its `SUMMARY`:
   * **old passes, bundled fails** -> the harness is fine and 310.9.16 changed the create/evaluate
     contract; the next item is host-side instrumentation of `dlss5-feed-host64.cpp`.
   * **old fails too** (or the control row is missing) -> the harness, prefix or driver changed;
@@ -55,6 +58,15 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: r2026-10-30-j never ran, so the control matrix still says nothing (2026-10-30, read
+  the result, no new run). Exit 125, `FileNotFoundError(2, 'No such file or directory')` for the
+  entry `xvfb-run -a uv run python tools/ngx_matrix.py --baseline`; the run directory holds only
+  command.txt, report.md, request.json and revision.txt - no stdout.log, stderr.log or
+  result.json, therefore no SUMMARY row and no measurements. The failure is at exec of argv[0]
+  (`xvfb-run` missing on the box's PATH, or the policy argv un-split), so it is not evidence
+  about either DLL, the prefix or the driver; the harness never started. Box-side fix needed
+  before anything can be read; do not re-queue j.
 
 * learned: the NGX control matrix is queued as `r2026-10-30-j` (2026-10-30 tick, entry
   `ngx-matrix`, 300s, no args/artifacts) and nothing was measured yet. The item stays at the top
