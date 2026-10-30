@@ -84,8 +84,25 @@ def verdict(result: dict) -> str:
     return result["error"] or "no verdict"
 
 
-def run_combo(preset: int, via_core: bool, out_dir: Path, timeout: int) -> dict:
-    env = {**os.environ, "NS_NR_PRESET": str(preset)}
+def wine_path(path: Path) -> str:
+    """An absolute Unix path as Wine's Z: drive, which is what LoadLibraryW expects."""
+    return "Z:" + str(path).replace("/", "\\")
+
+
+def find_old_dll() -> Path | None:
+    """The 310.8.0 runtime, if the box kept one: the control for every new-DLL failure."""
+    for candidate in (REPO / "native" / "nvngx_dlssnr-310.8.0.dll",
+                      Path("/home/paul/dev/NeuralScreen-Linux/native/nvngx_dlssnr.dll")):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def run_combo(preset: int, via_core: bool, out_dir: Path, timeout: int, *,
+              spoof: int = 1, dll: Path | None = None, label: str = "bundled") -> dict:
+    env = {**os.environ, "NS_NR_PRESET": str(preset), "NS_ARCH_SPOOF": str(spoof)}
+    if dll is not None:
+        env["NS_NR_DLL"] = wine_path(dll)
     command = ["bash", str(GATE)] + (["--via-core"] if via_core else [])
     started = time.time()
     try:
@@ -103,11 +120,12 @@ def run_combo(preset: int, via_core: bool, out_dir: Path, timeout: int) -> dict:
     elapsed = round(time.time() - started, 1)
     if WORKER_LOG.exists():
         text += "\n" + WORKER_LOG.read_text(errors="replace")
-    tag = f"p{preset}-{'core' if via_core else 'direct'}"
+    tag = f"{label}-p{preset}-{'core' if via_core else 'direct'}-spoof{spoof}"
     (out_dir / f"{tag}.log").write_text(text)
     result = parse(text)
     result.update({"preset": preset, "via_core": via_core, "exit": code,
-                   "seconds": elapsed, "tag": tag})
+                   "seconds": elapsed, "tag": tag, "label": label, "spoof": spoof,
+                   "dll": str(dll) if dll is not None else "bundled"})
     return result
 
 
@@ -117,27 +135,54 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--via-core", default="0,1", help="comma-separated 0/1 (default 0,1)")
     ap.add_argument("--out", default=None)
     ap.add_argument("--timeout", type=int, default=180)
+    ap.add_argument("--spoof", type=int, default=1,
+                    help="NS_ARCH_SPOOF value for the matrix (default 1)")
+    ap.add_argument("--baseline", action="store_true",
+                    help="run the control set instead: bundled vs old DLL, spoof on/off, "
+                         "direct vs core, one preset - the question a new DLL forces")
     args = ap.parse_args(argv)
 
     if not GATE.is_file():
         print(f"gate not found: {GATE}", file=sys.stderr)
         return 2
-    presets = [int(p) for p in args.presets.split(",") if p.strip() != ""]
-    core_modes = [c.strip() in ("1", "true", "yes") for c in args.via_core.split(",")]
     out_dir = Path(args.out) if args.out else Path(f"/tmp/ngx-matrix-{time.strftime('%Y%m%dT%H%M%S')}")
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"matrix -> {out_dir}")
 
+    if args.baseline:
+        old = find_old_dll()
+        combos = [
+            {"label": "bundled", "dll": None, "spoof": 1, "preset": 0, "via_core": False},
+            {"label": "bundled", "dll": None, "spoof": 0, "preset": 0, "via_core": False},
+            {"label": "bundled", "dll": None, "spoof": 1, "preset": 0, "via_core": True},
+        ]
+        if old is not None:
+            combos.append({"label": "old", "dll": old, "spoof": 1, "preset": 0,
+                           "via_core": False})
+            print(f"control DLL: {old}")
+        else:
+            print("note: no 310.8.0 DLL found (looked for native/nvngx_dlssnr-310.8.0.dll "
+                  "and the dev tree); the control row is omitted")
+    else:
+        presets = [int(p) for p in args.presets.split(",") if p.strip() != ""]
+        core_modes = [c.strip() in ("1", "true", "yes") for c in args.via_core.split(",")]
+        combos = [{"label": "bundled", "dll": None, "spoof": args.spoof, "preset": preset,
+                   "via_core": via_core}
+                  for preset in presets for via_core in core_modes]
+
     rows = []
-    for preset in presets:
-        for via_core in core_modes:
-            print(f"--- preset {preset}, {'via core' if via_core else 'direct'} ---", flush=True)
-            row = run_combo(preset, via_core, out_dir, args.timeout)
-            rows.append(row)
-            print(f"    {verdict(row)}  ({row['seconds']}s)")
+    for combo in combos:
+        print(f"--- {combo['label']} preset {combo['preset']}, "
+              f"{'via core' if combo['via_core'] else 'direct'}, spoof {combo['spoof']} ---",
+              flush=True)
+        row = run_combo(combo["preset"], combo["via_core"], out_dir, args.timeout,
+                        spoof=combo["spoof"], dll=combo["dll"], label=combo["label"])
+        rows.append(row)
+        print(f"    {verdict(row)}  ({row['seconds']}s)")
 
     print()
-    header = f"{'preset':>6}  {'path':>7}  {'init':>12}  {'create':>14}  {'evaluate':>14}  {'loop':>7}  verdict"
+    header = (f"{'dll':>9}  {'preset':>6}  {'path':>7}  {'spoof':>5}  {'init':>12}  "
+              f"{'create':>14}  {'evaluate':>14}  {'loop':>7}  verdict")
     print(header)
     print("-" * len(header))
     for row in rows:
@@ -146,7 +191,8 @@ def main(argv: list[str]) -> int:
             row["create"].get("code") or "?" if row["create"] else "-")
         evaluate = row["evaluate"]["code"] if row["evaluate"] else "-"
         loop = f"{row['finished']['good']}/{row['finished']['total']}" if row["finished"] else "-"
-        print(f"{row['preset']:>6}  {'core' if row['via_core'] else 'direct':>7}  "
+        print(f"{row['label']:>9}  {row['preset']:>6}  "
+              f"{'core' if row['via_core'] else 'direct':>7}  {row['spoof']:>5}  "
               f"{init:>12}  {create:>14}  {evaluate:>14}  {loop:>7}  {verdict(row)}")
 
     summary = {"out": str(out_dir), "rows": rows,
@@ -159,14 +205,31 @@ def main(argv: list[str]) -> int:
         print(f"all {len(rows)} combinations passed. matrix: {out_dir}/matrix.json")
         return 0
 
-    # Group by the failure signature, so six rows collapse to the one or two real causes.
     groups: dict[str, list[str]] = {}
     for row in failed:
         groups.setdefault(verdict(row), []).append(row["tag"])
     print(f"{len(failed)} of {len(rows)} failed:")
     for signature, tags in sorted(groups.items()):
         print(f"  {signature}: {', '.join(tags)}")
-    if all(verdict(r).startswith("evaluate 0xBAD00004") for r in failed):
+
+    if args.baseline:
+        old_rows = [r for r in rows if r["label"] == "old"]
+        new_rows = [r for r in rows if r["label"] == "bundled"]
+        old_pass = any(verdict(r) == "PASS" for r in old_rows)
+        new_pass = any(verdict(r) == "PASS" for r in new_rows)
+        if old_rows and old_pass and not new_pass:
+            print("  -> the old DLL passes in the same harness: the create/evaluate contract")
+            print("     changed in 310.9.16, and the host is what needs the fix.")
+        elif old_rows and not old_pass and not new_pass:
+            print("  -> the old DLL fails too: the harness, prefix or driver changed - not the DLL.")
+        no_spoof = [r for r in new_rows if r["spoof"] == 0]
+        with_spoof = [r for r in new_rows if r["spoof"] == 1 and not r["via_core"]]
+        if no_spoof and with_spoof:
+            if any(verdict(r) == "PASS" for r in no_spoof) != any(verdict(r) == "PASS" for r in with_spoof):
+                print("  -> the architecture spoof changes the outcome: it is part of the failure.")
+            else:
+                print("  -> the architecture spoof does not change the outcome: it is not the cause.")
+    elif all(verdict(r).startswith("evaluate 0xBAD00004") for r in failed):
         print("  -> create succeeds but the handle is not known to Evaluate. That is a host-side")
         print("     mismatch (create/evaluate registries), not a preset or model problem.")
     elif all(verdict(r).startswith("create 0xBAD0000B") for r in failed):
