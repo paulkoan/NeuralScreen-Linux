@@ -10,14 +10,14 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Repeat the sweep to measure the run-to-run spread, because 1440p landed 6.2 ms under w
-  (`r2026-10-30-aa` 1280x720, `-ab` 1920x1080, `-ac` 2560x1440, entry `minimal`, args
-  `["--frames","120","--headless","--source","synthetic","--size","<WxH>","--worker-log"]`,
-  same patch 0aabc30e). Only compare clients' medians against x/y/z; if 1440p still reads
-  ~29 ms against w's 35.3 then w is the outlier and the fit stands. Note that "in one worker"
-  is not expressible through this entry - one run is one worker at one size - so a true
-  single-worker sweep needs either a `minimal` option taking several sizes or a box-side
-  harness, and neither is mine to add.
+* Remove the CPU BGRA->RGBA swap from the capture leg and swizzle in the port's expansion
+  instead. The sweep already settles the fit (3.80 ms + 7.03 ms/Mpx, residuals under 1.5 ms);
+  w's 35.3 ms at 1440p is the outlier against z's 29.1 ms, so a repeat sweep buys nothing. The
+  swap is 6.9 ms of a 29 ms 1440p frame and `0baa2fe` already established the BGRA flag and
+  the shader swizzle. Work in `minimal/loop.py` (stop converting before send) and the port's
+  `expandRgba8ToProxy` (accept BGRA), in that order. Keep `--save-after` byte-identical to
+  `9f13979b168dc3a0` on the standard card and measure 1440p no-pixel median against 29.1 ms
+  (r2026-10-30-z). Revert if the picture moves: 6 ms is not worth a colour regression.
 
 ## 2. Ask first - do not start these alone
 
