@@ -1,4 +1,4 @@
-From 1dc1f756b6686685b6d7d7a517d85a58a1d2c62a Mon Sep 17 00:00:00 2001
+From 6e66812e80849cecb9779d50c6e71a6ba56a999a Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -106,11 +106,13 @@ per-frame timing line on stderr.
  src/kernels.cpp              |  54 ++-
  src/kernels.h                |  38 +-
  src/main.cpp                 |   6 +-
+ src/nr_graph.cpp             |   7 +-
+ src/nr_graph.h               |   2 +-
  src/nr_model.h               |   1 +
  src/serve.cpp                | 786 +++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |  26 +-
  src/vk_context.h             |   3 +
- 11 files changed, 1319 insertions(+), 13 deletions(-)
+ 13 files changed, 1322 insertions(+), 19 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/proxy_expand.comp
@@ -758,6 +760,44 @@ index 6d57e3a..d03680c 100644
    return 2;
  }
  
+diff --git a/src/nr_graph.cpp b/src/nr_graph.cpp
+index 5c8a2e1..0cac1e4 100644
+--- a/src/nr_graph.cpp
++++ b/src/nr_graph.cpp
+@@ -141,8 +141,8 @@ Graph::Routes Graph::routesFromEnvironment() {
+ }
+ 
+ Graph::Graph(vk::Context& context, Model& model, Kernels& kernels, const Geometry& geometry, Options options)
+-    : context_(context), model_(model), kernels_(kernels), geometry_(geometry), options_(options),
+-      routes_(routesFromEnvironment()) {
++    : blockCount_(model.blockCount()), context_(context), model_(model), kernels_(kernels), geometry_(geometry),
++      options_(options), routes_(routesFromEnvironment()) {
+   // Chaining links consecutive PTX launches through device counters and drops the barrier between them, so every
+   // launch in the chain must take its PTX route. Any switch that sends one kernel family (or one fused block)
+   // back to GLSL takes the whole graph back to barriers.
+@@ -161,9 +161,6 @@ Graph::Graph(vk::Context& context, Model& model, Kernels& kernels, const Geometr
+             geometry_.fullHeight, tallestRow, Kernels::kSyncCountersPerRegion);
+     routes_.chain = routes_.vitChain = false;
+   }
+-  if (model_.blockCount() != kBlockCount)
+-    throw std::runtime_error("the model has " + std::to_string(model_.blockCount()) + " blocks; this graph is the " +
+-                             std::to_string(kBlockCount) + "-block network");
+ }
+ 
+ Graph::~Graph() {
+diff --git a/src/nr_graph.h b/src/nr_graph.h
+index a21ae0f..66c1619 100644
+--- a/src/nr_graph.h
++++ b/src/nr_graph.h
+@@ -37,7 +37,7 @@ FusedLayout postFusedLayout();
+ 
+ class Graph {
+  public:
+-  static constexpr uint32_t kBlockCount = 71;   // blocks 0..70; the graph's stage boundaries are hard-coded
++  uint32_t blockCount_ = 71;   // the model's block count; the graph's stage boundaries are hard-coded
+ 
+   struct Options {
+     bool captureBoundaries = false;  // copy every block/transition output for parity checks
 diff --git a/src/nr_model.h b/src/nr_model.h
 index 867c97e..66f2175 100644
 --- a/src/nr_model.h

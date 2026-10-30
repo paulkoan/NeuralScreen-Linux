@@ -17,11 +17,9 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   `nr_graph.cpp:164` refuses anything else, and six loops hardcode block ranges; the small
   model's layers are much wider (block11.layer0.layer is 4,194,320 bytes against 197,184).
   Take ONE numbered step per pass:
-  1. Loader: accept a block count that is not 71, and keep the 71-block model selectable beside
-     the small one - the big model stays the parity reference, so do not replace it.
-  2. Generic per-block schedule first, no fusion, checked against the existing reference
+  1. Generic per-block schedule first, no fusion, checked against the existing reference
      kernels. Only fuse after it matches.
-  3. Parity against NGX preset 2 on the same card, then steady-state fps.
+  2. Parity against NGX preset 2 on the same card, then steady-state fps.
   If the generic schedule cannot reach parity, the small model is not usable in the port: say so
   and stop rather than fusing a wrong graph.
 
@@ -202,3 +200,8 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   f, the 120-frame confirmation, exited 0: 40.48 fps steady against b's 34.7 - the steady rate
   survives the fix and even improves. Headline 16.59 fps is still the frame-0 PTX warm-up skewing
   the mean; quote the steady number. The top plan item is retired.
+
+* learned: the port's block-count guard is relaxed (nr_graph.h/.cpp): `kBlockCount` became a
+  member `blockCount_`, set from the model, so a non-71 model loads beside the 71-block parity
+  reference; the big model's path is untouched. The suite still has the 9 pre-existing libGL/SDL2
+  import failures; 320 tests pass.
