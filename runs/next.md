@@ -10,12 +10,23 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
+* Integrate the 310.9.16 small network into the port (decided yes, 2026-10-30). Extraction is
+  already done: `extract.py --magic 0x06c9dfdf` cuts 31 blocks / 77 tensors / 108.6 MiB, and the
+  full layout is `docs/small-network-layout.md`. This is a second schedule, not a renumbering:
+  `nr_graph.cpp` is 1006 lines built for 71 blocks, `nr_graph.h:40` pins `kBlockCount = 71`,
+  `nr_graph.cpp:164` refuses anything else, and six loops hardcode block ranges; the small
+  model's layers are much wider (block11.layer0.layer is 4,194,320 bytes against 197,184).
+  Take ONE numbered step per pass:
+  1. Loader: accept a block count that is not 71, and keep the 71-block model selectable beside
+     the small one - the big model stays the parity reference, so do not replace it.
+  2. Generic per-block schedule first, no fusion, checked against the existing reference
+     kernels. Only fuse after it matches.
+  3. Parity against NGX preset 2 on the same card, then steady-state fps.
+  If the generic schedule cannot reach parity, the small model is not usable in the port: say so
+  and stop rather than fusing a wrong graph.
+
 ## 2. Ask first - do not start these alone
 
-* Porting the 310.9.16 small/FP8 network into dlss5vk (decided 2026-10-30?): the second
-  network is 52 tensors / 20 blocks against the current 153 / 71, with different tensor shapes,
-  and the port's loader refuses a non-71 block count. This is loader + shader work, not a weight
-  swap. Say yes and it gets scoped; say no and the NGX measurement stands as the answer.
 * Decided (2026-10-11): the fixture keeps the whole frame. No crop.
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
@@ -31,10 +42,11 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   (147,695,410 bytes, magic 0x08cda732) is byte-identical to the 310.8.0 network already in
   /opt/neuralscreen/model - same 11 stages, 153 tensors, 71 blocks, same blend_scale. So the
   first extraction found nothing new. The second resource (113,893,343 bytes at offset
-  152,515,824, magic 0x06c9dfdf) is the small/FP8 network: 52 tensors, 20 distinct block numbers
-  over 0-30 with gaps, 68.7MiB of payload. Its layer arrangement and tensor byte lengths differ
-  from the old model (block10.layer0.layer is 524,288 bytes there against 197,184 in the old
-  one; blocks 11-18 carry four layers each), and its magic is not the one extract.py accepts.
+  152,515,824, magic 0x06c9dfdf) is the small/FP8 network: **31 blocks, 77 tensors, 108.6 MiB**
+  (the earlier 52/20/68.7 count was an ad-hoc regex that missed records; the extractor is the
+  authority). Its layer arrangement and tensor byte lengths differ from the old model
+  (block11.layer0.layer is 4,194,320 bytes there against 197,184 in the old one; blocks 10-30
+  carry up to five layers each), and its magic is not the one extract.py accepted until 40da205.
   **The port's loader refuses any blockCount but 71, so this is not a weight swap** - adopting
   the new model in dlss5vk means extending extract.py for the second magic, then changing the
   loader and shaders for a different, smaller architecture. The NGX arm already runs it, and
