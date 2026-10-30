@@ -10,15 +10,11 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Settle the motion field, now the biggest measured lever: full motion costs 5.0 ms of the send
-  and 7.5 ms of the frame (1440p median 29.1 -> 21.8 ms with `--no-motion`, 34.3 -> 45.9 fps),
-  but the composite uses it for history reprojection. On the synthetic card dropping it is
-  byte-identical (r2026-10-30-ah vs -ad, MAD 0.0), which proves nothing about a real stream.
-  `--motion-small` hung at worker init (r2026-10-30-ag, exit 3, no device line);
-  `r2026-10-30-ai` retries it with a picture. If it runs, compare its median with af/z and its
-  picture with ad; if it hangs again, the reduced path is broken and the choice is full motion
-  or none - a quality call that needs real footage, so leave it to the human and keep
-  `--no-motion` as an opt-in entry.
+* NEEDS THE HUMAN - settle the motion field. `--motion-small` hung a second time (r2026-10-30-ai,
+  exit 3, silent 60s at frame 0, same as ag), so the reduced path is broken on the box and the
+  choice is full motion (29.1 ms / 34.3 fps) or `--no-motion` (21.8 ms / 45.9 fps, already an
+  opt-in flag). Which one a real GeForce Now stream should default to is a quality call that
+  needs real footage; nothing queued until you say, and do not re-queue `--motion-small`.
 
 ## 2. Ask first - do not start these alone
 
@@ -26,6 +22,15 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: `--motion-small` is dead in the pipe path, reproducibly (r2026-10-30-ai, 2026-10-30,
+  exit 3 after 60.5s). It repeats ag exactly: the worker logs its two init lines and then its
+  `serve: 2560x1440, model ...` banner, never reaches the device line, and the client times out
+  on frame 0 after 60s, so no picture was saved and its median does not exist. Same patch
+  0aabc30ec374 as af/z, so the two full-motion numbers stand (29.1 ms / 34.3 fps against
+  21.8 ms / 45.9 fps with `--no-motion`); only the reduced path is unmeasurable. `minimal/__main__.py`
+  already documents the flag as NOT USABLE in the pipe path, and ai ran without `--shm`, so the
+  never-tested variant is `--shm --motion-small`, not a third repeat of this one.
 
 * learned: the motion field is 5 ms of send and 7.5 ms of the frame (r2026-10-30-af/-ah,
   2026-10-30). 1440p no pixels: 29.1 ms with motion, 21.8 ms with `--no-motion` (45.9 fps),
