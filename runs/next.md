@@ -41,6 +41,17 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* learned: the unfused-parity build half is done and in sync (r2026-10-30-i, 2026-10-30 tick).
+  Exit 0 in 8.8s, `port: /opt/neuralscreen/port (9d08f41)`, `patch ... 0aabc30ec374`, 17 files
+  changed or added, 15 shader modules / 78 PTX kernels, and the binary's own line says
+  "rebuilt: ... is patch 0aabc30ec374..., which is the patch applied - runs will be in sync". So
+  the staged binary now carries `serve`'s `DLSS5VK_UNFUSED=1` handling; the only thing still
+  missing for step 1 is the box-side policy entry that can set the flag. Nothing was queued this
+  pass - step 1 needs `/opt/neuralscreen/policy.toml` to gain a `minimal-unfused` entry (same
+  argv as `minimal`, env `NS_WORKER_CMD` + `DLSS5VK_UNFUSED=1`), and step 2 needs the box to hold
+  the small model at the path the executor passes to `serve --model`. Both are box configuration
+  and stay here rather than being guessed.
+
 * learned: the unfused parity run is unreachable from a request as the box is configured (2026-10-30,
   no measurement; tick before i). `tools/auto_runner.py` builds the worker's env from the policy
   entry only - a request contributes `args`, `timeout_s`, `artifacts`, `manual`, `note` and nothing
