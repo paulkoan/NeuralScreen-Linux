@@ -10,11 +10,14 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* NEEDS THE HUMAN - settle the motion field. `--motion-small` hung a second time (r2026-10-30-ai,
-  exit 3, silent 60s at frame 0, same as ag), so the reduced path is broken on the box and the
-  choice is full motion (29.1 ms / 34.3 fps) or `--no-motion` (21.8 ms / 45.9 fps, already an
-  opt-in flag). Which one a real GeForce Now stream should default to is a quality call that
-  needs real footage; nothing queued until you say, and do not re-queue `--motion-small`.
+* Stop sending the zero motion field on port runs; `--no-motion` is the default, not a quality
+  decision. `minimal/loop.py` builds ONE all-zero field and reuses it every frame (a stream
+  cannot supply real vectors), and `serve.cpp` fills its motion buffer with zeros and calls that
+  the identity reprojection when no field arrives - so the pictures are identical, proven
+  byte-identical (r2026-10-30-ah vs -ad, MAD 0.0). It is 14.7 MB of zeroes per frame at 1440p,
+  5 ms of send, 7.5 ms of frame. No human decision is needed; the earlier "needs real footage"
+  framing was wrong. With no motion, 1080p is 14.5 ms = 69 fps (60 fps met) and 1440p is 21.8 ms
+  = 46 fps. Next for 1440p: 5.1 ms off the GPU pass (the small network is ~2 ms of it).
 
 ## 2. Ask first - do not start these alone
 
@@ -22,6 +25,14 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the motion field is all zeros - `loop.py` builds one and reuses it, because a stream
+  cannot supply real vectors. So `--no-motion` is not a quality trade: `serve` zero-fills its
+  motion buffer when none arrives and calls that the identity reprojection, and the pictures are
+  byte-identical (r2026-10-30-ah vs -ad, MAD 0.0). At 1440p the field is 14.7 MB of zeroes per
+  frame, 5 ms of send and 7.5 ms of frame. Send-ahead 2 hides only ~1.8 ms of it (1080p 19.9 ->
+  18.1 ms), so stop sending it rather than overlap it. `--motion-small` matters only if real
+  vectors ever arrive.
 
 * learned: 60 fps is a resolution question, and 1080p already clears it (r2026-10-30-aj/-ak,
   2026-10-30, both exit 0, no pixels, `--no-motion`). 1080p **14.5 ms = 69.0 fps** (capture 1.9
