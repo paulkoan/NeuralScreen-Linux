@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-ah",
+  "entry": "minimal",
+  "args": ["--frames", "30", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--no-motion", "--save-after", "nomotion.png", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": ["nomotion.png"],
+  "note": "What dropping the motion field does to the picture: 30 frames, 1440p, save-after. Compare with ad's after.png (9f13979b168dc3a0, full motion). The synthetic bar moves 7 px per frame, so if the identity reprojection is harmless here it will show as a small diff; a large diff means motion cannot be dropped on the port path and the 5 ms has to be won elsewhere."
+}
