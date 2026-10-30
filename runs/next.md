@@ -10,11 +10,9 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Queue the NGX control matrix now that `xvfb-run` exists (installed 2026-10-30; `r2026-10-30-j`
-  never started because argv[0] was missing, so that id is spent - queue a NEW one). One request:
-  `{"id": "<next r-id>", "entry": "ngx-matrix", "args": [], "timeout_s": 300, "artifacts": [],
-  "note": "baseline: old vs bundled DLL, spoof on/off, direct vs core"}`. Then read
-  `runs/done/<id>/stdout.log`: the `SUMMARY` line names every row and its verdict. Act on it:
+* Read the NGX control matrix verdict from `runs/done/r2026-10-30-k/stdout.log` (queued 2026-10-30
+  tick on the `ngx-matrix` entry, 300s, no args/artifacts; `-j` never started so this is the first
+  attempt with `xvfb-run` present). The `SUMMARY` line names every row and its verdict. Act on it:
   * **old passes, bundled fails** -> the harness is fine and 310.9.16 changed the create/evaluate
     contract; the next item is host-side instrumentation of `dlss5-feed-host64.cpp`.
   * **old fails too** (or the control row is missing) -> the harness, prefix or driver changed;
@@ -53,6 +51,12 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the NGX control matrix is queued a second time as `r2026-10-30-k` (2026-10-30 tick,
+  entry `ngx-matrix`, 300s, no args/artifacts, id `-j` spent on the argv[0] exec failure) because
+  the plan says `xvfb-run` is installed on the box now and the old id cannot be reused. Nothing
+  measured yet - the harness still has no SUMMARY row in this repo, so the next tick reads
+  `runs/done/r2026-10-30-k/stdout.log` and acts on its verdict rather than queuing again.
 
 * learned: r2026-10-30-j never ran, so the control matrix still says nothing (2026-10-30, read
   the result, no new run). Exit 125, `FileNotFoundError(2, 'No such file or directory')` for the
