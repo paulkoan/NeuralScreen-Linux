@@ -1,0 +1,10 @@
+source synthetic  capture 2560x1440  ->  work 2560x1440 (work scale 1.00, NGX ceiling 2560x1440)
+params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+worker: /opt/neuralscreen/port/build/dlss5vk serve --model /opt/neuralscreen/model
+version: repo 19535ad (+2321 uncommitted) · worker built from patch 0aabc30ec374 at port 9d08f41 · in sync
+frame 0 is the worker's warm-up: the window stays black until its first answer lands
+pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+frames: 3 done, 0 skipped, 5.365s (0.56 fps headline, 4.26 fps steady), worker exit 0
+timing: capture 5.2ms  send 13.8ms  recv 1628.1ms  display 2.9ms   (mean 1649.9ms/frame, 0.6 fps; median 234.6ms/frame, 4.3 fps steady)
+  after  -> unfused.png
