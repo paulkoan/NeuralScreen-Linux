@@ -10,6 +10,17 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
+> Keep this section stocked: when the last item is finished, write the next one in the same
+> tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
+> so "no open item" means nothing queues and nothing runs, which is what happened overnight.
+
+* Close the 1440p gap, now 5.1 ms (no-motion 21.8 ms against a 16.7 ms budget): `r2026-10-31-ap`
+  verifies the flipped no-motion default with a run that passes no motion flag at all,
+  `r2026-10-31-aq` repeats the small network at 1440p (26.8 ms, which was backwards against the
+  reference's 21.8 ms and needs a second sample), and `r2026-10-31-ar` tests `--work-scale 0.75`
+  as a budget lever. Decide between per-stage scheduling cost and work-scale with those three,
+  then take the picture half of whichever wins.
+
 ## 2. Ask first - do not start these alone
 
 * Decided (2026-10-11): the fixture keeps the whole frame. No crop.
