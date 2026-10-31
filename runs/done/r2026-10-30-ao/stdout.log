@@ -1,0 +1,9 @@
+source synthetic  capture 1920x1080  ->  work 1920x1080 (work scale 1.00, NGX ceiling 2560x1440)
+params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+worker: /opt/neuralscreen/port/build/dlss5vk serve --model /opt/neuralscreen/model-small
+version: repo 6bd6af8 (+2491 uncommitted) · worker built from patch 0aabc30ec374 at port 9d08f41 · in sync
+frame 0 is the worker's warm-up: the window stays black until its first answer lands
+frames: 120 done, 0 skipped, 5.796s (20.7 fps headline, 73.61 fps steady), worker exit 0
+timing: capture 2.5ms  send 3.8ms  recv 40.5ms  display 0.0ms   (mean 46.8ms/frame, 21.3 fps; median 13.6ms/frame, 73.6 fps steady)
+send spread: min 2.5  median 3.5  max 7.5 ms at frame 74 of 120   (a one-off at frame 74 — not the warm-up, so worth looking at)
+recv spread: min 6.9  median 7.7  max 3753.6 ms at frame 0 of 120   (one-off at frame 0 — the worker's warm-up, not a per-frame cost)
