@@ -1,0 +1,20 @@
+warning: The `native-tls` setting is deprecated and will be removed in a future release. Use `system-certs` instead.
+[worker] serve: 2560x1440, model /opt/neuralscreen/model-small, shaders /opt/neuralscreen/port/build/shaders, seed 0
+[worker] serve: built from port 9d08f41 (17 modified) patch 0aabc30ec374cc01893092ebb8538d537e6cd888
+[worker] serve: the caller declared no motion field: the reprojection is the identity
+[worker] serve: and the five-tap history filter is the centre tap, which is the pixel
+[worker] serve: itself - so no published byte can move for it
+[worker] serve: device NVIDIA GeForce RTX 4080 SUPER
+[worker] serve: blend scale 0.7671 (block30.layer0.blend_scale)
+[worker] serve: graph fused (DLSS5VK_UNFUSED not set)
+[worker] serve: warming up (the PTX modules are JIT-compiled on first use)
+[worker] serve: warm-up 3204 ms
+[worker] serve: frame 0 carries reset: no history for this frame, and this frame primes the next
+[worker] serve: head -13.8828..0.4585 mean -1.45525; residual mean -0.0036 -0.0246 -0.0185 (rgb, head/4), logit mean -5.6340; non-finite 0 of 14745600; first 8 -0.2062 -0.3843 -0.4197 -6.5273 -0.1914 -0.3982 -0.4487 -6.0664
+[worker] serve frame 0: 177.2 ms (proxy 4.6 [copy 2.2, submit 2.4], network+composite 77.1, readback 95.5, reply 0.0)
+[worker] serve frame 1: 58.7 ms (proxy 4.4 [copy 2.1, submit 2.3], network+composite 54.3, readback 0.0, reply 0.0)
+[worker] serve frame 2: 59.7 ms (proxy 4.7 [copy 2.3, submit 2.4], network+composite 55.0, readback 0.0, reply 0.0)
+[worker] serve frame 29: 13.0 ms (proxy 3.0 [copy 1.9, submit 1.1], network+composite 10.0, readback 0.0, reply 0.0)
+[worker] serve frame 59: 18.7 ms (proxy 7.1 [copy 4.7, submit 2.5], network+composite 11.6, readback 0.0, reply 0.0)
+[worker] serve frame 89: 13.8 ms (proxy 3.3 [copy 2.3, submit 1.0], network+composite 10.6, readback 0.0, reply 0.0)
+[worker] serve frame 119: 11.4 ms (proxy 3.8 [copy 2.5, submit 1.3], network+composite 7.7, readback 0.0, reply 0.0)

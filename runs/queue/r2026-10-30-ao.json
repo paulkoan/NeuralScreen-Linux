@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-ao",
+  "entry": "minimal-small",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "1920x1080",
+           "--no-motion", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "Best case today: the 31-block small network with no motion field at 1920x1080. Reference with no motion was 21.8 ms at 1440p (45.9 fps) and 14.5 ms at 1080p (69 fps); the small model measured ~1.14x on the pass. This is the number that says whether 1440p60 is reachable without structural work."
+}

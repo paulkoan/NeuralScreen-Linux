@@ -59,6 +59,23 @@ def test_the_motion_field_still_goes_out_without_the_flag():
     assert len(data) == HEADER + W * H * 4 + W * H * 4, len(data)
 
 
+def test_the_cli_does_not_send_the_motion_field_unless_asked():
+    """The field is all zeroes, so it is off by default and `--motion` opts in.
+
+    r2026-10-30-ah vs -ad are byte-identical (MAD 0.0), so sending 14.7MB of
+    zeroes a frame was never buying picture quality. It is still reachable
+    because the Wine worker derives flow from it.
+    """
+    from minimal.__main__ import build_parser
+
+    parser = build_parser()
+    assert parser.parse_args([]).no_motion is True, (
+        "the default still sends the zero motion field")
+    assert parser.parse_args(["--motion"]).no_motion is False
+    # The old flag has to keep parsing: run requests and scripts still carry it.
+    assert parser.parse_args(["--no-motion"]).no_motion is True
+
+
 def test_the_two_forms_are_the_same_size_apart_from_the_motion_field():
     """Off by even one byte and every later frame in the stream is misaligned."""
     sizes = []
