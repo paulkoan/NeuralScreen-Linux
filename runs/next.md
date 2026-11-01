@@ -11,12 +11,7 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 ## 1. Next work
 
 
-* Establish the GPU baseline: `r2026-11-01-aw` runs `tools/gpu_status.py --watch 20` on an idle
-  box (av was refused at 10:16 - exit 126, "entry 'gpu-status' is not in the policy", because it
-  ran 8s after the request was pushed, before the box's /opt/neuralscreen/policy.toml had the
-  entry). Nothing else is queued until that lands, because the 29-36 ms spread on identical 1440p
-  configs is unexplained and a probe is cheaper than another guess. If aw refuses the same way,
-  the entry is missing from the box's policy, not the repo's template.
+* learned: `r2026-11-01-aw` establishes the GPU baseline but the card was BUSY (exit 0). `Dying Light The Beast` holds 5.6 GiB, plus browsers and desktop apps; the card idles at 210/3105 MHz. Timing runs are not evidence until a probe reads idle.
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
