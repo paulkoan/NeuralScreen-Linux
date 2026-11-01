@@ -163,6 +163,20 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* learned: bb completes the same-build 1440p pixel cell and the 60 fps arithmetic at 1440p does
+  not close (r2026-11-02-bb, 2026-11-01 22:21Z, exit 0, 120/0, gate waited 0.0 - card already WARN).
+  **1440p with pixels: 39.7 ms median / 25.2 fps steady**, recv mean 61.6, send 5.4, capture 2.8,
+  display 2.3. Same-build set, medians: 1440p no-pixel 25.8 (ax) / 26.4 (ay); 1440p pixel 39.7 (bb);
+  1080p no-pixel 14.9 (ba); 1080p pixel 31.6 (az). So the pixel channel costs ~13.6 ms at 1440p and
+  ~16.7 ms at 1080p - roughly a fixed ~14 ms, not proportional to payload, which is why 1080p's
+  total looks worse than 1440p's delta. bb is also 4 ms slower than as/au's 35.7 on older clients;
+  that is spread or a regression, not resolved here. **The arithmetic: 39.7 ms needs 23.0 ms off for
+  60 fps. A zero-cost reply saves at most 13.6 ms and still leaves 26.1 ms - the no-pixel frame -
+  which is itself 9.4 ms over budget. So 60 fps at 1440p is not reachable by the reply path alone,
+  or by the neural pass alone (12.7 ms), or by resolution (8.1 ms). It needs the pixel channel AND
+  the model AND the client's own 10.5 ms of capture+send+display. That is three levers, and the
+  honest statement is that this port is not going to hit 60 fps at 1440p with the current design.**
+
 * learned: `r2026-11-01-aw` establishes the GPU baseline but the card was BUSY (exit 0). `Dying Light The Beast` holds 5.6 GiB, plus browsers and desktop apps; the card idles at 210/3105 MHz. Timing runs are not evidence until a probe reads idle.
 * learned: `r2026-11-02-ay` proves the idle gate works and also proves the card never reads idle
 * learned: `r2026-11-02-ba` is queued (1080p no-pixel on az's checkout), and az's 1080p-with-pixels
