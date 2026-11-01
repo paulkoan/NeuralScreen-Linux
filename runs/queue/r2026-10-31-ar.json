@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-31-ar",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--work-scale", "0.75", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "The budget lever: the pass works at 75% of the frame and upscales. 1440p needs 16.7 ms for 60 fps and no-motion gives 21.8; if the cost is per-pixel in the pass, 0.75 scale should land near 3.80 + 7.03*0.5625*3.69 = ~18.4 ms, and 0.67 near ~15.6. Quality is the cost - this measures the speed half only, so pair it with a picture before any decision."
+}
