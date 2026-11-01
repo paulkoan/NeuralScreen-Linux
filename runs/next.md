@@ -112,6 +112,16 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* learned: the unit runs the gate code, but the policy does not switch it on (r2026-11-02-ax,
+  2026-11-01 21:02Z, exit 0, 8.7s). The executor is refreshed - it wrote the new result fields - and
+  yet `gpu_before`, `gpu_after` are both `null` and `idle_waited_s` is 0.0, which only happens when
+  `require_idle` is false. So `/opt/neuralscreen/policy.toml` on the box still lacks the flag; the
+  unit update installed the script, not the policy. Add `require_idle = true` there (top level, or
+  on the `minimal*` entries) and the next run will hold on BUSY. Meanwhile ax is a usable 1440p
+  no-pixel sample: **25.8 ms median / 38.8 fps steady**, 120/0 frames, reference model (`blend
+  scale 0.7397`), against ap's 24.6 ms on the same shape - the pair agrees within 1.2 ms. Note the
+  card was still BUSY when it ran, so quote it with that caveat.
+
 * learned: the GPU box has a game resident, but that is weak evidence for the 29-36 ms spread
   (r2026-11-01-aw, 2026-11-01, exit 0, 21s). The probe reads BUSY: `DyingLightGame_TheBeast_x64_rwdi.exe`
   holds 5670 of 16376 MiB, with Chromium/Signal/Edge/Telegram gpu-processes and kwin_wayland
