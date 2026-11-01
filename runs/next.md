@@ -137,6 +137,19 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* learned: ba closes the same-build 1080p pair, and the pixel channel is confirmed as the lever
+  (r2026-11-02-ba, 2026-11-01 21:28Z, exit 0, 6.4s, gate waited 0.0 - the card was already WARN).
+  1080p no-pixel on az's checkout: **14.9 ms median / 67.3 fps steady** (120/0), against az's
+  31.6 ms / 31.6 fps *with* pixels on the same build. So the pixel channel costs **16.7 ms at
+  1080p** - more than the entire no-pixel frame - and it is not a cross-build artefact. The 1440p
+  delta reads ~9.6 ms (35.7 pixel vs 26.1 no-pixel) but spans clients, so treat it as unconfirmed.
+  Consequence for the resolution decision: in shippable terms (pixels mandatory, since the live
+  path must show its output) 1440p is 35.7 ms / 28.0 fps and 1080p is 31.6 ms / 31.6 fps - **only
+  4 ms apart, both under 60 fps**. Dropping to 1080p buys 4 ms and nothing else; the 14.9 ms
+  no-pixel ceiling is not a product path. So the resolution choice is nearly moot and the build
+  should target the pixel channel: readback 2.8 + reply 4.4 at 1440p, but the measured channel cost
+  is 16.7 ms at 1080p, which means most of it is fixed overhead in the handoff, not per-pixel work.
+
 * learned: the four-cell resolution set is NOT yet same-build, and the pixel channel looks like
   the real lever, not resolution (2026-11-01 21:25Z tick). Current-checkout runs: ax 1440p
   no-pixel 25.8 ms / 38.8 fps, ay 1440p no-pixel 26.4 ms / 37.9 fps, az 1080p **with pixels**
