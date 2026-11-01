@@ -10,14 +10,12 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Next: nothing to build until the user picks a target. bb answered the reply-path question
-  downward: recv above the worker's own frame is ~4 ms at BOTH 8.3 and 14.7 MB (~0.3 ms/MB), so an
-  FP8 reply recovers 4-6 ms of 39.7, not 13. The 23.3 -> 29.4 ms recv rise from 1080p to 1440p is
-  the worker's network+composite going 9.0 -> 14.4 ms with area, not the handoff. So the levers rank:
-  neural pass 12.7 ms (costs quality), worker area scaling 14.4 ms, reply payload ~4 ms. 60 fps at
-  1440p needs 23 ms off and no combination of the two cheap ones gets there. The product choice in
-  "Ask first" - accept ~25 fps at 1440p, ship 1080p at ~31.6 ms, or spend on the neural pass - is
-  now the only thing that unblocks a build.
+* Next: `r2026-11-02-bc` is queued - 1440p with pixels and `--send-ahead 2`. The user has chosen
+  1440p and max FPS, so the serial loop is now the target. The pipelining code already exists
+  (`_pipelined_loop` in minimal/loop.py); the flag just is not used in measurement runs. Serial at
+  1440p pixel is 2.9 + 4.8 + 26.2 + 2.1 = ~36 ms; pipelined the frame should fall toward
+  max(worker 26.2, client 10.5). At 1080p the flag only saved 1.8 ms because the worker dominated;
+  at 1440p there is more client time to hide. Read bc against bb's 39.7 ms median. No code change.
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
@@ -32,6 +30,10 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 * Decided (2026-10-11): the fixture keeps the whole frame. No crop.
 * Anything touching /etc, system packages or the box's configuration. Every time.
+* **DECIDED 2026-11-02 by the user: stay at 1440p and aim for max FPS**, accepting that 60 fps may
+  not be reached. So "drop to 1080p" is off the table and the pixel channel / overhead work is the
+  programme. Frame generation and alternate-frame interpolation were raised in the same message and
+  are open questions below.
 * **Resolution for the 1440p target** (raised 2026-11-01 tick, pair measured 2026-11-02): keep
   2560x1440 and pay for the pixel channel, or drop the stream to 1920x1080. The same-build 1080p pair
   is now in: az *with pixels* 31.6 ms / 31.6 fps vs ba *no pixels* 14.9 ms / 67.3 fps - so the pixel
