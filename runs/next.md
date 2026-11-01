@@ -10,9 +10,20 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
+
+* Establish the GPU baseline: `r2026-11-01-av` runs `tools/gpu_status.py --watch 20` on an idle
+  box, so every later timing run has a reference to be clean against. Nothing else is queued
+  until that lands, because the 29-36 ms spread on identical 1440p configs is unexplained and a
+  probe is cheaper than another guess.
+
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
 > so "no open item" means nothing queues and nothing runs, which is what happened overnight.
+
+> A timing run is only evidence if the card was quiet: probe it with `tools/gpu_status.py
+> --watch 20` (entry `gpu-status`) before any measurement run and after it. If either probe says
+> BUSY or UNKNOWN, record that next to the number and do not compare it against earlier runs -
+> two 1440p runs of the same config already read 29.1 and 35.3 ms an hour apart.
 
 * Next: line up the 1440p pixel-path stages before proposing any build. as and au are on disk;
   itemize the client stages (capture/send/recv/display) and the worker stages (proxy /
