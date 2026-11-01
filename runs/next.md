@@ -46,12 +46,21 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   fixed handoff dominates. Next build target should be the reply path; the resolution decision stays
   open but is now clearly secondary. Do not queue more timings until the reply approach is chosen.
 
-* Next: `r2026-11-02-bb` is queued - 1440p with pixels on az's build, the measure-first run for the
-  reply path. az read `recv 56.3 ms` at 1080p; as/au read 60.3/64.8 at 1440p on older clients. If
-  recv scales with payload size, the per-megabyte cost is the number that decides whether an FP8
-  reply (half the 14.7 MB) is worth a wire-format change; if recv is flat, the 13.2 ms is fixed
-  overhead and FP8 would not help. Cheap and reversible: same flags as as/au, no code change. The
-  resolution decision stays in "Ask first" and is now clearly secondary to the reply path.
+* learned: `r2026-11-02-bb` answers the reply-path question, and the answer is "not the payload"
+  (2026-11-02 tick). Exit 0, 120/0, 1440p with pixels on az's build: steady median **39.7 ms /
+  25.2 fps**, recv median **29.4 ms** (spread 27.4 min / 3827 at frame 0 - warm-up only). Against
+  the same build: az 1080p-with-pixels recv median 23.3 and ba 1080p-no-pixels 9.9. The client's
+  recv above the worker's own frame is ~4 ms at BOTH 8.3 and 14.7 MB, i.e. ~0.3 ms/MB - flat, not
+  payload-proportional. The 23.3 -> 29.4 rise is the worker, not the handoff: its
+  network+composite goes 9.0 -> 14.4 ms with area while readback 3.5 + reply 4.8 stays 8.3 ms. So
+  an FP8 reply would recover ~4-6 ms of 39.7, not 13. Also, bb's 39.7 sits above the 29.1-35.3 ms
+  spread seen between identical 1440p runs (as/au read 35.7/35.8), so part of its 8 ms gap over az
+  is sample noise. Verdict: the reply path is a minor lever; 60 fps needs the neural pass cut too.
+
+* Blocked: the reply-format decision is now a product choice and sits in "Ask first" - FP8 output
+  (quality loss, ~4-6 ms) vs changed-tiles vs accept <60 fps at 1440p. Nothing queued this tick:
+  the next timing would repeat known numbers, and no build target can be chosen until that call is
+  made. The resolution decision stays open and is now clearly secondary.
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
@@ -145,6 +154,12 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   So the next build targets the pixel channel either way, and "keep 1440p" is no longer obviously
   the expensive option. Still a product choice, not measurable here; nothing gets built until it
   is made.
+* **Reply format / pixel channel** (raised 2026-11-02 tick, measured by bb): the client handoff is
+  flat (~0.3 ms/MB), so the pixel channel's cost is the worker's readback+reply (~8.3 ms at 1440p)
+  and the neural pass's area scaling. FP8 halves payload but buys only ~4-6 ms; changed-tiles would
+  buy less on a full-screen stream. 1440p-with-pixels measures 39.7 ms, so 60 fps needs the neural
+  pass cut as well. Product choice: accept FP8's quality loss, ship changed-tiles, or accept <60 fps
+  at 1440p. Nothing gets built until this call is made.
 
 ## Learned
 
