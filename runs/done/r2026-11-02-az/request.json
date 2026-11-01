@@ -1,0 +1,9 @@
+{
+  "id": "r2026-11-02-az",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "1920x1080",
+           "--save-after", "az-1080p.png", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": ["az-1080p.png"],
+  "note": "The missing cell in the resolution table: 1080p with the pixel channel. 1440p measures 26.4 ms no-pixels (ay) and 35.7 ms with pixels (as/au); 1080p no-pixels is 14.5 ms. This fills the 1080p pixel cell so the decision between 'keep 1440p and pay for pixels' and 'drop to 1080p' rests on four measured numbers instead of three. require_idle is live, so it will hold if the card is busy."
+}
