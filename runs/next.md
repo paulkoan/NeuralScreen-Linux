@@ -125,6 +125,21 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* learned: the four-cell resolution set is NOT yet same-build, and the pixel channel looks like
+  the real lever, not resolution (2026-11-01 21:25Z tick). Current-checkout runs: ax 1440p
+  no-pixel 25.8 ms / 38.8 fps, ay 1440p no-pixel 26.4 ms / 37.9 fps, az 1080p **with pixels**
+  31.6 ms / 31.6 fps. Older-checkout runs: ao 1080p no-pixel 13.6 ms / 73.6 fps (client from
+  2026-10-30), as/au 1440p with pixels 35.7/35.8 ms / 28.0 fps (clients b44da39/d666a51). Read
+  as-is the table says 1080p with pixels (31.6) is *slower* than 1440p without pixels (26.1) and
+  only 4 ms faster than 1440p with pixels (35.7) - i.e. the ~18 ms pixel channel swamps the ~4 ms
+  resolution step. But az and ao differ in client build, so the 18 ms figure is not safe. The one
+  run that makes it safe is ba: 1080p no-pixel on az's checkout. If ba lands near 13.6 ms the
+  pixel channel is the lever and resolution barely matters; if ba lands near 27 ms then 1080p
+  itself is slower on this build and the older 13.6 was a different code path. Either way the
+  next build targets the pixel channel, not the neural pass, and "keep 1440p" stops being the
+  expensive option. az's gate held 285s (4.75 min) waiting out the game's BUSY - the policy is
+  doing its job and the wait is the cost of honest numbers.
+
 * learned: the gate works (r2026-11-02-ay, 2026-11-01 21:15Z, exit 0, 8.0s). With
   `require_idle = true` in the policy, `idle_waited_s` is **150.0** and `gpu_before` is WARN
   (chromium, signal-desktop, msedge, Telegram, shelly-ui, signon-ui resident, "not contending"),
