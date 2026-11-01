@@ -115,15 +115,15 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
-* learned: the GPU box is NOT clean, and that is the 29-36 ms spread (r2026-11-01-aw, 2026-11-01,
-  exit 0, 21s). The probe reads BUSY: `DyingLightGame_TheBeast_x64_rwdi.exe` resident with
-  **5670 MiB** of the 16376 MiB VRAM, plus Chromium, Signal, Edge, Telegram, shelly-ui and
-  signon-ui gpu-processes, `kwin_wayland`, and the SM clock at **210 of 3105 MHz** - the card is
-  idled down at 7% utilisation, 14.2 W, P8. So every 1440p timing on record (w 35.3, z 29.1,
-  af 21.8, an 26.8) was taken with a game holding the card, and none of them is clean. A resident
-  game at 0% utilisation still counts: it holds VRAM and it moves the clocks. Measure with the
-  game closed and bracket the run with the probe, or the numbers are only comparable within one
-  session. `tools/gpu_status.py` now shortens process names - it was printing whole command lines.
+* learned: the GPU box has a game resident, but that is weak evidence for the 29-36 ms spread
+  (r2026-11-01-aw, 2026-11-01, exit 0, 21s). The probe reads BUSY: `DyingLightGame_TheBeast_x64_rwdi.exe`
+  holds 5670 of 16376 MiB, with Chromium/Signal/Edge/Telegram gpu-processes and kwin_wayland
+  beside it. But utilisation is 7%, power 14.2 W, P8, 47 C - nothing is taking compute time, so a
+  resident idle app does not slow a frame and 6.6 GB of VRAM stays free. The likely variance
+  source is the clock state at each run's start: the card sits at 210 of 3105 MHz between runs and
+  ramps when work arrives. Verdict semantics now separate contention (BUSY) from presence (WARN);
+  a low clock is a note, not a verdict. Close the game for a clean baseline because it removes a
+  wake-up risk and the ambiguity, not because 5.6 GiB is scarce.
 
 * learned: the zero motion field is no longer sent by default (2026-10-30 tick, commit b4bee54).
   `minimal/__main__.py` now defaults `no_motion=True` and `--motion` opts back in; `--no-motion`

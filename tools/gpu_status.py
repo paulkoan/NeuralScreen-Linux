@@ -127,21 +127,30 @@ def _num(text):
 
 
 def verdict(gpu: dict | None) -> tuple[str, list[str]]:
-    """IDLE, BUSY or UNKNOWN, with the reasons that led there."""
+    """IDLE, WARN or BUSY, with the reasons that led there.
+
+    BUSY means something is taking compute time now, and a timing run beside it is worthless.
+    WARN means another process is *resident* - holding VRAM without contending - which does not
+    slow a frame by itself, but can wake up mid-run. A card sitting at a low SM clock is neither:
+    clocks drop when nothing runs, so that is reported as a note, not a verdict.
+    """
     if gpu is None:
         return "UNKNOWN", ["no nvidia-smi or rocm-smi on this machine"]
-    why = []
+    busy, resident = [], []
     util = gpu.get("util_percent")
     if util is not None and util >= BUSY_UTIL:
-        why.append(f"utilization {util:.0f}%")
+        busy.append(f"utilization {util:.0f}%")
     for app in gpu.get("compute_apps") or []:
-        if not any(d in (app.get("name") or "") for d in DESKTOP_PROCESSES):
-            why.append(f"{app.get('name')} (pid {app.get('pid')}, {app.get('mem_mib')} MiB)")
-    clock = gpu.get("clock_sm_mhz")
-    top = gpu.get("clock_max_sm_mhz")
-    if clock and top and clock < 0.5 * top:
-        why.append(f"SM clock {clock:.0f} of {top:.0f} MHz - the card is idling down")
-    return ("BUSY" if why else "IDLE"), why
+        name = app.get("name") or ""
+        if any(d in name for d in DESKTOP_PROCESSES):
+            continue
+        label = f"{name} (pid {app.get('pid')}, {app.get('mem_mib')} MiB)"
+        (busy if util is not None and util >= BUSY_UTIL else resident).append(label)
+    if busy:
+        return "BUSY", busy + ([f"also resident: {r}" for r in resident])
+    if resident:
+        return "WARN", [f"resident but not contending: {r}" for r in resident]
+    return "IDLE", []
 
 
 def sample(seconds: int) -> dict:
