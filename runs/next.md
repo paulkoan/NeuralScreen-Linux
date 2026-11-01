@@ -40,14 +40,12 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   (36.1 ms / 27.67 fps, same 30-frame pixel shape) agree. The live path must show or save its output,
   so quote 1440p against ~35.7 ms, not 24.6, until a same-input pair exists.
 
-* Read `r2026-10-31-at` when it lands: 30 frames (last frame again n=29), default path, 1440p,
-  synthetic, with BOTH `--save-before before.png` and `--save-after after.png`. Check `before.png`
-  against the fixture's own n=29 frame (`/opt/data/tmp/input_confound.py` prints it) to prove both
-  runs were handed the same input, then diff its `after.png` against `r2026-10-30-ah`'s
-  `nomotion.png`: MAD 0.0 means the default scheduling path is quality-neutral and the remaining
-  1440p levers are the pixel channel (readback+reply ~11 ms) and capture 3.4 + send 5 ms; any
-  non-zero MAD at identical input is a real quality difference and the decision reopens. Quote the
-  steady median, not the frame-0-inflated mean.
+* learned: `r2026-10-31-at` is quality-neutral (2026-11-01 tick). Its `before.png` matches the
+  fixture's n=29 frame (MAD 0.0000, max 1, no pixels >2 — same input), and its `after.png` is
+  byte-identical to `r2026-10-30-ah`'s `nomotion.png` (MAD 0.0, PSNR inf), so the default
+  scheduling path changes no pixels. Steady median 43.8 ms/frame (22.8 fps) for the 30-frame
+  pixel shape; quote that, not the 180.1 ms frame-0-inflated mean. The remaining 1440p levers
+  are the pixel channel (readback+reply ~11 ms) and capture 3.0 + send 4.8 ms.
 
 ## 2. Ask first - do not start these alone
 
