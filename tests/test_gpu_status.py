@@ -88,3 +88,26 @@ def test_require_idle_is_silent_when_idle(monkeypatch):
     with_smi(monkeypatch, "2")
     monkeypatch.setattr(gs.sys, "argv", ["gpu_status.py", "--require-idle"])
     assert gs.main() == 0
+
+
+def test_process_names_are_shortened_to_something_readable():
+    """nvidia-smi hands back whole command lines, megabytes of switches and Windows paths."""
+    long_line = ("/usr/lib/chromium/chromium --type=gpu-process --ozone-platform=wayland "
+                 "--gpu-preferences=YAAAAAAAAAAgAQAEAAAAAAAAAAAAAGAASAAAAAAAAAABAAAAAAAAAEAA")
+    assert gs.short_name(long_line) == "chromium"
+    steam = (r"S:\steamapps\common\Dying Light The Beast\ph_ft\work\bin\x64"
+             r"\DyingLightGame_TheBeast_x64_rwdi.exe")
+    assert gs.short_name(steam) == "DyingLightGame_TheBeast_x64_rwdi.exe"
+    assert gs.short_name("") == "(unreadable command line)"
+
+
+def test_a_resident_game_makes_the_card_busy(monkeypatch):
+    """A game holding VRAM at 0% utilisation is still contamination: it moves the clocks."""
+    steam = (r"4176838, S:\steamapps\common\Dying Light The Beast\ph_ft\work\bin\x64"
+             r"\DyingLightGame_TheBeast_x64_rwdi.exe, 5670")
+    with_smi(monkeypatch, "7", apps=steam)
+    gpu = gs.nvidia_smi()
+    assert gpu["compute_apps"][0]["name"] == "DyingLightGame_TheBeast_x64_rwdi.exe"
+    state, why = gs.verdict(gpu)
+    assert state == "BUSY"
+    assert any("DyingLightGame" in w for w in why)

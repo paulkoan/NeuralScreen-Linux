@@ -16,6 +16,7 @@ guessing when neither is present. It never writes anything and never touches the
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,23 @@ BUSY_UTIL = 15.0
 # on the card that a benchmark will contend with.
 DESKTOP_PROCESSES = ("Xorg", "Xwayland", "kwin", "kwin_wayland", "plasmashell", "gnome-shell",
                      "systemd-logind", "sddm", "gdm")
+
+
+def short_name(cmdline: str) -> str:
+    """A game's process name is its whole command line, and Wine's is a Windows path.
+
+    nvidia-smi reports the full argv, which buries the answer: two kilobytes of Chromium switches,
+    or a Steam path through a directory with spaces in it. Take the executable if the line names
+    one, otherwise the first token, basename only.
+    """
+    cmdline = (cmdline or "").strip()
+    if not cmdline:
+        return "(unreadable command line)"
+    exe = re.search(r"([^\\/]+\.exe)", cmdline, re.IGNORECASE)
+    if exe:
+        return exe.group(1)[:60]
+    first = cmdline.split()[0]
+    return first.split("\\")[-1].split("/")[-1][:60]
 
 
 def run(cmd: list[str], timeout: int = 15) -> str:
@@ -74,9 +92,12 @@ def nvidia_smi() -> dict | None:
                  "--format=csv,noheader,nounits"])
     apps = []
     for line in procs.strip().splitlines():
-        parts = [p.strip() for p in line.split(",")]
-        if len(parts) >= 3:
-            apps.append({"pid": parts[0], "name": parts[1], "mem_mib": num(parts[2])})
+        # The command line can contain commas, so split only as far as the memory figure.
+        pid, _, rest = line.partition(",")
+        cmdline, _, mem = rest.rpartition(",")
+        if pid.strip():
+            apps.append({"pid": pid.strip(), "name": short_name(cmdline.strip()),
+                         "cmdline": cmdline.strip(), "mem_mib": num(mem)})
     gpu["compute_apps"] = apps
     return gpu
 

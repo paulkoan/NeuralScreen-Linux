@@ -87,6 +87,16 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* learned: the GPU box is NOT clean, and that is the 29-36 ms spread (r2026-11-01-aw, 2026-11-01,
+  exit 0, 21s). The probe reads BUSY: `DyingLightGame_TheBeast_x64_rwdi.exe` resident with
+  **5670 MiB** of the 16376 MiB VRAM, plus Chromium, Signal, Edge, Telegram, shelly-ui and
+  signon-ui gpu-processes, `kwin_wayland`, and the SM clock at **210 of 3105 MHz** - the card is
+  idled down at 7% utilisation, 14.2 W, P8. So every 1440p timing on record (w 35.3, z 29.1,
+  af 21.8, an 26.8) was taken with a game holding the card, and none of them is clean. A resident
+  game at 0% utilisation still counts: it holds VRAM and it moves the clocks. Measure with the
+  game closed and bracket the run with the probe, or the numbers are only comparable within one
+  session. `tools/gpu_status.py` now shortens process names - it was printing whole command lines.
+
 * learned: the zero motion field is no longer sent by default (2026-10-30 tick, commit b4bee54).
   `minimal/__main__.py` now defaults `no_motion=True` and `--motion` opts back in; `--no-motion`
   still parses so existing run requests work, and old requests that omit both now take the fast
