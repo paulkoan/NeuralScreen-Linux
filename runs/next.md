@@ -13,6 +13,13 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 * learned: `r2026-11-01-aw` establishes the GPU baseline but the card was BUSY (exit 0). `Dying Light The Beast` holds 5.6 GiB, plus browsers and desktop apps; the card idles at 210/3105 MHz. Timing runs are not evidence until a probe reads idle.
 
+* Next: `r2026-11-02-ay` is queued - the first run with `require_idle = true` actually in the
+  policy. ax proved the code path exists but the flag was absent (`gpu_before`/`gpu_after` null,
+  `idle_waited_s` 0.0); ay runs the same 120-frame 1440p no-pixel shape as ax and should come back
+  with all three fields populated. Read the gate first, then the median against ax's 25.8 ms. The
+  1440p-vs-1080p resolution decision in "Ask first" is still open and still gates the next build;
+  ay does not answer it, it only makes the numbers honest.
+
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
 > so "no open item" means nothing queues and nothing runs, which is what happened overnight.
