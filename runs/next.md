@@ -10,57 +10,14 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-
-
-  (2026-11-02 tick). Exit 0, 120/0, `gpu_before` = WARN after waiting the full 150s, `gpu_after` =
-  BUSY at 59% utilisation, so all three gate fields are now populated and the require_idle flag is
-  live in the policy. Steady median 26.4 ms / 37.9 fps against ax's 25.8 ms on the same 120-frame
-  1440p no-pixel shape - a 0.6 ms difference, inside the 29.1-vs-35.3 ms spread already seen between
-  identical 1440p runs. The gate held its full timeout and the card was still WARN when it let the
-  run go, then BUSY when it finished, so this is a valid demonstration of the mechanism but not a
-  quiet-card timing sample. A repeat run would just wait another 150s and start at WARN again: the
-  resident set (chromium, msedge, Telegram, signal-desktop, shelly-ui, signon-ui) plus the game
-  already noted means the box is chronically busy. But WARN is the bar the gate releases on - it
-  means "resident, not contending" - so a WARN "before" IS an acceptable sample and only a BUSY
-  "before" is not. ay released at WARN after its 150s timeout, so ay and ax are usable numbers;
-  the pessimistic "nothing is honest" reading was wrong. The real finding is that the ~26 ms 1440p
-  no-pixel figure is stable across both (25.8 / 26.4), and that the pixel channel costs ~18 ms at
-  1080p (az 31.6 ms with pixels vs ao's 13.6 without) - which needs a same-build pair to trust.
-
-  cell is filled at 31.6 ms / 31.6 fps. ba completes the same-build pixel/no-pixel pair; the next
-  tick reads its result to decide whether the ~18 ms gap is the pixel channel or the resolution.
-  The resolution choice in "Ask first" remains open and still gates the next build.
-
-  steady median **14.9 ms / 67.3 fps** at 1080p no-pixel on az's checkout - near ao's older 13.6 ms
-  and nowhere near 27 ms, so 1080p is not slower on this build and the ~16.7 ms gap against az's
-  31.6 ms is the pixel channel, not the resolution. The "Ask first" resolution note now carries the
-  verdict; the next build target still needs that product decision, so nothing was queued this tick.
-
-* Next: the pixel channel's 16.7 ms at 1080p is not in the worker. az's client split reads recv
-  56.3 ms against ba's 43.1 ms on the same build - **+13.2 ms of the 16.7 is client-side recv**,
-  i.e. pulling the finished 14.7 MB image back over the shared-memory handoff. The worker's own
-  readback 2.8 + reply 4.4 is only 7.2 ms at 1440p. So the shippable-path lever is the transport of
-  the result, not the neural pass: a smaller reply (FP8 output, or sending only changed tiles)
-  attacks 13 ms where the model attacks 12.7 ms and costs picture quality. This also explains why
-  1080p-with-pixels is only 4 ms faster than 1440p-with-pixels while no-pixel is 11 ms faster: the
-  fixed handoff dominates. Next build target should be the reply path; the resolution decision stays
-  open but is now clearly secondary. Do not queue more timings until the reply approach is chosen.
-
-* learned: `r2026-11-02-bb` answers the reply-path question, and the answer is "not the payload"
-  (2026-11-02 tick). Exit 0, 120/0, 1440p with pixels on az's build: steady median **39.7 ms /
-  25.2 fps**, recv median **29.4 ms** (spread 27.4 min / 3827 at frame 0 - warm-up only). Against
-  the same build: az 1080p-with-pixels recv median 23.3 and ba 1080p-no-pixels 9.9. The client's
-  recv above the worker's own frame is ~4 ms at BOTH 8.3 and 14.7 MB, i.e. ~0.3 ms/MB - flat, not
-  payload-proportional. The 23.3 -> 29.4 rise is the worker, not the handoff: its
-  network+composite goes 9.0 -> 14.4 ms with area while readback 3.5 + reply 4.8 stays 8.3 ms. So
-  an FP8 reply would recover ~4-6 ms of 39.7, not 13. Also, bb's 39.7 sits above the 29.1-35.3 ms
-  spread seen between identical 1440p runs (as/au read 35.7/35.8), so part of its 8 ms gap over az
-  is sample noise. Verdict: the reply path is a minor lever; 60 fps needs the neural pass cut too.
-
-* Blocked: the reply-format decision is now a product choice and sits in "Ask first" - FP8 output
-  (quality loss, ~4-6 ms) vs changed-tiles vs accept <60 fps at 1440p. Nothing queued this tick:
-  the next timing would repeat known numbers, and no build target can be chosen until that call is
-  made. The resolution decision stays open and is now clearly secondary.
+* Next: nothing to build until the user picks a target. bb answered the reply-path question
+  downward: recv above the worker's own frame is ~4 ms at BOTH 8.3 and 14.7 MB (~0.3 ms/MB), so an
+  FP8 reply recovers 4-6 ms of 39.7, not 13. The 23.3 -> 29.4 ms recv rise from 1080p to 1440p is
+  the worker's network+composite going 9.0 -> 14.4 ms with area, not the handoff. So the levers rank:
+  neural pass 12.7 ms (costs quality), worker area scaling 14.4 ms, reply payload ~4 ms. 60 fps at
+  1440p needs 23 ms off and no combination of the two cheap ones gets there. The product choice in
+  "Ask first" - accept ~25 fps at 1440p, ship 1080p at ~31.6 ms, or spend on the neural pass - is
+  now the only thing that unblocks a build.
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
@@ -70,76 +27,6 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 > --watch 20` (entry `gpu-status`) before any measurement run and after it. If either probe says
 > BUSY or UNKNOWN, record that next to the number and do not compare it against earlier runs -
 > two 1440p runs of the same config already read 29.1 and 35.3 ms an hour apart.
-
-  per-frame stages, not `stdout.log` - the client prints only run means plus send/recv spreads, so
-  there is no per-frame capture/send/recv/display sample at 29/59/89/119 and the client row below is
-  a mean, not a median. Steady values, ms, frames 29 / 59 / 89 / 119 (2026-11-01 tick):
-
-  | run | worker total | proxy | network+composite | readback | reply |
-  |---|---|---|---|---|---|
-  | as | 24.3 / 21.9 / 22.1 / 20.8 | 1.9 / 1.9 / 3.1 / 1.9 | 14.8 / 12.7 / 11.8 / 12.4 | 3.0 / 2.8 / 2.9 / 2.8 | 4.6 / 4.5 / 4.3 / 3.8 |
-  | au | 22.5 / 22.5 / 24.1 / 21.9 | 2.4 / 1.9 / 2.2 / 2.1 | 12.3 / 13.1 / 12.5 / 12.9 | 2.9 / 2.8 / 3.6 / 2.7 | 4.9 / 4.7 / 5.7 / 4.2 |
-
-  The two runs agree within a millisecond on every stage; both workers' steady medians are ~22.3 ms.
-  Client means: capture 2.9 (as) / 2.8 (au), send 4.8 / 4.6, display 2.1 / 2.2, recv median 26.2 /
-  26.3 - so the 35.7 / 35.8 ms median frame is ~2.9 capture + 4.8 send + 26.2 recv + 2.1 display,
-  and recv is the worker's 22.3 plus ~3.9 ms of shm handoff. as's send max 8.6 ms at frame 23 is a
-  one-off (au's max is 6.9); frame 0 carries the warm-up in recv (3948 / 4389 ms) and nothing else.
-  Worker split of the 22.3: network+composite 12.7, reply 4.4, readback 2.8, proxy 1.9.
-
-  (2026-11-01 tick). 60 fps needs 16.7 ms against 35.7 ms measured, i.e. 19.0 ms off. The neural
-  pass is the largest identified stage at 12.7 ms - 36% of the client frame, 57% of the worker's -
-  so it is the candidate; but deleting it outright still leaves 23.0 ms, and adding the pixel
-  channel (readback 2.8 + reply 4.4 = 7.2 ms) only reaches 15.8 ms if model *and* pixels both go to
-  zero. Client capture+send+display is another 9.8 ms and the handoff ~3.9 ms. So a 1440p build
-  cannot be justified as one stage, and the only measured path under 16.7 ms remains 1080p
-  (14.5 ms / 69 fps, no pixels). The resolution choice is the real lever and it is not this tick's
-  to make - it is now the first item under "Ask first". Nothing queued this tick.
-
-
-  steady median 35.8 ms / 28.0 fps, reproducing as's 35.7 ms / 28.03 fps on the same 120-frame pixel
-  shape - so au is the second clean sample and at's 43.8 ms / 22.8 fps was warm-up-bound, not a
-  regression: au's worker frames 1-2 read 91.9/87.7 ms yet settle to 22.5/22.5/24.1/21.9 at frames
-  29/59/89/119, matching ah's 22/22, and at's 30-frame window never left that warm-up. Quote 1440p
-  against ~35.7 ms / 28.0 fps. Pixel neutrality holds: au's after.png is byte-identical to as's
-  (sha256 28292742c88b..., MAD 0.0) at the same n=119 input, so the default path changes no pixels;
-  the au-vs-ah `nomotion.png` diff is not a same-input pair (bar at x833 vs x203, n=119 vs n=29) and
-  reads the same 38.90 fixture confound the as item already documented - it says nothing.
-
-  disagreeing samples taken on different checkouts — as 35.7 ms / 28.03 fps (client b44da39) vs at
-  43.8 ms / 22.8 fps (client d666a51) — and at's 30-frame median is warm-up-bound (frames 1-2 at
-  48.4/46.2 ms against ah's 22.1/22.7), so at is not the live-path figure. au repeats as's 120-frame
-  pixel shape at the current checkout to give a second sample and a same-input after.png.
-
-  `r2026-10-31-ar` (`--work-scale 0.75`) exited 3 at frame 0: the worker refused "the client expects
-  NGX upscaling (1920x1080 -> 2560x1440); this worker runs the network at one size", so work-scale
-  cannot be measured on this port. `r2026-10-31-ap` (default, no motion flag) exited 0: 120/0,
-  **24.6 ms median / 40.7 fps steady**, confirming the flipped no-motion default took effect (the
-  21.8 ms prediction was 5 ms low; 24.6 is still under the 29.1 ms motion-on figure). `r2026-10-31-aq`
-  (small model) exited 0 but was **slower**: 26.5 ms / 37.8 fps steady, so the small network is not
-  the 1440p lever either. Per-stage scheduling cost wins by default. Picture half queued as
-  `r2026-10-31-as` (default path + `--save-after`, 120 frames, 1440p) to diff its output against
-  `r2026-10-30-ah`'s no-motion picture before quoting the 24.6 ms figure.
-
-  (2026-11-01 tick). The run exited 0, but the pair it was queued to diff is confounded: the
-  synthetic fixture moves a 320px bar with the grab index (`minimal/capture.py`,
-  `bar = (n*7) % (w - w//8)`), and both `--save-after` files hold the LAST frame — as ran 120 frames
-  (n=119, bar at 833) where `r2026-10-30-ah` ran 30 (n=29, bar at 203). Offline this tick: those two
-  input frames are byte-identical only outside the bar positions (MAD 37.35 with the bars in,
-  0.0000 / max 0 with them excluded), so as-vs-ah's MAD 38.90 mostly measures the fixture. Cutting
-  the bars out of the comparison does not rescue it (MAD 5.07, max 34, 99.46% of pixels moved) —
-  the pass is a global network, so it reads the bar and the outputs legitimately differ everywhere.
-  as's 35.7 ms median is the real new number, and it is the pixel-path shape, not ap's: `--save-after`
-  makes `want_pixels` true, and the worker then pays a 14.7 MB readback plus a 14.7 MB reply per
-  frame. ap's 24.6 ms / 40.7 fps is a no-pixels benchmark; as (35.7 ms / 28.03 fps) and ah
-  (36.1 ms / 27.67 fps, same 30-frame pixel shape) agree. The live path must show or save its output,
-  so quote 1440p against ~35.7 ms, not 24.6, until a same-input pair exists.
-
-  fixture's n=29 frame (MAD 0.0000, max 1, no pixels >2 — same input), and its `after.png` is
-  byte-identical to `r2026-10-30-ah`'s `nomotion.png` (MAD 0.0, PSNR inf), so the default
-  scheduling path changes no pixels. Steady median 43.8 ms/frame (22.8 fps) for the 30-frame
-  pixel shape; quote that, not the 180.1 ms frame-0-inflated mean. The remaining 1440p levers
-  are the pixel channel (readback+reply ~11 ms) and capture 3.0 + send 4.8 ms.
 
 ## 2. Ask first - do not start these alone
 
@@ -162,6 +49,115 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   at 1440p. Nothing gets built until this call is made.
 
 ## Learned
+
+* learned: (2026-11-02 tick). Exit 0, 120/0, `gpu_before` = WARN after waiting the full 150s, `gpu_after` =
+  BUSY at 59% utilisation, so all three gate fields are now populated and the require_idle flag is
+  live in the policy. Steady median 26.4 ms / 37.9 fps against ax's 25.8 ms on the same 120-frame
+  1440p no-pixel shape - a 0.6 ms difference, inside the 29.1-vs-35.3 ms spread already seen between
+  identical 1440p runs. The gate held its full timeout and the card was still WARN when it let the
+  run go, then BUSY when it finished, so this is a valid demonstration of the mechanism but not a
+  quiet-card timing sample. A repeat run would just wait another 150s and start at WARN again: the
+  resident set (chromium, msedge, Telegram, signal-desktop, shelly-ui, signon-ui) plus the game
+  already noted means the box is chronically busy. But WARN is the bar the gate releases on - it
+  means "resident, not contending" - so a WARN "before" IS an acceptable sample and only a BUSY
+  "before" is not. ay released at WARN after its 150s timeout, so ay and ax are usable numbers;
+  the pessimistic "nothing is honest" reading was wrong. The real finding is that the ~26 ms 1440p
+  no-pixel figure is stable across both (25.8 / 26.4), and that the pixel channel costs ~18 ms at
+  1080p (az 31.6 ms with pixels vs ao's 13.6 without) - which needs a same-build pair to trust.
+
+* learned: cell is filled at 31.6 ms / 31.6 fps. ba completes the same-build pixel/no-pixel pair; the next
+  tick reads its result to decide whether the ~18 ms gap is the pixel channel or the resolution.
+  The resolution choice in "Ask first" remains open and still gates the next build.
+
+* learned: steady median **14.9 ms / 67.3 fps** at 1080p no-pixel on az's checkout - near ao's older 13.6 ms
+  and nowhere near 27 ms, so 1080p is not slower on this build and the ~16.7 ms gap against az's
+  31.6 ms is the pixel channel, not the resolution. The "Ask first" resolution note now carries the
+  verdict; the next build target still needs that product decision, so nothing was queued this tick.
+
+* learned: `r2026-11-02-bb` answers the reply-path question, and the answer is "not the payload"
+  (2026-11-02 tick). Exit 0, 120/0, 1440p with pixels on az's build: steady median **39.7 ms /
+  25.2 fps**, recv median **29.4 ms** (spread 27.4 min / 3827 at frame 0 - warm-up only). Against
+  the same build: az 1080p-with-pixels recv median 23.3 and ba 1080p-no-pixels 9.9. The client's
+  recv above the worker's own frame is ~4 ms at BOTH 8.3 and 14.7 MB, i.e. ~0.3 ms/MB - flat, not
+  payload-proportional. The 23.3 -> 29.4 rise is the worker, not the handoff: its
+  network+composite goes 9.0 -> 14.4 ms with area while readback 3.5 + reply 4.8 stays 8.3 ms. So
+  an FP8 reply would recover ~4-6 ms of 39.7, not 13. Also, bb's 39.7 sits above the 29.1-35.3 ms
+  spread seen between identical 1440p runs (as/au read 35.7/35.8), so part of its 8 ms gap over az
+  is sample noise. Verdict: the reply path is a minor lever; 60 fps needs the neural pass cut too.
+
+* learned: * Blocked: the reply-format decision is now a product choice and sits in "Ask first" - FP8 output
+  (quality loss, ~4-6 ms) vs changed-tiles vs accept <60 fps at 1440p. Nothing queued this tick:
+  the next timing would repeat known numbers, and no build target can be chosen until that call is
+  made. The resolution decision stays open and is now clearly secondary.
+
+* learned: per-frame stages, not `stdout.log` - the client prints only run means plus send/recv spreads, so
+  there is no per-frame capture/send/recv/display sample at 29/59/89/119 and the client row below is
+  a mean, not a median. Steady values, ms, frames 29 / 59 / 89 / 119 (2026-11-01 tick):
+
+* learned: | run | worker total | proxy | network+composite | readback | reply |
+  |---|---|---|---|---|---|
+  | as | 24.3 / 21.9 / 22.1 / 20.8 | 1.9 / 1.9 / 3.1 / 1.9 | 14.8 / 12.7 / 11.8 / 12.4 | 3.0 / 2.8 / 2.9 / 2.8 | 4.6 / 4.5 / 4.3 / 3.8 |
+  | au | 22.5 / 22.5 / 24.1 / 21.9 | 2.4 / 1.9 / 2.2 / 2.1 | 12.3 / 13.1 / 12.5 / 12.9 | 2.9 / 2.8 / 3.6 / 2.7 | 4.9 / 4.7 / 5.7 / 4.2 |
+
+* learned: The two runs agree within a millisecond on every stage; both workers' steady medians are ~22.3 ms.
+  Client means: capture 2.9 (as) / 2.8 (au), send 4.8 / 4.6, display 2.1 / 2.2, recv median 26.2 /
+  26.3 - so the 35.7 / 35.8 ms median frame is ~2.9 capture + 4.8 send + 26.2 recv + 2.1 display,
+  and recv is the worker's 22.3 plus ~3.9 ms of shm handoff. as's send max 8.6 ms at frame 23 is a
+  one-off (au's max is 6.9); frame 0 carries the warm-up in recv (3948 / 4389 ms) and nothing else.
+  Worker split of the 22.3: network+composite 12.7, reply 4.4, readback 2.8, proxy 1.9.
+
+* learned: (2026-11-01 tick). 60 fps needs 16.7 ms against 35.7 ms measured, i.e. 19.0 ms off. The neural
+  pass is the largest identified stage at 12.7 ms - 36% of the client frame, 57% of the worker's -
+  so it is the candidate; but deleting it outright still leaves 23.0 ms, and adding the pixel
+  channel (readback 2.8 + reply 4.4 = 7.2 ms) only reaches 15.8 ms if model *and* pixels both go to
+  zero. Client capture+send+display is another 9.8 ms and the handoff ~3.9 ms. So a 1440p build
+  cannot be justified as one stage, and the only measured path under 16.7 ms remains 1080p
+  (14.5 ms / 69 fps, no pixels). The resolution choice is the real lever and it is not this tick's
+  to make - it is now the first item under "Ask first". Nothing queued this tick.
+
+* learned: steady median 35.8 ms / 28.0 fps, reproducing as's 35.7 ms / 28.03 fps on the same 120-frame pixel
+  shape - so au is the second clean sample and at's 43.8 ms / 22.8 fps was warm-up-bound, not a
+  regression: au's worker frames 1-2 read 91.9/87.7 ms yet settle to 22.5/22.5/24.1/21.9 at frames
+  29/59/89/119, matching ah's 22/22, and at's 30-frame window never left that warm-up. Quote 1440p
+  against ~35.7 ms / 28.0 fps. Pixel neutrality holds: au's after.png is byte-identical to as's
+  (sha256 28292742c88b..., MAD 0.0) at the same n=119 input, so the default path changes no pixels;
+  the au-vs-ah `nomotion.png` diff is not a same-input pair (bar at x833 vs x203, n=119 vs n=29) and
+  reads the same 38.90 fixture confound the as item already documented - it says nothing.
+
+* learned: disagreeing samples taken on different checkouts — as 35.7 ms / 28.03 fps (client b44da39) vs at
+  43.8 ms / 22.8 fps (client d666a51) — and at's 30-frame median is warm-up-bound (frames 1-2 at
+  48.4/46.2 ms against ah's 22.1/22.7), so at is not the live-path figure. au repeats as's 120-frame
+  pixel shape at the current checkout to give a second sample and a same-input after.png.
+
+* learned: `r2026-10-31-ar` (`--work-scale 0.75`) exited 3 at frame 0: the worker refused "the client expects
+  NGX upscaling (1920x1080 -> 2560x1440); this worker runs the network at one size", so work-scale
+  cannot be measured on this port. `r2026-10-31-ap` (default, no motion flag) exited 0: 120/0,
+  **24.6 ms median / 40.7 fps steady**, confirming the flipped no-motion default took effect (the
+  21.8 ms prediction was 5 ms low; 24.6 is still under the 29.1 ms motion-on figure). `r2026-10-31-aq`
+  (small model) exited 0 but was **slower**: 26.5 ms / 37.8 fps steady, so the small network is not
+  the 1440p lever either. Per-stage scheduling cost wins by default. Picture half queued as
+  `r2026-10-31-as` (default path + `--save-after`, 120 frames, 1440p) to diff its output against
+  `r2026-10-30-ah`'s no-motion picture before quoting the 24.6 ms figure.
+
+* learned: (2026-11-01 tick). The run exited 0, but the pair it was queued to diff is confounded: the
+  synthetic fixture moves a 320px bar with the grab index (`minimal/capture.py`,
+  `bar = (n*7) % (w - w//8)`), and both `--save-after` files hold the LAST frame — as ran 120 frames
+  (n=119, bar at 833) where `r2026-10-30-ah` ran 30 (n=29, bar at 203). Offline this tick: those two
+  input frames are byte-identical only outside the bar positions (MAD 37.35 with the bars in,
+  0.0000 / max 0 with them excluded), so as-vs-ah's MAD 38.90 mostly measures the fixture. Cutting
+  the bars out of the comparison does not rescue it (MAD 5.07, max 34, 99.46% of pixels moved) —
+  the pass is a global network, so it reads the bar and the outputs legitimately differ everywhere.
+  as's 35.7 ms median is the real new number, and it is the pixel-path shape, not ap's: `--save-after`
+  makes `want_pixels` true, and the worker then pays a 14.7 MB readback plus a 14.7 MB reply per
+  frame. ap's 24.6 ms / 40.7 fps is a no-pixels benchmark; as (35.7 ms / 28.03 fps) and ah
+  (36.1 ms / 27.67 fps, same 30-frame pixel shape) agree. The live path must show or save its output,
+  so quote 1440p against ~35.7 ms, not 24.6, until a same-input pair exists.
+
+* learned: fixture's n=29 frame (MAD 0.0000, max 1, no pixels >2 — same input), and its `after.png` is
+  byte-identical to `r2026-10-30-ah`'s `nomotion.png` (MAD 0.0, PSNR inf), so the default
+  scheduling path changes no pixels. Steady median 43.8 ms/frame (22.8 fps) for the 30-frame
+  pixel shape; quote that, not the 180.1 ms frame-0-inflated mean. The remaining 1440p levers
+  are the pixel channel (readback+reply ~11 ms) and capture 3.0 + send 4.8 ms.
 
 * learned: bb completes the same-build 1440p pixel cell and the 60 fps arithmetic at 1440p does
   not close (r2026-11-02-bb, 2026-11-01 22:21Z, exit 0, 120/0, gate waited 0.0 - card already WARN).
