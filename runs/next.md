@@ -14,14 +14,24 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
 > so "no open item" means nothing queues and nothing runs, which is what happened overnight.
 
-* Next: read `r2026-10-31-au` and settle the 1440p live-path number (do not queue anything unless
-  it fails). au is as's shape — 120 frames, 1440p, synthetic, default path, `--save-before` +
-  `--save-after` — so its last frame is again n=119 and its after.png diffs against as's at the same
-  input. Three things to record: the steady median against as's 35.7 ms / 28.03 fps and at's
-  43.8 ms / 22.8 fps, its after.png MAD against as's after.png and against `r2026-10-30-ah`'s
-  nomotion.png (both 0.0 = the default path stays pixel-neutral at 120 frames), and whether its
-  worker-log frame 1-2 times repeat at's 48/46 ms or ah's 22/22 — that decides whether at's 43.8 ms
-  is the client's warm-up or a real regression. Quote 1440p from the two 120-frame runs.
+* Next: line up the 1440p pixel-path stages before proposing any build. as and au are on disk;
+  itemize the client stages (capture/send/recv/display) and the worker stages (proxy /
+  network+composite / readback / reply) for frames 29/59/89/119 from
+  `origin/results:runs/done/r2026-10-31-{as,au}/stdout.log` and write the table here with one named
+  candidate stage. 60 fps at 1440p needs 16.7 ms against ~35.7 ms today, so a build would have to
+  move the model (~12.7 ms) or the pixel channel (~7.8 ms); the only measured path that clears
+  60 fps is 1080p (14.5 ms / 69 fps, no pixels). Resolution is a product choice - make it before
+  any code change.
+
+* learned: `r2026-10-31-au` settles the 1440p pixel-path number (2026-11-01 tick). Exit 0, 120/0,
+  steady median 35.8 ms / 28.0 fps, reproducing as's 35.7 ms / 28.03 fps on the same 120-frame pixel
+  shape - so au is the second clean sample and at's 43.8 ms / 22.8 fps was warm-up-bound, not a
+  regression: au's worker frames 1-2 read 91.9/87.7 ms yet settle to 22.5/22.5/24.1/21.9 at frames
+  29/59/89/119, matching ah's 22/22, and at's 30-frame window never left that warm-up. Quote 1440p
+  against ~35.7 ms / 28.0 fps. Pixel neutrality holds: au's after.png is byte-identical to as's
+  (sha256 28292742c88b..., MAD 0.0) at the same n=119 input, so the default path changes no pixels;
+  the au-vs-ah `nomotion.png` diff is not a same-input pair (bar at x833 vs x203, n=119 vs n=29) and
+  reads the same 38.90 fixture confound the as item already documented - it says nothing.
 
 * learned: `r2026-10-31-au` is queued (2026-11-01 tick). The 1440p pixel-path number rests on two
   disagreeing samples taken on different checkouts — as 35.7 ms / 28.03 fps (client b44da39) vs at
