@@ -13,12 +13,18 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 * learned: `r2026-11-01-aw` establishes the GPU baseline but the card was BUSY (exit 0). `Dying Light The Beast` holds 5.6 GiB, plus browsers and desktop apps; the card idles at 210/3105 MHz. Timing runs are not evidence until a probe reads idle.
 
-* Next: `r2026-11-02-ay` is queued - the first run with `require_idle = true` actually in the
-  policy. ax proved the code path exists but the flag was absent (`gpu_before`/`gpu_after` null,
-  `idle_waited_s` 0.0); ay runs the same 120-frame 1440p no-pixel shape as ax and should come back
-  with all three fields populated. Read the gate first, then the median against ax's 25.8 ms. The
-  1440p-vs-1080p resolution decision in "Ask first" is still open and still gates the next build;
-  ay does not answer it, it only makes the numbers honest.
+* learned: `r2026-11-02-ay` proves the idle gate works and also proves the card never reads idle
+  (2026-11-02 tick). Exit 0, 120/0, `gpu_before` = WARN after waiting the full 150s, `gpu_after` =
+  BUSY at 59% utilisation, so all three gate fields are now populated and the require_idle flag is
+  live in the policy. Steady median 26.4 ms / 37.9 fps against ax's 25.8 ms on the same 120-frame
+  1440p no-pixel shape - a 0.6 ms difference, inside the 29.1-vs-35.3 ms spread already seen between
+  identical 1440p runs. The gate held its full timeout and the card was still WARN when it let the
+  run go, then BUSY when it finished, so this is a valid demonstration of the mechanism but not a
+  quiet-card timing sample. A repeat run would just wait another 150s and start at WARN again: the
+  resident set (chromium, msedge, Telegram, signal-desktop, shelly-ui, signon-ui) plus the game
+  already noted means the box is chronically busy. Until the developer quietens the card or accepts
+  BUSY numbers as the baseline, no further timing run is honest evidence, so nothing is queued.
+  The 1440p-vs-1080p resolution decision in "Ask first" remains the gate on the next build.
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
