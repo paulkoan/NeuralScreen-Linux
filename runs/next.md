@@ -25,13 +25,29 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   `r2026-10-31-as` (default path + `--save-after`, 120 frames, 1440p) to diff its output against
   `r2026-10-30-ah`'s no-motion picture before quoting the 24.6 ms figure.
 
-* Read `r2026-10-31-as` when it lands: if its `after.png` is byte-identical to `r2026-10-30-ah`'s
-  no-motion picture (MAD 0.0), the 24.6 ms default path is quality-neutral and the remaining 1440p
-  gap is per-stage scheduling cost — capture 3.6 + send 6.2 ms of the 16.7 ms budget, while the
-  worker's network+composite is already ~12 ms and is not the lever. Look for a saving in the
-  capture/send legs (they are client-side and scale with area), then queue the run that measures it.
-  If the pictures differ, stop and report the MAD instead — the default path then trades quality for
-  speed and the decision reopens.
+* learned: `r2026-10-31-as` cannot answer the quality question, and it corrects the 24.6 ms figure
+  (2026-11-01 tick). The run exited 0, but the pair it was queued to diff is confounded: the
+  synthetic fixture moves a 320px bar with the grab index (`minimal/capture.py`,
+  `bar = (n*7) % (w - w//8)`), and both `--save-after` files hold the LAST frame — as ran 120 frames
+  (n=119, bar at 833) where `r2026-10-30-ah` ran 30 (n=29, bar at 203). Offline this tick: those two
+  input frames are byte-identical only outside the bar positions (MAD 37.35 with the bars in,
+  0.0000 / max 0 with them excluded), so as-vs-ah's MAD 38.90 mostly measures the fixture. Cutting
+  the bars out of the comparison does not rescue it (MAD 5.07, max 34, 99.46% of pixels moved) —
+  the pass is a global network, so it reads the bar and the outputs legitimately differ everywhere.
+  as's 35.7 ms median is the real new number, and it is the pixel-path shape, not ap's: `--save-after`
+  makes `want_pixels` true, and the worker then pays a 14.7 MB readback plus a 14.7 MB reply per
+  frame. ap's 24.6 ms / 40.7 fps is a no-pixels benchmark; as (35.7 ms / 28.03 fps) and ah
+  (36.1 ms / 27.67 fps, same 30-frame pixel shape) agree. The live path must show or save its output,
+  so quote 1440p against ~35.7 ms, not 24.6, until a same-input pair exists.
+
+* Read `r2026-10-31-at` when it lands: 30 frames (last frame again n=29), default path, 1440p,
+  synthetic, with BOTH `--save-before before.png` and `--save-after after.png`. Check `before.png`
+  against the fixture's own n=29 frame (`/opt/data/tmp/input_confound.py` prints it) to prove both
+  runs were handed the same input, then diff its `after.png` against `r2026-10-30-ah`'s
+  `nomotion.png`: MAD 0.0 means the default scheduling path is quality-neutral and the remaining
+  1440p levers are the pixel channel (readback+reply ~11 ms) and capture 3.4 + send 5 ms; any
+  non-zero MAD at identical input is a real quality difference and the decision reopens. Quote the
+  steady median, not the frame-0-inflated mean.
 
 ## 2. Ask first - do not start these alone
 
