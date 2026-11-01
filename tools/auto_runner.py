@@ -187,6 +187,54 @@ def wrap_for_container(entry: dict, policy: dict, argv: list[str], worktree: Pat
     return command + [image, *argv]
 
 
+def gpu_probe(worktree: Path, timeout: int = 30) -> dict | None:
+    """One reading from tools/gpu_status.py, or None when the probe cannot answer at all."""
+    script = worktree / "tools" / "gpu_status.py"
+    if not script.exists():
+        return None
+    try:
+        done = subprocess.run([sys.executable, str(script), "--json"], cwd=str(worktree),
+                              capture_output=True, text=True, timeout=timeout)
+        return json.loads(done.stdout or "{}")
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return None
+
+
+def describe_gpu(reading: dict | None) -> str:
+    if reading is None:
+        return "UNKNOWN (the probe could not answer)"
+    reasons = "; ".join(reading.get("reasons") or []) or "nothing else is using the card"
+    return f"{reading.get('verdict', 'UNKNOWN')} ({reasons})"
+
+
+def wait_for_idle(worktree: Path, entry: dict, policy: dict) -> tuple[dict | None, float]:
+    """Hold until the card is not contending, then give up and run anyway.
+
+    A pristine box is not achievable - a compositor and a browser always hold some VRAM and a
+    game may sit resident - so the bar is "not BUSY". BUSY means another process is taking
+    compute time now; WARN means something is merely resident; either is good enough to measure
+    on. The wait is capped: past the deadline the run proceeds and the result records what the
+    card looked like, because a queue that never drains is worse than a marked number.
+    """
+    limit = float(entry.get("idle_wait_s", policy.get("idle_wait_s", 300)))
+    poll = float(entry.get("idle_poll_s", policy.get("idle_poll_s", 15)))
+    deadline = time.monotonic() + limit
+    waited = 0.0
+    reading = gpu_probe(worktree)
+    while (reading or {}).get("verdict") == "BUSY":
+        left = deadline - time.monotonic()
+        if left <= 0:
+            log(f"gpu still busy after {limit:.0f}s of waiting - running anyway and recording it")
+            return reading, waited
+        log(f"gpu busy: {describe_gpu(reading)} - holding up to {left:.0f}s more")
+        time.sleep(min(poll, left))
+        waited += min(poll, left)
+        reading = gpu_probe(worktree)
+    if waited:
+        log(f"gpu clear after {waited:.0f}s: {describe_gpu(reading)}")
+    return reading, waited
+
+
 def run_request(request: dict, policy: dict, worktree: Path, run_dir: Path,
                 dry_run: bool = False) -> int:
     entry, args, timeout, artifacts, _manual = validate(request, policy, run_dir)
@@ -199,6 +247,12 @@ def run_request(request: dict, policy: dict, worktree: Path, run_dir: Path,
     log(f"running: {' '.join(command)}")
     if dry_run:
         return 0
+
+    # A measurement is only worth its number if the card was not contending when it started, and
+    # on this box "not contending" is the best that is available.
+    gpu_before, idle_waited = (None, 0.0)
+    if entry.get("require_idle", policy.get("require_idle", False)):
+        gpu_before, idle_waited = wait_for_idle(worktree, entry, policy)
 
     env = dict(os.environ)
     # A policy entry may carry environment of its own: which worker binary to run is a
@@ -230,10 +284,14 @@ def run_request(request: dict, policy: dict, worktree: Path, run_dir: Path,
             shutil.copy2(source, run_dir / Path(artifact).name)
         else:
             log(f"artifact {artifact} was not produced")
+    gpu_after = gpu_probe(worktree) if (entry.get("require_idle", policy.get("require_idle", False))) else None
     (run_dir / "result.json").write_text(json.dumps(
         {"exit_code": code, "seconds": round(elapsed, 3), "argv": argv,
          "artifacts": artifacts, "runner": fingerprint(Path(__file__)),
-         "entry_env": sorted((entry.get("env") or {}).keys())}, indent=2) + "\n")
+         "entry_env": sorted((entry.get("env") or {}).keys()),
+         "gpu_before": describe_gpu(gpu_before) if gpu_before is not None or idle_waited else None,
+         "gpu_after": describe_gpu(gpu_after) if gpu_after is not None else None,
+         "idle_waited_s": round(idle_waited, 1)}, indent=2) + "\n")
     # The report names the runner that made it, for the same reason the port's build carries a
     # stamp: a run that failed because the installed executor was old should say so in the
     # artefact, not in a journal nobody kept.
@@ -243,7 +301,11 @@ def run_request(request: dict, policy: dict, worktree: Path, run_dir: Path,
         f"· env from policy: {', '.join(sorted((entry.get('env') or {}).keys())) or 'none'}\n\n"
         f"`{' '.join(argv)}`\n\n"
         f"exit **{code}** after {elapsed:.1f}s\n\n"
-        f"```\n{(out or '')[-4000:]}\n```\n\n"
+        + (f"gpu before: {describe_gpu(gpu_before)}"
+           + (f" after waiting {idle_waited:.0f}s" if idle_waited else "")
+           + f"; after: {describe_gpu(gpu_after)}\n\n"
+           if entry.get("require_idle", policy.get("require_idle", False)) else "")
+        + f"```\n{(out or '')[-4000:]}\n```\n\n"
         f"stderr:\n\n```\n{(err or '')[-4000:]}\n```\n")
     return code
 

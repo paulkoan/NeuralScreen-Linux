@@ -29,6 +29,17 @@ max_timeout_s = 900
 default_timeout_s = 300
 pause_file = "/opt/neuralscreen/PAUSE"           # touch this and nothing runs
 
+# Holding a run until the GPU is not contending. This box is a desktop with a browser and often a
+# game resident, so "pristine" is not available; the bar is "not BUSY", which is what the probe
+# in tools/gpu_status.py decides - BUSY means another process is taking compute time now, WARN
+# means something is merely resident and is good enough to measure on. Set require_idle = true
+# globally, or on the measurement entries only, and a run holds up to idle_wait_s (default 300)
+# before running anyway with the card's state written into its result.
+#   require_idle = true
+#   idle_wait_s = 300
+#   idle_poll_s = 15
+# The wait sits outside the run's own timeout: worst case is idle_wait_s + timeout_s of wall clock.
+
 # Runs happen directly as you, inside the user unit's sandbox - no sudo, no system files, no
 # container. That is the default because the container needs nvidia-container-toolkit, which
 # is a system package, and you asked for nothing in /etc.
