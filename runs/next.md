@@ -14,6 +14,17 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
 > so "no open item" means nothing queues and nothing runs, which is what happened overnight.
 
+* Next: pin the 1440p live-path number at a held-constant client — queue `r2026-10-31-au`. The two
+  1440p pixel-path samples disagree by 8 ms and the client was not held: `r2026-10-31-as` (120 frames,
+  client b44da39) says 35.7 ms / 28.03 fps steady, `r2026-10-31-at` (30 frames, client
+  d666a51) says 43.8 ms / 22.8 fps, and at's worker log shows the 30-frame median is inflated — its
+  frames 1-2 took 48.4 / 46.2 ms against ah's 22.1 / 22.7, so the warm-up tail sits inside a
+  30-frame median. au repeats as's shape (120 frames, 1440p, synthetic, default path) at the current
+  checkout and adds `--save-before`, so its last frame is again n=119 and its after.png can be
+  diffed against as's: a second 120-frame sample for the spread, and a nonzero MAD would mean the
+  client commits since as moved default-path pixels. Quote 1440p from the two 120-frame runs, not
+  from at.
+
 * learned: the 1440p lever decision is settled, and work-scale is dead (2026-11-01 tick, read ap/aq/ar).
   `r2026-10-31-ar` (`--work-scale 0.75`) exited 3 at frame 0: the worker refused "the client expects
   NGX upscaling (1920x1080 -> 2560x1440); this worker runs the network at one size", so work-scale
