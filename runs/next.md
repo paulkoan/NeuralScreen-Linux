@@ -22,9 +22,19 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   run go, then BUSY when it finished, so this is a valid demonstration of the mechanism but not a
   quiet-card timing sample. A repeat run would just wait another 150s and start at WARN again: the
   resident set (chromium, msedge, Telegram, signal-desktop, shelly-ui, signon-ui) plus the game
-  already noted means the box is chronically busy. Until the developer quietens the card or accepts
-  BUSY numbers as the baseline, no further timing run is honest evidence, so nothing is queued.
-  The 1440p-vs-1080p resolution decision in "Ask first" remains the gate on the next build.
+  already noted means the box is chronically busy. But WARN is the bar the gate releases on - it
+  means "resident, not contending" - so a WARN "before" IS an acceptable sample and only a BUSY
+  "before" is not. ay released at WARN after its 150s timeout, so ay and ax are usable numbers;
+  the pessimistic "nothing is honest" reading was wrong. The real finding is that the ~26 ms 1440p
+  no-pixel figure is stable across both (25.8 / 26.4), and that the pixel channel costs ~18 ms at
+  1080p (az 31.6 ms with pixels vs ao's 13.6 without) - which needs a same-build pair to trust.
+
+* Next: `r2026-11-02-ba` is queued - 1080p without the pixel channel on az's checkout. az filled
+  the 1080p-with-pixels cell (31.6 ms / 31.6 fps); ba fills the matching no-pixel cell so the pair
+  is same-build. That pair decides whether the ~18 ms gap is the pixel channel or the resolution,
+  and "keep 1440p" may stop being the expensive option. The resolution choice in "Ask first"
+  remains open and still gates the next build; ba only completes its inputs. If ba lands near
+  13.6 ms, target the pixel channel; if near 27 ms, 1080p is genuinely slower on this build.
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
