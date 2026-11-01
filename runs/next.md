@@ -34,9 +34,11 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   tick reads its result to decide whether the ~18 ms gap is the pixel channel or the resolution.
   The resolution choice in "Ask first" remains open and still gates the next build.
 
-* Next: read `r2026-11-02-ba`'s result. If it lands near 13.6 ms the pixel channel is the lever and
-  resolution barely matters; if near 27 ms then 1080p itself is slower on this build. Either way,
-  update the "Ask first" resolution note with the pair's verdict and queue the next build target.
+* learned: `r2026-11-02-ba` answers the same-build pair question (2026-11-02 tick). Exit 0, 120/0,
+  steady median **14.9 ms / 67.3 fps** at 1080p no-pixel on az's checkout - near ao's older 13.6 ms
+  and nowhere near 27 ms, so 1080p is not slower on this build and the ~16.7 ms gap against az's
+  31.6 ms is the pixel channel, not the resolution. The "Ask first" resolution note now carries the
+  verdict; the next build target still needs that product decision, so nothing was queued this tick.
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
@@ -129,11 +131,15 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 * Decided (2026-10-11): the fixture keeps the whole frame. No crop.
 * Anything touching /etc, system packages or the box's configuration. Every time.
-* **Resolution for the 1440p target** (raised 2026-11-01 tick): keep 2560x1440 and pay for the pixel
-  channel, or drop the stream to 1920x1080 (measured 14.5 ms / 69 fps, no pixels). The stage table in
-  section 1 says no single 1440p stage clears 60 fps - the model alone is 12.7 ms and 19.0 ms has to
-  come off - so the answer decides whether the next build targets the neural pass or nothing at all.
-  A product choice, not measurable here; nothing in section 1 can be built before it.
+* **Resolution for the 1440p target** (raised 2026-11-01 tick, pair measured 2026-11-02): keep
+  2560x1440 and pay for the pixel channel, or drop the stream to 1920x1080. The same-build 1080p pair
+  is now in: az *with pixels* 31.6 ms / 31.6 fps vs ba *no pixels* 14.9 ms / 67.3 fps - so the pixel
+  channel costs ~16.7 ms at 1080p and 1080p itself is not the slow part (the older 13.6 ms figure
+  reproduced, at 14.9). Resolution costs ~11 ms (1440p no-pixel ~26 ms vs 1080p no-pixel ~15 ms).
+  60 fps needs 16.7 ms: 1080p no-pixel clears it; 1080p with pixels and 1440p without pixels do not.
+  So the next build targets the pixel channel either way, and "keep 1440p" is no longer obviously
+  the expensive option. Still a product choice, not measurable here; nothing gets built until it
+  is made.
 
 ## Learned
 
