@@ -49,13 +49,7 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   (14.5 ms / 69 fps, no pixels). The resolution choice is the real lever and it is not this tick's
   to make - it is now the first item under "Ask first". Nothing queued this tick.
 
-* Next: `r2026-11-02-ax` is queued - the first run through the require_idle gate, and a clean
-  1440p no-pixel sample at the same time. Every 1440p timing on record was taken with a game
-  resident (aw reads BUSY), so 24.6 ms (ap) and 35.7 ms (as/au) are not clean evidence for the
-  resolution decision. ax proves the gate writes gpu_before/gpu_after/idle_waited_s into
-  result.json and gives a checked number to compare against. The resolution choice in "Ask first"
-  still stands and still gates the next build; ax does not answer it, it only makes its inputs
-  honest.
+* learned: `r2026-11-02-ax` completed (exit 0, 120/0, steady 38.81 fps) but its result.json has gpu_before/gpu_after null and idle_waited_s 0.0 — the require_idle gate did not write the probes. The 1440p resolution decision in "Ask first" is still open and still gates the next build; ax does not answer it.
 
 * learned: `r2026-10-31-au` settles the 1440p pixel-path number (2026-11-01 tick). Exit 0, 120/0,
   steady median 35.8 ms / 28.0 fps, reproducing as's 35.7 ms / 28.03 fps on the same 120-frame pixel
