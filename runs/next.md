@@ -14,16 +14,20 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
 > so "no open item" means nothing queues and nothing runs, which is what happened overnight.
 
-* Next: pin the 1440p live-path number at a held-constant client — queue `r2026-10-31-au`. The two
-  1440p pixel-path samples disagree by 8 ms and the client was not held: `r2026-10-31-as` (120 frames,
-  client b44da39) says 35.7 ms / 28.03 fps steady, `r2026-10-31-at` (30 frames, client
-  d666a51) says 43.8 ms / 22.8 fps, and at's worker log shows the 30-frame median is inflated — its
-  frames 1-2 took 48.4 / 46.2 ms against ah's 22.1 / 22.7, so the warm-up tail sits inside a
-  30-frame median. au repeats as's shape (120 frames, 1440p, synthetic, default path) at the current
-  checkout and adds `--save-before`, so its last frame is again n=119 and its after.png can be
-  diffed against as's: a second 120-frame sample for the spread, and a nonzero MAD would mean the
-  client commits since as moved default-path pixels. Quote 1440p from the two 120-frame runs, not
-  from at.
+* Next: read `r2026-10-31-au` and settle the 1440p live-path number (do not queue anything unless
+  it fails). au is as's shape — 120 frames, 1440p, synthetic, default path, `--save-before` +
+  `--save-after` — so its last frame is again n=119 and its after.png diffs against as's at the same
+  input. Three things to record: the steady median against as's 35.7 ms / 28.03 fps and at's
+  43.8 ms / 22.8 fps, its after.png MAD against as's after.png and against `r2026-10-30-ah`'s
+  nomotion.png (both 0.0 = the default path stays pixel-neutral at 120 frames), and whether its
+  worker-log frame 1-2 times repeat at's 48/46 ms or ah's 22/22 — that decides whether at's 43.8 ms
+  is the client's warm-up or a real regression. Quote 1440p from the two 120-frame runs.
+
+* learned: `r2026-10-31-au` is queued (2026-11-01 tick). The 1440p pixel-path number rests on two
+  disagreeing samples taken on different checkouts — as 35.7 ms / 28.03 fps (client b44da39) vs at
+  43.8 ms / 22.8 fps (client d666a51) — and at's 30-frame median is warm-up-bound (frames 1-2 at
+  48.4/46.2 ms against ah's 22.1/22.7), so at is not the live-path figure. au repeats as's 120-frame
+  pixel shape at the current checkout to give a second sample and a same-input after.png.
 
 * learned: the 1440p lever decision is settled, and work-scale is dead (2026-11-01 tick, read ap/aq/ar).
   `r2026-10-31-ar` (`--work-scale 0.75`) exited 3 at frame 0: the worker refused "the client expects
