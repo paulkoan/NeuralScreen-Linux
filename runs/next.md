@@ -125,6 +125,16 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* learned: the gate works (r2026-11-02-ay, 2026-11-01 21:15Z, exit 0, 8.0s). With
+  `require_idle = true` in the policy, `idle_waited_s` is **150.0** and `gpu_before` is WARN
+  (chromium, signal-desktop, msedge, Telegram, shelly-ui, signon-ui resident, "not contending"),
+  so it held 2.5 minutes for the card to leave BUSY and then ran. `gpu_after` reads BUSY at 59%
+  utilisation - the worker's own pass fills that sample, so read the "before" line as the gate's
+  decision and the "after" line as evidence the card was working. Steady median **26.4 ms / 37.9
+  fps**, against ax's 25.8 ms on the same shape: the pair agrees to 0.6 ms and 1.0 fps, so the
+  no-pixel 1440p figure is stable at ~26 ms. The gate costs 2.5 minutes when the card is busy and
+  nothing when it is not.
+
 * learned: the unit runs the gate code, but the policy does not switch it on (r2026-11-02-ax,
   2026-11-01 21:02Z, exit 0, 8.7s). The executor is refreshed - it wrote the new result fields - and
   yet `gpu_before`, `gpu_after` are both `null` and `idle_waited_s` is 0.0, which only happens when
