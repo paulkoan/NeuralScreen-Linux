@@ -14,12 +14,24 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
 > so "no open item" means nothing queues and nothing runs, which is what happened overnight.
 
-* Close the 1440p gap, now 5.1 ms (no-motion 21.8 ms against a 16.7 ms budget): `r2026-10-31-ap`
-  verifies the flipped no-motion default with a run that passes no motion flag at all,
-  `r2026-10-31-aq` repeats the small network at 1440p (26.8 ms, which was backwards against the
-  reference's 21.8 ms and needs a second sample), and `r2026-10-31-ar` tests `--work-scale 0.75`
-  as a budget lever. Decide between per-stage scheduling cost and work-scale with those three,
-  then take the picture half of whichever wins.
+* learned: the 1440p lever decision is settled, and work-scale is dead (2026-11-01 tick, read ap/aq/ar).
+  `r2026-10-31-ar` (`--work-scale 0.75`) exited 3 at frame 0: the worker refused "the client expects
+  NGX upscaling (1920x1080 -> 2560x1440); this worker runs the network at one size", so work-scale
+  cannot be measured on this port. `r2026-10-31-ap` (default, no motion flag) exited 0: 120/0,
+  **24.6 ms median / 40.7 fps steady**, confirming the flipped no-motion default took effect (the
+  21.8 ms prediction was 5 ms low; 24.6 is still under the 29.1 ms motion-on figure). `r2026-10-31-aq`
+  (small model) exited 0 but was **slower**: 26.5 ms / 37.8 fps steady, so the small network is not
+  the 1440p lever either. Per-stage scheduling cost wins by default. Picture half queued as
+  `r2026-10-31-as` (default path + `--save-after`, 120 frames, 1440p) to diff its output against
+  `r2026-10-30-ah`'s no-motion picture before quoting the 24.6 ms figure.
+
+* Read `r2026-10-31-as` when it lands: if its `after.png` is byte-identical to `r2026-10-30-ah`'s
+  no-motion picture (MAD 0.0), the 24.6 ms default path is quality-neutral and the remaining 1440p
+  gap is per-stage scheduling cost — capture 3.6 + send 6.2 ms of the 16.7 ms budget, while the
+  worker's network+composite is already ~12 ms and is not the lever. Look for a saving in the
+  capture/send legs (they are client-side and scale with area), then queue the run that measures it.
+  If the pictures differ, stop and report the MAD instead — the default path then trades quality for
+  speed and the decision reopens.
 
 ## 2. Ask first - do not start these alone
 
