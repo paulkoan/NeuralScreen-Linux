@@ -40,6 +40,16 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   31.6 ms is the pixel channel, not the resolution. The "Ask first" resolution note now carries the
   verdict; the next build target still needs that product decision, so nothing was queued this tick.
 
+* Next: the pixel channel's 16.7 ms at 1080p is not in the worker. az's client split reads recv
+  56.3 ms against ba's 43.1 ms on the same build - **+13.2 ms of the 16.7 is client-side recv**,
+  i.e. pulling the finished 14.7 MB image back over the shared-memory handoff. The worker's own
+  readback 2.8 + reply 4.4 is only 7.2 ms at 1440p. So the shippable-path lever is the transport of
+  the result, not the neural pass: a smaller reply (FP8 output, or sending only changed tiles)
+  attacks 13 ms where the model attacks 12.7 ms and costs picture quality. This also explains why
+  1080p-with-pixels is only 4 ms faster than 1440p-with-pixels while no-pixel is 11 ms faster: the
+  fixed handoff dominates. Next build target should be the reply path; the resolution decision stays
+  open but is now clearly secondary. Do not queue more timings until the reply approach is chosen.
+
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
 > so "no open item" means nothing queues and nothing runs, which is what happened overnight.
