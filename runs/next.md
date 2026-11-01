@@ -22,14 +22,37 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 > BUSY or UNKNOWN, record that next to the number and do not compare it against earlier runs -
 > two 1440p runs of the same config already read 29.1 and 35.3 ms an hour apart.
 
-* Next: line up the 1440p pixel-path stages before proposing any build. as and au are on disk;
-  itemize the client stages (capture/send/recv/display) and the worker stages (proxy /
-  network+composite / readback / reply) for frames 29/59/89/119 from
-  `origin/results:runs/done/r2026-10-31-{as,au}/stdout.log` and write the table here with one named
-  candidate stage. 60 fps at 1440p needs 16.7 ms against ~35.7 ms today, so a build would have to
-  move the model (~12.7 ms) or the pixel channel (~7.8 ms); the only measured path that clears
-  60 fps is 1080p (14.5 ms / 69 fps, no pixels). Resolution is a product choice - make it before
-  any code change.
+* learned: the 1440p pixel path is itemized, and it is the worker's `stderr.log` that carries the
+  per-frame stages, not `stdout.log` - the client prints only run means plus send/recv spreads, so
+  there is no per-frame capture/send/recv/display sample at 29/59/89/119 and the client row below is
+  a mean, not a median. Steady values, ms, frames 29 / 59 / 89 / 119 (2026-11-01 tick):
+
+  | run | worker total | proxy | network+composite | readback | reply |
+  |---|---|---|---|---|---|
+  | as | 24.3 / 21.9 / 22.1 / 20.8 | 1.9 / 1.9 / 3.1 / 1.9 | 14.8 / 12.7 / 11.8 / 12.4 | 3.0 / 2.8 / 2.9 / 2.8 | 4.6 / 4.5 / 4.3 / 3.8 |
+  | au | 22.5 / 22.5 / 24.1 / 21.9 | 2.4 / 1.9 / 2.2 / 2.1 | 12.3 / 13.1 / 12.5 / 12.9 | 2.9 / 2.8 / 3.6 / 2.7 | 4.9 / 4.7 / 5.7 / 4.2 |
+
+  The two runs agree within a millisecond on every stage; both workers' steady medians are ~22.3 ms.
+  Client means: capture 2.9 (as) / 2.8 (au), send 4.8 / 4.6, display 2.1 / 2.2, recv median 26.2 /
+  26.3 - so the 35.7 / 35.8 ms median frame is ~2.9 capture + 4.8 send + 26.2 recv + 2.1 display,
+  and recv is the worker's 22.3 plus ~3.9 ms of shm handoff. as's send max 8.6 ms at frame 23 is a
+  one-off (au's max is 6.9); frame 0 carries the warm-up in recv (3948 / 4389 ms) and nothing else.
+  Worker split of the 22.3: network+composite 12.7, reply 4.4, readback 2.8, proxy 1.9.
+
+* learned: no single 1440p stage clears 60 fps; the one named candidate is `network+composite`
+  (2026-11-01 tick). 60 fps needs 16.7 ms against 35.7 ms measured, i.e. 19.0 ms off. The neural
+  pass is the largest identified stage at 12.7 ms - 36% of the client frame, 57% of the worker's -
+  so it is the candidate; but deleting it outright still leaves 23.0 ms, and adding the pixel
+  channel (readback 2.8 + reply 4.4 = 7.2 ms) only reaches 15.8 ms if model *and* pixels both go to
+  zero. Client capture+send+display is another 9.8 ms and the handoff ~3.9 ms. So a 1440p build
+  cannot be justified as one stage, and the only measured path under 16.7 ms remains 1080p
+  (14.5 ms / 69 fps, no pixels). The resolution choice is the real lever and it is not this tick's
+  to make - it is now the first item under "Ask first". Nothing queued this tick.
+
+* Next: nothing buildable until the 1440p-vs-1080p resolution decision in "Ask first" is made. The
+  only run that would add anything meanwhile is a 1080p pixel-shape repeat (as/au already agree to
+  0.1 ms at 1440p, so a third 1440p sample adds little), and that is worth queueing only if the
+  decision goes to 1080p. Do not queue it on this tick's own authority.
 
 * learned: `r2026-10-31-au` settles the 1440p pixel-path number (2026-11-01 tick). Exit 0, 120/0,
   steady median 35.8 ms / 28.0 fps, reproducing as's 35.7 ms / 28.03 fps on the same 120-frame pixel
@@ -84,6 +107,11 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 * Decided (2026-10-11): the fixture keeps the whole frame. No crop.
 * Anything touching /etc, system packages or the box's configuration. Every time.
+* **Resolution for the 1440p target** (raised 2026-11-01 tick): keep 2560x1440 and pay for the pixel
+  channel, or drop the stream to 1920x1080 (measured 14.5 ms / 69 fps, no pixels). The stage table in
+  section 1 says no single 1440p stage clears 60 fps - the model alone is 12.7 ms and 19.0 ms has to
+  come off - so the answer decides whether the next build targets the neural pass or nothing at all.
+  A product choice, not measurable here; nothing in section 1 can be built before it.
 
 ## Learned
 
