@@ -1,0 +1,17 @@
+{
+  "exit_code": 0,
+  "seconds": 21.183,
+  "argv": [
+    "uv",
+    "run",
+    "python",
+    "tools/gpu_status.py",
+    "--watch",
+    "20",
+    "--watch",
+    "20"
+  ],
+  "artifacts": [],
+  "runner": "e44571d7dd12",
+  "entry_env": []
+}

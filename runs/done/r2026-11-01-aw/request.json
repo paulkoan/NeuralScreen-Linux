@@ -1,0 +1,8 @@
+{
+  "id": "r2026-11-01-aw",
+  "entry": "gpu-status",
+  "args": ["--watch", "20"],
+  "timeout_s": 120,
+  "artifacts": [],
+  "note": "Retry of av (exit 126, refused: entry 'gpu-status' is not in the policy). The policy lives on the GPU box at /opt/neuralscreen/policy.toml and is deliberately not versioned, so the entry has to be added there; tools/runner_policy.example.toml in the repo is only a template. av ran 8s after the request was pushed, likely before the edit landed. If this refuses the same way, the entry is not in the box's policy."
+}

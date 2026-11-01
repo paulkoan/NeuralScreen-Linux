@@ -1,0 +1,1 @@
+uv run python tools/gpu_status.py --watch 20 --watch 20
