@@ -11,9 +11,7 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 ## 1. Next work
 
 
-* learned: `r2026-11-01-aw` establishes the GPU baseline but the card was BUSY (exit 0). `Dying Light The Beast` holds 5.6 GiB, plus browsers and desktop apps; the card idles at 210/3105 MHz. Timing runs are not evidence until a probe reads idle.
 
-* learned: `r2026-11-02-ay` proves the idle gate works and also proves the card never reads idle
   (2026-11-02 tick). Exit 0, 120/0, `gpu_before` = WARN after waiting the full 150s, `gpu_after` =
   BUSY at 59% utilisation, so all three gate fields are now populated and the require_idle flag is
   live in the policy. Steady median 26.4 ms / 37.9 fps against ax's 25.8 ms on the same 120-frame
@@ -29,12 +27,10 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   no-pixel figure is stable across both (25.8 / 26.4), and that the pixel channel costs ~18 ms at
   1080p (az 31.6 ms with pixels vs ao's 13.6 without) - which needs a same-build pair to trust.
 
-* learned: `r2026-11-02-ba` is queued (1080p no-pixel on az's checkout), and az's 1080p-with-pixels
   cell is filled at 31.6 ms / 31.6 fps. ba completes the same-build pixel/no-pixel pair; the next
   tick reads its result to decide whether the ~18 ms gap is the pixel channel or the resolution.
   The resolution choice in "Ask first" remains open and still gates the next build.
 
-* learned: `r2026-11-02-ba` answers the same-build pair question (2026-11-02 tick). Exit 0, 120/0,
   steady median **14.9 ms / 67.3 fps** at 1080p no-pixel on az's checkout - near ao's older 13.6 ms
   and nowhere near 27 ms, so 1080p is not slower on this build and the ~16.7 ms gap against az's
   31.6 ms is the pixel channel, not the resolution. The "Ask first" resolution note now carries the
@@ -50,6 +46,13 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   fixed handoff dominates. Next build target should be the reply path; the resolution decision stays
   open but is now clearly secondary. Do not queue more timings until the reply approach is chosen.
 
+* Next: `r2026-11-02-bb` is queued - 1440p with pixels on az's build, the measure-first run for the
+  reply path. az read `recv 56.3 ms` at 1080p; as/au read 60.3/64.8 at 1440p on older clients. If
+  recv scales with payload size, the per-megabyte cost is the number that decides whether an FP8
+  reply (half the 14.7 MB) is worth a wire-format change; if recv is flat, the 13.2 ms is fixed
+  overhead and FP8 would not help. Cheap and reversible: same flags as as/au, no code change. The
+  resolution decision stays in "Ask first" and is now clearly secondary to the reply path.
+
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
 > so "no open item" means nothing queues and nothing runs, which is what happened overnight.
@@ -59,7 +62,6 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 > BUSY or UNKNOWN, record that next to the number and do not compare it against earlier runs -
 > two 1440p runs of the same config already read 29.1 and 35.3 ms an hour apart.
 
-* learned: the 1440p pixel path is itemized, and it is the worker's `stderr.log` that carries the
   per-frame stages, not `stdout.log` - the client prints only run means plus send/recv spreads, so
   there is no per-frame capture/send/recv/display sample at 29/59/89/119 and the client row below is
   a mean, not a median. Steady values, ms, frames 29 / 59 / 89 / 119 (2026-11-01 tick):
@@ -76,7 +78,6 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   one-off (au's max is 6.9); frame 0 carries the warm-up in recv (3948 / 4389 ms) and nothing else.
   Worker split of the 22.3: network+composite 12.7, reply 4.4, readback 2.8, proxy 1.9.
 
-* learned: no single 1440p stage clears 60 fps; the one named candidate is `network+composite`
   (2026-11-01 tick). 60 fps needs 16.7 ms against 35.7 ms measured, i.e. 19.0 ms off. The neural
   pass is the largest identified stage at 12.7 ms - 36% of the client frame, 57% of the worker's -
   so it is the candidate; but deleting it outright still leaves 23.0 ms, and adding the pixel
@@ -86,9 +87,7 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   (14.5 ms / 69 fps, no pixels). The resolution choice is the real lever and it is not this tick's
   to make - it is now the first item under "Ask first". Nothing queued this tick.
 
-* learned: `r2026-11-02-ax` completed (exit 0, 120/0, steady 38.81 fps) but its result.json has gpu_before/gpu_after null and idle_waited_s 0.0 — the require_idle gate did not write the probes. The 1440p resolution decision in "Ask first" is still open and still gates the next build; ax does not answer it.
 
-* learned: `r2026-10-31-au` settles the 1440p pixel-path number (2026-11-01 tick). Exit 0, 120/0,
   steady median 35.8 ms / 28.0 fps, reproducing as's 35.7 ms / 28.03 fps on the same 120-frame pixel
   shape - so au is the second clean sample and at's 43.8 ms / 22.8 fps was warm-up-bound, not a
   regression: au's worker frames 1-2 read 91.9/87.7 ms yet settle to 22.5/22.5/24.1/21.9 at frames
@@ -98,13 +97,11 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   the au-vs-ah `nomotion.png` diff is not a same-input pair (bar at x833 vs x203, n=119 vs n=29) and
   reads the same 38.90 fixture confound the as item already documented - it says nothing.
 
-* learned: `r2026-10-31-au` is queued (2026-11-01 tick). The 1440p pixel-path number rests on two
   disagreeing samples taken on different checkouts — as 35.7 ms / 28.03 fps (client b44da39) vs at
   43.8 ms / 22.8 fps (client d666a51) — and at's 30-frame median is warm-up-bound (frames 1-2 at
   48.4/46.2 ms against ah's 22.1/22.7), so at is not the live-path figure. au repeats as's 120-frame
   pixel shape at the current checkout to give a second sample and a same-input after.png.
 
-* learned: the 1440p lever decision is settled, and work-scale is dead (2026-11-01 tick, read ap/aq/ar).
   `r2026-10-31-ar` (`--work-scale 0.75`) exited 3 at frame 0: the worker refused "the client expects
   NGX upscaling (1920x1080 -> 2560x1440); this worker runs the network at one size", so work-scale
   cannot be measured on this port. `r2026-10-31-ap` (default, no motion flag) exited 0: 120/0,
@@ -115,7 +112,6 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   `r2026-10-31-as` (default path + `--save-after`, 120 frames, 1440p) to diff its output against
   `r2026-10-30-ah`'s no-motion picture before quoting the 24.6 ms figure.
 
-* learned: `r2026-10-31-as` cannot answer the quality question, and it corrects the 24.6 ms figure
   (2026-11-01 tick). The run exited 0, but the pair it was queued to diff is confounded: the
   synthetic fixture moves a 320px bar with the grab index (`minimal/capture.py`,
   `bar = (n*7) % (w - w//8)`), and both `--save-after` files hold the LAST frame — as ran 120 frames
@@ -130,7 +126,6 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   (36.1 ms / 27.67 fps, same 30-frame pixel shape) agree. The live path must show or save its output,
   so quote 1440p against ~35.7 ms, not 24.6, until a same-input pair exists.
 
-* learned: `r2026-10-31-at` is quality-neutral (2026-11-01 tick). Its `before.png` matches the
   fixture's n=29 frame (MAD 0.0000, max 1, no pixels >2 — same input), and its `after.png` is
   byte-identical to `r2026-10-30-ah`'s `nomotion.png` (MAD 0.0, PSNR inf), so the default
   scheduling path changes no pixels. Steady median 43.8 ms/frame (22.8 fps) for the 30-frame
@@ -152,6 +147,19 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   is made.
 
 ## Learned
+
+* learned: `r2026-11-01-aw` establishes the GPU baseline but the card was BUSY (exit 0). `Dying Light The Beast` holds 5.6 GiB, plus browsers and desktop apps; the card idles at 210/3105 MHz. Timing runs are not evidence until a probe reads idle.
+* learned: `r2026-11-02-ay` proves the idle gate works and also proves the card never reads idle
+* learned: `r2026-11-02-ba` is queued (1080p no-pixel on az's checkout), and az's 1080p-with-pixels
+* learned: `r2026-11-02-ba` answers the same-build pair question (2026-11-02 tick). Exit 0, 120/0,
+* learned: the 1440p pixel path is itemized, and it is the worker's `stderr.log` that carries the
+* learned: no single 1440p stage clears 60 fps; the one named candidate is `network+composite`
+* learned: `r2026-11-02-ax` completed (exit 0, 120/0, steady 38.81 fps) but its result.json has gpu_before/gpu_after null and idle_waited_s 0.0 — the require_idle gate did not write the probes. The 1440p resolution decision in "Ask first" is still open and still gates the next build; ax does not answer it.
+* learned: `r2026-10-31-au` settles the 1440p pixel-path number (2026-11-01 tick). Exit 0, 120/0,
+* learned: `r2026-10-31-au` is queued (2026-11-01 tick). The 1440p pixel-path number rests on two
+* learned: the 1440p lever decision is settled, and work-scale is dead (2026-11-01 tick, read ap/aq/ar).
+* learned: `r2026-10-31-as` cannot answer the quality question, and it corrects the 24.6 ms figure
+* learned: `r2026-10-31-at` is quality-neutral (2026-11-01 tick). Its `before.png` matches the
 
 * learned: ba closes the same-build 1080p pair, and the pixel channel is confirmed as the lever
   (r2026-11-02-ba, 2026-11-01 21:28Z, exit 0, 6.4s, gate waited 0.0 - the card was already WARN).
