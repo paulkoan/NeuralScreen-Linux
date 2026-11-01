@@ -16,6 +16,7 @@ guessing when neither is present. It never writes anything and never touches the
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,23 @@ BUSY_UTIL = 15.0
 # on the card that a benchmark will contend with.
 DESKTOP_PROCESSES = ("Xorg", "Xwayland", "kwin", "kwin_wayland", "plasmashell", "gnome-shell",
                      "systemd-logind", "sddm", "gdm")
+
+
+def short_name(cmdline: str) -> str:
+    """A game's process name is its whole command line, and Wine's is a Windows path.
+
+    nvidia-smi reports the full argv, which buries the answer: two kilobytes of Chromium switches,
+    or a Steam path through a directory with spaces in it. Take the executable if the line names
+    one, otherwise the first token, basename only.
+    """
+    cmdline = (cmdline or "").strip()
+    if not cmdline:
+        return "(unreadable command line)"
+    exe = re.search(r"([^\\/]+\.exe)", cmdline, re.IGNORECASE)
+    if exe:
+        return exe.group(1)[:60]
+    first = cmdline.split()[0]
+    return first.split("\\")[-1].split("/")[-1][:60]
 
 
 def run(cmd: list[str], timeout: int = 15) -> str:
@@ -74,9 +92,12 @@ def nvidia_smi() -> dict | None:
                  "--format=csv,noheader,nounits"])
     apps = []
     for line in procs.strip().splitlines():
-        parts = [p.strip() for p in line.split(",")]
-        if len(parts) >= 3:
-            apps.append({"pid": parts[0], "name": parts[1], "mem_mib": num(parts[2])})
+        # The command line can contain commas, so split only as far as the memory figure.
+        pid, _, rest = line.partition(",")
+        cmdline, _, mem = rest.rpartition(",")
+        if pid.strip():
+            apps.append({"pid": pid.strip(), "name": short_name(cmdline.strip()),
+                         "cmdline": cmdline.strip(), "mem_mib": num(mem)})
     gpu["compute_apps"] = apps
     return gpu
 
@@ -106,21 +127,30 @@ def _num(text):
 
 
 def verdict(gpu: dict | None) -> tuple[str, list[str]]:
-    """IDLE, BUSY or UNKNOWN, with the reasons that led there."""
+    """IDLE, WARN or BUSY, with the reasons that led there.
+
+    BUSY means something is taking compute time now, and a timing run beside it is worthless.
+    WARN means another process is *resident* - holding VRAM without contending - which does not
+    slow a frame by itself, but can wake up mid-run. A card sitting at a low SM clock is neither:
+    clocks drop when nothing runs, so that is reported as a note, not a verdict.
+    """
     if gpu is None:
         return "UNKNOWN", ["no nvidia-smi or rocm-smi on this machine"]
-    why = []
+    busy, resident = [], []
     util = gpu.get("util_percent")
     if util is not None and util >= BUSY_UTIL:
-        why.append(f"utilization {util:.0f}%")
+        busy.append(f"utilization {util:.0f}%")
     for app in gpu.get("compute_apps") or []:
-        if not any(d in (app.get("name") or "") for d in DESKTOP_PROCESSES):
-            why.append(f"{app.get('name')} (pid {app.get('pid')}, {app.get('mem_mib')} MiB)")
-    clock = gpu.get("clock_sm_mhz")
-    top = gpu.get("clock_max_sm_mhz")
-    if clock and top and clock < 0.5 * top:
-        why.append(f"SM clock {clock:.0f} of {top:.0f} MHz - the card is idling down")
-    return ("BUSY" if why else "IDLE"), why
+        name = app.get("name") or ""
+        if any(d in name for d in DESKTOP_PROCESSES):
+            continue
+        label = f"{name} (pid {app.get('pid')}, {app.get('mem_mib')} MiB)"
+        (busy if util is not None and util >= BUSY_UTIL else resident).append(label)
+    if busy:
+        return "BUSY", busy + ([f"also resident: {r}" for r in resident])
+    if resident:
+        return "WARN", [f"resident but not contending: {r}" for r in resident]
+    return "IDLE", []
 
 
 def sample(seconds: int) -> dict:

@@ -1,8 +1,9 @@
-"""The GPU probe must say BUSY for a shared card and UNKNOWN when it cannot tell.
+"""The GPU probe must separate contention from presence, and never guess.
 
 A skewed timing run is expensive to notice after the fact (two 1440p runs of the same config read
-29.1 and 35.3 ms an hour apart), so the probe has to fail loudly rather than quietly report a
-comfortable number. Parsing is pinned against the real nvidia-smi CSV shape.
+29.1 and 35.3 ms an hour apart). A game holding 5.6 GiB at 7% utilisation does not slow a frame -
+it takes no compute time - but it can wake up mid-run, so it is a warning rather than a stop. A
+card at a low clock is neither: clocks drop when nothing runs.
 """
 import tools.gpu_status as gs
 
@@ -47,10 +48,11 @@ def test_a_desktop_process_holding_vram_is_not_a_contender(monkeypatch):
     assert state == "IDLE", why
 
 
-def test_a_foreign_compute_process_makes_it_busy(monkeypatch):
+def test_a_foreign_process_at_low_utilisation_is_a_warning(monkeypatch):
+    """Holding memory is not the same as taking compute time."""
     with_smi(monkeypatch, "6", apps="9001, python3, 9000")
     state, why = gs.verdict(gs.nvidia_smi())
-    assert state == "BUSY"
+    assert state == "WARN"
     assert any("python3" in w for w in why)
 
 
@@ -61,13 +63,13 @@ def test_high_utilisation_makes_it_busy(monkeypatch):
     assert any("utilization" in w for w in why)
 
 
-def test_a_clocked_down_card_is_busy(monkeypatch):
-    """0% utilisation at half the SM clock means someone else has the power budget."""
+def test_a_clocked_down_card_is_not_by_itself_busy(monkeypatch):
+    """Clocks drop when nothing runs; that is idling, not contamination."""
     with_smi(monkeypatch, "0")
     gpu = gs.nvidia_smi()
     gpu["clock_sm_mhz"] = 400.0
     state, why = gs.verdict(gpu)
-    assert state == "BUSY", why
+    assert state == "IDLE", why
 
 
 def test_no_smi_at_all_is_unknown_not_idle(monkeypatch):
@@ -84,7 +86,38 @@ def test_require_idle_exits_nonzero_when_busy(monkeypatch):
     assert gs.main() == 1
 
 
+def test_require_idle_refuses_a_resident_game(monkeypatch):
+    steam = (r"4176838, S:\steamapps\common\Dying Light The Beast\ph_ft\work\bin\x64"
+             r"\DyingLightGame_TheBeast_x64_rwdi.exe, 5670")
+    with_smi(monkeypatch, "7", apps=steam)
+    monkeypatch.setattr(gs.sys, "argv", ["gpu_status.py", "--require-idle"])
+    assert gs.main() == 1
+
+
 def test_require_idle_is_silent_when_idle(monkeypatch):
     with_smi(monkeypatch, "2")
     monkeypatch.setattr(gs.sys, "argv", ["gpu_status.py", "--require-idle"])
     assert gs.main() == 0
+
+
+def test_process_names_are_shortened_to_something_readable():
+    """nvidia-smi hands back whole command lines, megabytes of switches and Windows paths."""
+    long_line = ("/usr/lib/chromium/chromium --type=gpu-process --ozone-platform=wayland "
+                 "--gpu-preferences=YAAAAAAAAAAgAQAEAAAAAAAAAAAAAGAASAAAAAAAAAABAAAAAAAAAEAA")
+    assert gs.short_name(long_line) == "chromium"
+    steam = (r"S:\steamapps\common\Dying Light The Beast\ph_ft\work\bin\x64"
+             r"\DyingLightGame_TheBeast_x64_rwdi.exe")
+    assert gs.short_name(steam) == "DyingLightGame_TheBeast_x64_rwdi.exe"
+    assert gs.short_name("") == "(unreadable command line)"
+
+
+def test_a_resident_game_is_a_warning_not_a_stop(monkeypatch):
+    """5.6 GiB held at 7% util does not take compute time - but it can wake up mid-run."""
+    steam = (r"4176838, S:\steamapps\common\Dying Light The Beast\ph_ft\work\bin\x64"
+             r"\DyingLightGame_TheBeast_x64_rwdi.exe, 5670")
+    with_smi(monkeypatch, "7", apps=steam)
+    gpu = gs.nvidia_smi()
+    assert gpu["compute_apps"][0]["name"] == "DyingLightGame_TheBeast_x64_rwdi.exe"
+    state, why = gs.verdict(gpu)
+    assert state == "WARN", why
+    assert any("resident" in w for w in why)

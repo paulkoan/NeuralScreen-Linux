@@ -125,6 +125,31 @@ ls -l /opt/neuralscreen/state/repo/.venv/bin/python     # does it exist and reso
 /opt/neuralscreen/state/repo/.venv/bin/python -c "import numpy, PIL; print('ok')"
 ```
 
+## Holding a run until the GPU is quiet
+
+This box is a desktop: a compositor, a browser and, often, a game resident. "Pristine" is not
+available, so a measurement does not wait for that - it waits until the card is **not BUSY**, as
+decided by `tools/gpu_status.py`:
+
+* **BUSY** - another process is taking compute time now (utilisation above the bar, or a foreign
+  process while the card is working). A run in this state is worthless; hold.
+* **WARN** - something is merely *resident*: a game holding 5.6 GiB at 7% utilisation takes no
+  compute time and leaves 6.6 GB free. Good enough to measure on; it can still wake up mid-run.
+* **IDLE** - nothing but the desktop.
+* **UNKNOWN** - no `nvidia-smi` on the machine, or the probe could not answer. Recorded as such,
+  never treated as clean.
+
+Set `require_idle = true` in `/opt/neuralscreen/policy.toml` globally or on the measurement
+entries only. Before such a run the executor polls the probe every `idle_poll_s` (default 15) and
+holds for up to `idle_wait_s` (default 300), then **runs anyway** with the card's state written
+into `result.json` (`gpu_before`, `gpu_after`, `idle_waited_s`) and the report. A queue that never
+drains is worse than a number that says the card was busy; the reader can discard a marked run,
+not a missing one.
+
+The wait sits outside the run's own timeout, so the worst case is `idle_wait_s + timeout_s` of
+wall clock. This needs the installed executor refreshed (`## The installed executor is a copy`)
+before the flag exists on the box.
+
 ## The installed executor is a copy, not the clone
 
 A commit changes `state/repo`, but the timer does **not** run the code in the clone. It runs

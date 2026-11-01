@@ -1,0 +1,9 @@
+{
+  "id": "r2026-11-02-ax",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "First run through the require_idle gate. Two jobs in one: prove the gate records gpu_before/gpu_after/idle_waited_s in result.json, and re-take the 1440p no-pixel number on a card that was checked rather than assumed. The 24.6 ms on record (ap) and the 35.7 ms pixel figure (as/au) were both measured with Dying Light The Beast resident, so neither is clean evidence for the resolution decision. This is the cheapest sample that makes the next comparison honest."
+}

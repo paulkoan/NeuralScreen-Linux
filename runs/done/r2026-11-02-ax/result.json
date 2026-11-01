@@ -1,0 +1,27 @@
+{
+  "exit_code": 0,
+  "seconds": 8.717,
+  "argv": [
+    "uv",
+    "run",
+    "python",
+    "-m",
+    "minimal",
+    "--frames",
+    "120",
+    "--headless",
+    "--source",
+    "synthetic",
+    "--size",
+    "2560x1440",
+    "--worker-log"
+  ],
+  "artifacts": [],
+  "runner": "005dd2c6ea9e",
+  "entry_env": [
+    "NS_WORKER_CMD"
+  ],
+  "gpu_before": null,
+  "gpu_after": null,
+  "idle_waited_s": 0.0
+}
