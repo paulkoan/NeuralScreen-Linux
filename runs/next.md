@@ -30,6 +30,17 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 * Decided (2026-10-11): the fixture keeps the whole frame. No crop.
 * Anything touching /etc, system packages or the box's configuration. Every time.
+* **Frame generation / alternate frames** (raised 2026-11-02): if the pipeline computes 30 fps and
+  presents 60, each processed frame gets 33.3 ms and 1440p-with-pixels (39.7 ms) needs only 6.4 ms
+  off - a plausible target, where 60 processed fps needs 23 ms and is not. The port already has the
+  machinery: `serve.cpp` keeps the last frame and its composite "samples that history where the
+  client's motion field says this pixel was", i.e. temporal reprojection against a motion field.
+  What is missing is the field: the client sends zeros (protocol.py `put(rgba, motion=None)` skips
+  it), because a Wayland portal capture cannot supply per-pixel motion. So frame generation needs
+  motion estimated client-side - optical flow or block match on downscaled frames - or vectors from
+  the game/portal if it can expose them. Cost: new code in the capture/loop layer, one extra frame
+  of latency, and ghosting risk on denoised content where the denoiser's output is not temporally
+  consistent. Not a flag. Needs a user decision on whether to spend there.
 * **DECIDED 2026-11-02 by the user: stay at 1440p and aim for max FPS**, accepting that 60 fps may
   not be reached. So "drop to 1080p" is off the table and the pixel channel / overhead work is the
   programme. Frame generation and alternate-frame interpolation were raised in the same message and
