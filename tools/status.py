@@ -88,6 +88,25 @@ def last_runs(n: int = 3) -> list[dict]:
     return runs
 
 
+def last_gpu() -> str | None:
+    """The most recent `GPU status:` line any run printed, if one ever has.
+
+    A timing number is only worth reading if the card was quiet, so the status view carries the
+    last probe rather than making the reader find it.
+    """
+    ids = sorted(
+        line.split("/")[-2] if line.endswith("/") else line.split("/")[-1]
+        for line in git("ls-tree", "-d", "--name-only", "origin/results", "runs/done/").splitlines()
+    )
+    for run_id in reversed(ids[-6:]):
+        for name in ("stdout.log", "stderr.log"):
+            text = git("show", f"origin/results:runs/done/{run_id}/{name}")
+            for line in text.splitlines():
+                if line.startswith("GPU status:"):
+                    return f"{run_id}: {line.strip()}"
+    return None
+
+
 def last_tick() -> dict | None:
     out_dir = Path("/opt/data/profiles/neuralscreen/cron/output/b639f19f57ff")
     newest = max(out_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, default=None)
@@ -149,6 +168,8 @@ def main() -> int:
             print(f"  result       {age(now - r['when']):>5} ago  {r['subject']}")
     else:
         print("  result       none on origin/results")
+    gpu = last_gpu()
+    print(f"  gpu          {gpu}" if gpu else "  gpu          no probe has run yet")
     if tick:
         print(f"  last tick    {age(now - tick['mtime']):>5} ago  {tick['status']}  ({tick['name']})")
     else:
