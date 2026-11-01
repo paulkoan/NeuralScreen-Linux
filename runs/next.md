@@ -29,12 +29,14 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   no-pixel figure is stable across both (25.8 / 26.4), and that the pixel channel costs ~18 ms at
   1080p (az 31.6 ms with pixels vs ao's 13.6 without) - which needs a same-build pair to trust.
 
-* Next: `r2026-11-02-ba` is queued - 1080p without the pixel channel on az's checkout. az filled
-  the 1080p-with-pixels cell (31.6 ms / 31.6 fps); ba fills the matching no-pixel cell so the pair
-  is same-build. That pair decides whether the ~18 ms gap is the pixel channel or the resolution,
-  and "keep 1440p" may stop being the expensive option. The resolution choice in "Ask first"
-  remains open and still gates the next build; ba only completes its inputs. If ba lands near
-  13.6 ms, target the pixel channel; if near 27 ms, 1080p is genuinely slower on this build.
+* learned: `r2026-11-02-ba` is queued (1080p no-pixel on az's checkout), and az's 1080p-with-pixels
+  cell is filled at 31.6 ms / 31.6 fps. ba completes the same-build pixel/no-pixel pair; the next
+  tick reads its result to decide whether the ~18 ms gap is the pixel channel or the resolution.
+  The resolution choice in "Ask first" remains open and still gates the next build.
+
+* Next: read `r2026-11-02-ba`'s result. If it lands near 13.6 ms the pixel channel is the lever and
+  resolution barely matters; if near 27 ms then 1080p itself is slower on this build. Either way,
+  update the "Ask first" resolution note with the pair's verdict and queue the next build target.
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
