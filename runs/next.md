@@ -10,18 +10,18 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Next: `r2026-11-02-bd` is queued - the same 1440p-with-pixels shape as bc and bb, but with
-  `--shm --send-ahead 2`. bc answered the pipelining question and the answer is no: on the pipe
-  path the client's send median went to 35.1 ms (the worker's own ~33 ms) while recv went to 0.0,
-  so the blocking write moved the wait out of recv and into send and nothing overlapped. Steady
-  median 44.7 ms vs bb's 39.7 ms serial - slightly worse. A pipe with one reader cannot overlap a
-  frame the worker is still computing. Shared memory is the one place the send does not block on
-  the worker's read, so bd is the real test of whether the serialisation is the transport or the
-  worker's own loop. No code change; both flags already exist.
-  After the run: `minimal/__main__.py:312-316` labels any spread maximum at a frame other than 0
-  "not the warm-up", and with `--send-ahead` the warm-up lands at frame 1 (the second send blocks
-  while the worker JITs), so bc's 4411.9 ms block was mislabelled as a real stall. Worth a small
-  fix that asks whether the frame is the first *reply* rather than the first index.
+* Next: `r2026-11-02-be` is a shared-memory serial run - the same 1440p-with-pixels shape as bd
+  (`--shm`) but without `--send-ahead 2`, so the transport and the concurrency are separated.
+  bd answered the transport question: on shm the send no longer blocks (send median 2.3 ms against
+  bc's 35.1) and the steady median fell to 26.5 ms / 37.7 fps against bb's pipe serial 39.7 ms /
+  25.2 fps. So bc's serialisation was the pipe, not the worker's loop. What bd cannot say is how
+  much of the ~13 ms gain is shm and how much is the second frame in flight, because it changed
+  both. be changes one. If be lands near 26 ms the concurrency buys nothing on shm and the win is
+  all transport; if it lands near bb's 40 ms the overlap is the lever and shm only enables it.
+  No code change; both flags already exist.
+  After the run: read the send/recv split - shm serial should keep send at ~2-3 ms and put the
+  worker's ~28 ms in recv, so a steady median near 30 ms means the handoff costs ~2 ms and bd's
+  26.5 was real overlap.
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
@@ -784,3 +784,18 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   send-ahead moves no pixel** - the flag is a timing knob only, as claimed. Verdict: pipelining on the
   pipe path is a dead lever at 1440p; the serial loop stands and the only place the client can
   overlap a computing worker is shared memory, which is `r2026-11-02-bd`.
+
+* learned: `r2026-11-02-bd` answers the transport question, and the answer is shared memory
+  (2026-11-02 tick). Exit 0, 120/0, 1440p with pixels, `--shm --send-ahead 2`, worker patch
+  `0aabc30ec374` at port 9d08f41. Steady median **26.5 ms / 37.7 fps**, against bb's pipe serial
+  39.7 ms / 25.2 fps and bc's pipe+send-ahead 44.7 ms / 22.4 fps. The split shows why: send median
+  **2.3 ms** (min 1.6, max 5.7 at frame 0) and recv median **16.8 ms** (max 4091.6 at frame 0),
+  against bc's send 35.1 / recv 0.0. The send does not block on shm, and the client's steady frame
+  sits *below* the worker's own per-frame time (frames 29/59/89/119 read 28.4/29.3/28.4/24.2 ms), so
+  the second frame really does overlap - bc's serialisation was the pipe, not the worker's loop.
+  bd changes two things at once (shm and send-ahead 2), so how much of the ~13 ms gain is transport
+  and how much is concurrency is still open; `be` separates them. Also fixed the mislabel bc
+  exposed: `spread_line` now treats a peak as the warm-up when its frame precedes the worker's
+  first reply (`at <= send_ahead - 1`) instead of only at index 0, so a send-ahead run's 4.4s block
+  at frame 1 is no longer called a stall. Suite 363 pass / 32 skip / 9 fail, the same libGL/SDL2
+  import errors this box always has.
