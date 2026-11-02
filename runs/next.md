@@ -10,22 +10,11 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Next: nothing left to queue. `r2026-11-02-bf` is in `runs/queue/` (the determinism repeat, bd's
-  shape) and it is the last enumerated run. Read its `bf-1440p.png` against bd's and be's: if
-  `bf == bd` then shared memory plus the second frame in flight deterministically changes the
-  output and every "moves no pixel" claim in the notes needs that caveat; if `bf == be` (sha256
-  `28292742c88b...`) then bd's image was a one-off and no image diff across runs can be quoted.
-  Read only the pixels - the timing would repeat known numbers. After that this section is empty:
-  the only remaining lever is the worker's pixel channel, and it waits on the reply-format product
-  call in "Ask first".
-
-* Loose end, found by the be read: `r2026-11-02-bd`'s saved frame is NOT byte-identical to be's
-  (mean abs diff 0.41 levels per channel, max 13, 37% of the bytes differ) even though the fixture
-  frame is the same (the bar sits at x=833, i.e. n=119, in both) and `be == bb == bc` exactly
-  (sha256 `28292742c88b8e016245b5f00cadc1748b5e93...`). So "shared memory serial moves no pixel" is
-  now proved and "shared memory + send-ahead 2 moves no pixel" - asserted in bd's own note - is
-  false as written. Cause unattributed: the worker's temporal history under overlap, or the save
-  path under send-ahead. `bf` is the cheap way to tell.
+* Nothing left to queue. `r2026-11-02-bf` (the determinism repeat, bd's shape) is read and it is
+  byte-identical to bd (`1694ccd3a506...`), not to be - so shared memory *plus* `--send-ahead 2`
+  reproducibly changes the frame and "moves no pixel" now holds only on the serial shm path
+  (`be == bb == bc`). The only remaining lever is the worker's pixel channel, and it waits on the
+  reply-format product call in "Ask first". Nothing queues until that call is made.
 
 * Blocked, and not mine to decide: the remaining lever is the worker's own frame - readback +
   reply + the neural pass, i.e. the pixel channel, which is the programme now that the user has
@@ -851,3 +840,18 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   `bf-1440p.png` against bd's and be's. With bf queued the last enumerated run is spent and
   section 1 has nothing left to queue - the next build waits on the reply-format product call in
   "Ask first", so the pipeline pauses there rather than repeating known numbers.
+
+* learned: `r2026-11-02-bf` settles the determinism question, and bd was not a one-off (2026-11-02
+  tick). Exit 0, 120/0, 1440p with pixels, bd's exact shape (`--shm --send-ahead 2`), worker patch
+  `0aabc30ec374` at port 9d08f41. `bf-1440p.png` is **byte-identical to bd's** (both sha256
+  `1694ccd3a5061be525512aab233df38d93bd3351803ddcc56c89ca6e0faa874f`, 2,818,146 bytes) and not to
+  be's (`28292742c88b...`), so shared memory *plus* the second frame in flight reproducibly changes
+  the saved frame - the diff is real, not a one-off, and "shared memory + send-ahead 2 moves no
+  pixel" (bd's own note) is false as written. The safe claim is now: on the serial shm path
+  (`be == bb == bc`) the wire moves no pixel; with `--send-ahead 2` it does, deterministically. So
+  `--send-ahead` is not purely a timing knob - it is free where frames already overlap (bd 26.5 vs
+  be 26.4 ms) but it changes the output, which matters for any pixel-identity gate. Cause still
+  unattributed (the worker's temporal history under overlap, or the save path); the read was
+  pixels-only, so no timing was re-measured. Nothing queued this tick: the last enumerated run is
+  spent and the only remaining lever, the worker's pixel channel, waits on the reply-format product
+  call in "Ask first".
