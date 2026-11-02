@@ -24,30 +24,16 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   `1694ccd3a506` vs `28292742c88b`) and stays off; serial shm moves no pixel (`be == bb == bc`,
   `bg == az`).
 
-* Next: **nothing queues** as of the bh tick. The remaining lever is the worker's own frame at
-  1440p - the pixel channel (7.9 ms under shm) plus the neural pass (12.7) of `be`'s 26.4 ms -
-  and any build there waits on the reply-format product decision in "Ask first" (FP8 vs
-  changed-tiles vs accept <60 fps at 1440p). No open timing shape would add a number, and the
-  1080p shm no-pixel control is off-target now that the user has fixed 1440p, so this item stays
-  here until that call is made; it is a build item, not a run.
-
-* Next: `r2026-11-02-bi` is queued - the first run with real motion vectors, re-ided from the
-  request written as `bh`: `runs/done/r2026-11-02-bh` already exists on the results branch (the
-  1440p no-pixel shm measurement, landed 20:58:45, 30 s after the queue push), and
-  `tools/auto_runner.py` skips any id whose directory is there (`done_ids`, "done and published,
-  skipping"), so the rewritten `runs/queue/r2026-11-02-bh.json` could never run - one run per id.
-  `guides.py` was on main since 807d852 and never imported by anything; it is now wired behind
-  `--motion-guides` (which also turns the no-motion default off for that run, because a real field
-  is bytes that must go out). Read it against `be` (1440p, pixels, shm, zero field, 26.4 ms / 37.9
-  fps) for the estimator's cost, and against `be`'s picture (`28292742c88b8e01`) for whether the
-  field reaches the composite - a real field must change the output, a zero field must not;
-  `bi-1440p.png` is the artifact. This is also the prerequisite for frame interpolation and for
-  any temporal upscaling, so its result decides whether those stay options.
-
-* Next: `r2026-11-02-motion-guides` is queued - the motion-vector run, under a distinctive id
-  because the tick overwrote `r2026-11-02-bh` before the timer read it (that id now belongs to a
-  1440p no-pixel shm benchmark). Read it against `be` (26.4 ms, zero field, picture
-  `28292742c88b8e01`).
+* Next: **nothing queues**, and the motion field is now priced (2026-11-02 tick, bi/mg read).
+  The remaining lever is unchanged: the worker's own frame at 1440p - the pixel channel (7.9 ms
+  under shm) plus the neural pass (12.7) of `be`'s 26.4 ms - and any build there waits on the
+  reply-format product decision in "Ask first" (FP8 vs changed-tiles vs accept <60 fps at
+  1440p). The guides pair is in and it is not a cheap lever: a real field costs **+15 ms** on
+  the frame (send +2.9, the worker's own `network+composite` +6, recv +11.7) to move 0.47% of
+  the pixels, so frame generation / temporal upscaling now starts ~15 ms further back and that
+  is the user's call, not a run. No open timing shape would add a number, and the 1080p shm
+  no-pixel control is off-target now that the user has fixed 1440p, so this item stays here
+  until that call is made; it is a build item, not a run.
 
 * The shm numbers change the arithmetic, and the pixel channel is now the whole remaining gap
   (2026-11-02 tick, bg/bh read). Same build, same 120-frame shape, all with `--shm`:
@@ -116,6 +102,34 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   tick's to edit - a user call, not a measurement.
 
 ## Learned
+
+* learned: `r2026-11-02-motion-guides` and `r2026-11-02-bi` are the same run twice, and together
+  they price the motion field (2026-11-02 tick). Both exit 0, 120/0, 1440p with pixels,
+  `--shm --motion-guides --save-after`, worker patch `0aabc30ec374` at port 9d08f41;
+  `bi-1440p.png` and `guides-1440p.png` are byte-identical (sha256
+  `8e1f5affcd412998520ad815c2c0ccc5fa5aa2241e9209e9194dda5de85b8330`, 2,786,335 bytes), so the
+  estimator is deterministic run to run and either number is the same measurement. Steady median
+  **37.3 ms / 26.8 fps** (bi) and **41.8 ms / 23.9 fps** (mg) against `be`'s zero-field 26.4 ms /
+  37.9 fps on the same build and shape: **the real field costs ~+15 ms, and the two identical runs
+  are 4.5 ms apart**, so quote +11..+15, not a point (bi's `gpu_after` is BUSY at 35%, so mg -
+  WARN before and after - is the clean sample). Where it goes: the client's send median 1.2 -> 4.1
+  ms (a real field is 14.7 MB of bytes that must go out) and recv 20.4 -> 32.1, which is the
+  worker's own frame - frames 29/59/89/119 read 35.4/30.6/24.7/27.4 against be's 20.2/18.1/18.1/
+  19.4, i.e. `network+composite` 12.2 -> ~18 with real reprojection offsets plus the field upload.
+  The estimator itself is NOT in the client's stage timers: `loop.py` calls `_guide_motion`
+  between the timed capture and send blocks, so the reported stage sum (and the median fps) omits
+  DIS optical flow's own cost and the 11.04 fps headline (120 frames in 10.874 s) is the only
+  figure that contains it.
+
+* learned: the motion field DOES reach the composite, and on this fixture it barely moves the
+  picture (2026-11-02 tick). `guides-1440p.png` against `be`'s zero-field `be-1440p.png`
+  (`28292742c88b8e01`): MAD **0.3925** per channel, max 19, **0.47%** of pixels moved >2, 0.01%
+  >8 - a real but near-neutral field, the same order as bd's `--send-ahead` diff (0.41) and far
+  below the blend's 5.74. So `put(rgba, motion=...)` is wired end to end (zero field is
+  byte-identical, `be == bb`, MAD 0.0000; a real one is not), which is what the run was for - but
+  the +15 ms it costs buys a 0.4-level change on the synthetic card, so the case for spending on
+  frame generation / temporal upscaling is weaker than the plan assumed. That decision is still
+  the user's ("Ask first"), and nothing was queued this tick.
 
 * learned: the `--motion-guides` request could not run as written, so it was re-ided (2026-11-02
   22:13 tick). Commit 083de9c rewrote `runs/queue/r2026-11-02-bh.json` to the motion-guides run,
