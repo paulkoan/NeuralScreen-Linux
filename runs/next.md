@@ -31,14 +31,18 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   1080p shm no-pixel control is off-target now that the user has fixed 1440p, so this item stays
   here until that call is made; it is a build item, not a run.
 
-* Next: `r2026-11-02-bh` is queued - the first run with real motion vectors. `guides.py` was on
-  main since 807d852 and never imported by anything; it is now wired behind `--motion-guides`
-  (which also turns the no-motion default off for that run, because a real field is bytes that
-  must go out). Read it against `be` (1440p, pixels, shm, zero field, 26.4 ms / 37.9 fps) for the
-  estimator's cost, and against `be`'s picture (`28292742c88b8e01`) for whether the field reaches
-  the composite - a real field must change the output, a zero field must not. This is also the
-  prerequisite for frame interpolation and for any temporal upscaling, so its result decides
-  whether those stay options.
+* Next: `r2026-11-02-bi` is queued - the first run with real motion vectors, re-ided from the
+  request written as `bh`: `runs/done/r2026-11-02-bh` already exists on the results branch (the
+  1440p no-pixel shm measurement, landed 20:58:45, 30 s after the queue push), and
+  `tools/auto_runner.py` skips any id whose directory is there (`done_ids`, "done and published,
+  skipping"), so the rewritten `runs/queue/r2026-11-02-bh.json` could never run - one run per id.
+  `guides.py` was on main since 807d852 and never imported by anything; it is now wired behind
+  `--motion-guides` (which also turns the no-motion default off for that run, because a real field
+  is bytes that must go out). Read it against `be` (1440p, pixels, shm, zero field, 26.4 ms / 37.9
+  fps) for the estimator's cost, and against `be`'s picture (`28292742c88b8e01`) for whether the
+  field reaches the composite - a real field must change the output, a zero field must not;
+  `bi-1440p.png` is the artifact. This is also the prerequisite for frame interpolation and for
+  any temporal upscaling, so its result decides whether those stay options.
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
@@ -95,6 +99,16 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   tick's to edit - a user call, not a measurement.
 
 ## Learned
+
+* learned: the `--motion-guides` request could not run as written, so it was re-ided (2026-11-02
+  22:13 tick). Commit 083de9c rewrote `runs/queue/r2026-11-02-bh.json` to the motion-guides run,
+  but the box's runner had already consumed the old content - `runs/done/r2026-11-02-bh` landed at
+  20:58:45, 30 s after the 20:58:17 queue push - and `tools/auto_runner.py` skips any id whose
+  directory is on the results branch (`done_ids`, line 456: "done and published, skipping"). One
+  run per id, so the rewritten file was inert; the same argv was queued as `r2026-11-02-bi`
+  (artifact `bi-1440p.png`) and pushed as d19e1a5. The stale `runs/queue/r2026-11-02-bh.json` is
+  left in the tree untouched (skipped every pass) rather than edited. Nothing else changed: the
+  shm-table findings, the "nothing queues" build item and the reply-format call stand as recorded.
 
 * learned: `r2026-11-02-bg` answers the 1080p half, and the answer is that the pipe was the cost,
   not the pixels (2026-11-02 tick). Exit 0, 120/0, 1080p with pixels, `--shm`, worker patch
