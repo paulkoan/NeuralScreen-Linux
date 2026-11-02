@@ -44,6 +44,23 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   `bi-1440p.png` is the artifact. This is also the prerequisite for frame interpolation and for
   any temporal upscaling, so its result decides whether those stay options.
 
+* Next: `r2026-11-02-motion-guides` is queued - the motion-vector run, under a distinctive id
+  because the tick overwrote `r2026-11-02-bh` before the timer read it (that id now belongs to a
+  1440p no-pixel shm benchmark). Read it against `be` (26.4 ms, zero field, picture
+  `28292742c88b8e01`).
+
+* The shm numbers change the arithmetic, and the pixel channel is now the whole remaining gap
+  (2026-11-02 tick, bg/bh read). Same build, same 120-frame shape, all with `--shm`:
+  **1440p no pixels 18.5 ms / 54.1 fps** (bh); 1440p with pixels 26.4 ms / 37.9 fps (be);
+  1080p with pixels 19.5 ms / 51.2 fps (bg). So the pixel channel costs **7.9 ms** at 1440p on
+  shm (not 13.3 on the pipe) and the resolution step costs 6.9 ms. 60 fps needs 16.7 ms, so
+  1440p-with-pixels needs 9.7 ms off and 7.9 of that is the pixel round trip. And even with the
+  pixel channel gone, 1440p sits at 18.5 ms - **1.8 ms short**, against 23 ms short on the pipe
+  numbers this plan was written with. The worker and the display are on the same GPU box, so a
+  shared-surface path (dma-buf export, or the Spout pattern the Windows arm uses) would remove
+  readback + reply instead of shrinking them. That is the largest remaining lever with no picture
+  cost, and it needs code in the worker and the client.
+
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
 > so "no open item" means nothing queues and nothing runs, which is what happened overnight.
