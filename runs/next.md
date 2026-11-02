@@ -10,31 +10,26 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* `--shm` is transport, not a 1440p artefact, and the pipe costs ~12-13 ms on the pixel shape both
-  ways: `r2026-11-02-bg` (1080p, pixels, `--shm`) reads **19.5 ms / 51.2 fps** against `az`'s
-  31.6 ms on the same build, shape and frame - `bg-1080p.png` is byte-identical to `az-1080p.png`
-  (`4d1e3152cb34`) - so 12.1 ms off, matching `be`'s 13.3 ms over `bb` at 1440p. A fixed client
-  cost, not per-pixel work. The pixel channel itself is nearly free under shm: worker readback 2.2
-  + reply 0.7 ms at 1080p (bg), 2.3 + 1.7 at 1440p (be). Every no-pixel reference (ax 25.8 /
-  ay 26.4 / ba 14.9 / ao 13.6) was run on the pipe, so the 13.6 ms/16.7 ms "pixel channel" deltas
-  on the record are transport figures. Also settled: `--send-ahead 2` reproducibly changes the
-  frame (bd/bf `1694ccd3a506` vs `28292742c88b`) and stays off; serial shm moves no pixel
-  (`be == bb == bc`, `bg == az`).
-* Next: `r2026-11-02-bh` - 1440p, no pixels, `--shm`, 120 frames, same build - is the missing
-  same-transport cell and the one that sizes the pixel channel at the target resolution. If it
-  lands near 14 ms the ~12 ms pipe cost is fixed and the shippable 1440p floor is pixel-free, so
-  the gap to 16.7 ms is the neural pass (12.7 ms) plus the client's own capture+send+display; if
-  it lands near 22-26 ms the shm saving is smaller when no byte comes back and `be`'s 26.4 ms is
-  near the no-pixel floor. Also worth a decision (not this tick's to take): whether to make
-  `--shm` the default for pixel runs, since every measurement before bd/be/bf/bg used the slower
-  pipe path and under-reported the port.
+* The shm table is complete at both resolutions, and it says the transport was the pipe:
+  `r2026-11-02-bh` (1440p, no pixels, `--shm`, 120 frames, same build) reads **18.5 ms / 54.1
+  fps** steady against ax/ay's pipe 25.8/26.4 on the same shape - **7.5 ms off** - so the
+  transport saving does not depend on a reply crossing. Against `be`'s 1440p-with-pixels 26.4 ms
+  that puts the pixel channel at **7.9 ms** under shm, down from the 13.6 ms the bb-vs-ax pipe
+  pair attributed to it (~6 ms of that was the pipe's own 14.7 MB reply read). 18.5 ms is 1.8 ms
+  over the 16.7 ms 60 fps budget, so the shippable 1440p floor (pixels mandatory) is `be`'s
+  26.4 ms and the 9.7 ms still to find is the pixel channel (7.9) plus the neural pass (12.7,
+  overlapping). Earlier context: `bg` (1080p, pixels, `--shm`) 19.5 ms against `az`'s pipe 31.6
+  on the same build and shape (`bg-1080p.png` byte-identical to `az-1080p.png`, `4d1e3152cb34`),
+  12.1 ms off. Also settled: `--send-ahead 2` reproducibly changes the frame (bd/bf
+  `1694ccd3a506` vs `28292742c88b`) and stays off; serial shm moves no pixel (`be == bb == bc`,
+  `bg == az`).
 
-* Blocked, and not mine to decide: the remaining lever is the worker's own frame - readback +
-  reply + the neural pass, i.e. the pixel channel, which is the programme now that the user has
-  fixed 1440p and max FPS. Building there waits on the reply-format product decision in "Ask
-  first" (FP8 vs changed-tiles vs accept <60 fps at 1440p). Nothing queues for it until the user
-  makes that call; `r2026-11-02-bh` above is the last measurement this section can hand the next
-  pass, and it is a run, not a build.
+* Next: **nothing queues** as of the bh tick. The remaining lever is the worker's own frame at
+  1440p - the pixel channel (7.9 ms under shm) plus the neural pass (12.7) of `be`'s 26.4 ms -
+  and any build there waits on the reply-format product decision in "Ask first" (FP8 vs
+  changed-tiles vs accept <60 fps at 1440p). No open timing shape would add a number, and the
+  1080p shm no-pixel control is off-target now that the user has fixed 1440p, so this item stays
+  here until that call is made; it is a build item, not a run.
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
@@ -83,6 +78,12 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   channel. Under shm the worker's readback+reply is 2.3 + 1.7 ms at 1440p (be) and 2.2 + 0.7 at
   1080p (bg), i.e. FP8's ~4-6 ms would now be the whole channel and more - so the reply format may
   not be worth any quality trade at all. Decide on the shm figures, not bb's pipe ones.**
+* **`--shm` as the default for pixel runs** (raised 2026-11-02 tick): every pixel measurement
+  before bd/be/bf/bg used the slower pipe path, so the port's numbers on the record under-report
+  it by ~7.5-13 ms on the shapes measured (bh: 18.5 ms shm vs ax/ay 25.8/26.4 pipe at 1440p
+  no-pixel). Making shared memory the default is a one-line change to the client's argv in
+  `minimal/__main__.py`, but it changes the shape of every future run and the client is not this
+  tick's to edit - a user call, not a measurement.
 
 ## Learned
 
@@ -888,3 +889,22 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   pixels-only, so no timing was re-measured. Nothing queued this tick: the last enumerated run is
   spent and the only remaining lever, the worker's pixel channel, waits on the reply-format product
   call in "Ask first".
+
+* learned: `r2026-11-02-bh` completes the shm table, and the transport finding holds with no
+  reply crossing (2026-11-02 tick). Exit 0, 120/0, 1440p **no pixels**, `--shm`, worker patch
+  `0aabc30ec374` at port 9d08f41, same 120-frame shape as ax/ay, no `--save-after` so no byte
+  comes back - that is the point. Steady median **18.5 ms / 54.1 fps** (the 50.4 ms / 19.9 fps
+  headline is the 3787.1 ms frame-0 recv), against ax 25.8 / ay 26.4 on the pipe: **7.5 ms off**,
+  so the shm win is not "no reply crosses", it is the transport. Split: capture 2.6, send 1.4
+  (min 1.1, max 5.1 at frame 0), recv 14.7 (min 14.2, max 3787.1 at frame 0), display 0.0; worker
+  14.8 / 14.8 / 14.3 / 14.5 ms at frames 29/59/89/119 = network+composite 12.1 + proxy 2.5 +
+  readback 0 + reply 0. Against `be` (1440p, pixels, shm, 26.4 ms) the pixel channel is **7.9 ms**
+  at 1440p under shm, not the 13.6 ms the bb-vs-ax pipe pair showed - so the pipe's own 14.7 MB
+  reply read was ~6 ms of that, and the 2.3 + 1.7 ms the worker logs for readback+reply is not the
+  whole channel (the rest is the client's shm read). 18.5 ms is 1.8 ms over the 16.7 ms 60 fps
+  budget, so even a pixel-free 1440p frame does not clear 60 fps and the shippable floor is
+  26.4 ms with pixels; the pixel channel (7.9) and the neural pass (12.7) are the only levers left,
+  both waiting on the reply-format call. bh landed between the two branches the request named (14
+  and 22-26 ms) and closer to neither, so quote 18.5, not an interpolation. Nothing queued this
+  tick: no remaining timing shape adds a number, and the 1080p shm no-pixel control is off-target
+  with 1440p fixed. The `--shm`-as-default question is now under "Ask first".
