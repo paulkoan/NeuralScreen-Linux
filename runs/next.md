@@ -10,11 +10,20 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Nothing left to queue. `r2026-11-02-bf` (the determinism repeat, bd's shape) is read and it is
-  byte-identical to bd (`1694ccd3a506...`), not to be - so shared memory *plus* `--send-ahead 2`
-  reproducibly changes the frame and "moves no pixel" now holds only on the serial shm path
-  (`be == bb == bc`). The only remaining lever is the worker's pixel channel, and it waits on the
-  reply-format product call in "Ask first". Nothing queues until that call is made.
+* `--shm` is the lever the pipeline had not used in a measurement run, and it is a flag:
+  `r2026-11-02-be` (1440p, pixels, `--shm`) reads **26.4 ms / 37.9 fps** against `r2026-11-02-bb`'s
+  39.7 ms on the pipe - **13.3 ms off the same frame**, byte-identical output
+  (`28292742c88b8e01`). That is the client's pipe read cost, not the worker. So the shippable 1440p
+  path is 26.4 ms, not 39.7, and it needs no build. `r2026-11-02-bg` completes the set at 1080p.
+  Separately, `--send-ahead 2` (bd/bf) reproducibly changes the frame (`1694ccd3a506` vs
+  `28292742c88b`) so it is *not* output-neutral and must not be used until that is understood -
+  bf's 21.7 ms / 46.0 fps is a different picture, not a faster one.
+* Next: read `r2026-11-02-bg`. If 1080p-with-pixels lands near 18-19 ms with `--shm`, the pixel
+  channel question is answered on the client side and the remaining work is the worker's own frame
+  (neural pass 12.7 ms + area scaling). If it lands near 31 ms, the 13.3 ms saving is
+  1440p-specific and worth understanding before anything else. Also worth a decision: whether to
+  make `--shm` the default for pixel runs, since every measurement so far except bd/be/bf used the
+  slower pipe path and under-reported the port.
 
 * Blocked, and not mine to decide: the remaining lever is the worker's own frame - readback +
   reply + the neural pass, i.e. the pixel channel, which is the programme now that the user has
