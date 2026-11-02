@@ -149,6 +149,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="do not send the motion field (the default; kept so existing "
                         "run requests and scripts still parse)")
     p.set_defaults(no_motion=True)
+    p.add_argument("--motion-guides", action="store_true",
+                   help="estimate the motion field with guides.py (DIS optical flow on a "
+                        "downscaled gray frame, noise floor applied) instead of sending "
+                        "zeros. Implies the field goes out, so the default no-motion path "
+                        "is off for that run. Needs OpenCV (cv2) on this machine.")
     p.add_argument("--motion-small", action="store_true",
                    help="send the motion field at the optical-flow size "
                         "(320x180) and let the worker upscale it. NOT USABLE in "
@@ -233,6 +238,7 @@ def main(argv: list[str] | None = None) -> int:
                         bypass=args.bypass,
                         send_ahead=args.send_ahead,
                         no_motion=args.no_motion,
+                        motion_guides=args.motion_guides,
                         shm=args.shm,
                         # Pixels cost the worker a 14.7MB readback plus a 14.7MB reply.
                         # Ask for them only when something consumes them: a window to
