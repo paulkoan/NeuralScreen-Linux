@@ -10,15 +10,14 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Next: `r2026-11-02-bf` - one determinism repeat, and the only executable item left. Queue it as
-  `runs/queue/r2026-11-02-bf.json`: entry `minimal`, args `--frames 120 --headless --source
-  synthetic --size 2560x1440 --shm --send-ahead 2 --save-after bf-1440p.png --worker-log`,
-  `timeout_s` 300, artifact `bf-1440p.png` - i.e. `r2026-11-02-bd`'s exact shape. Then hash the
-  saved PNG against bd's and be's. `bf == bd` means shared memory plus the second frame in flight
-  deterministically changes the output and every "moves no pixel" claim in the notes needs that
-  caveat; `bf == be` (sha256 `28292742c88b...`) means bd's image was a one-off and no image diff
-  across runs can be quoted. This is not a timing run - a repeat of known numbers is explicitly
-  not wanted, so read only the pixels.
+* Next: nothing left to queue. `r2026-11-02-bf` is in `runs/queue/` (the determinism repeat, bd's
+  shape) and it is the last enumerated run. Read its `bf-1440p.png` against bd's and be's: if
+  `bf == bd` then shared memory plus the second frame in flight deterministically changes the
+  output and every "moves no pixel" claim in the notes needs that caveat; if `bf == be` (sha256
+  `28292742c88b...`) then bd's image was a one-off and no image diff across runs can be quoted.
+  Read only the pixels - the timing would repeat known numbers. After that this section is empty:
+  the only remaining lever is the worker's pixel channel, and it waits on the reply-format product
+  call in "Ask first".
 
 * Loose end, found by the be read: `r2026-11-02-bd`'s saved frame is NOT byte-identical to be's
   (mean abs diff 0.41 levels per channel, max 13, 37% of the bytes differ) even though the fixture
@@ -841,3 +840,14 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   `28292742c88b8e016245b5f00cadc1748b5e93...`), so on the serial path the wire moves no pixel -
   but bd's saved frame is not (mean abs diff 0.41 levels/channel, max 13), which is the loose end
   now first in section 1 and what `r2026-11-02-bf` is for.
+
+* learned: `r2026-11-02-bf` is queued (2026-11-02 tick) - the determinism repeat in bd's exact shape
+  (`--shm --send-ahead 2`, artifact `bf-1440p.png`, `runs/queue/r2026-11-02-bf.json`). Nothing
+  measured yet, and there is no timing to read: it exists to arbitrate bd's non-identical frame
+  (mean abs diff 0.41 levels/channel, max 13, 37% of bytes differ) against be's byte-identical one
+  (`28292742c88b...`). `bf == bd` means shared memory plus the second frame in flight
+  deterministically changes the output and every "moves no pixel" claim needs that caveat; `bf == be`
+  means bd was a one-off and no image diff across runs can be quoted. The next tick reads
+  `bf-1440p.png` against bd's and be's. With bf queued the last enumerated run is spent and
+  section 1 has nothing left to queue - the next build waits on the reply-format product call in
+  "Ask first", so the pipeline pauses there rather than repeating known numbers.
