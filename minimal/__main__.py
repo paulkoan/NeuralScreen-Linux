@@ -308,10 +308,18 @@ def main(argv: list[str] | None = None) -> int:
         lo, mid, hi = (1000 * t[f"{name}_min"], 1000 * t[f"{name}_median"],
                        1000 * t[f"{name}_max"])
         at = t.get(f"{name}_max_at", -1)
+        # A peak carried by a frame sent before the worker's first reply is the
+        # worker's warm-up (its model load and PTX JIT), not a per-frame cost.
+        # The first reply cannot land until `send_ahead` sends have been issued:
+        # with --send-ahead 2 the second send blocks while the worker JITs, so a
+        # 4.4s block lands at frame 1 and an index-0-only test called it a real
+        # stall. Ask "was this frame sent before the first reply" instead.
+        warmup_last = summary.get("send_ahead", 1) - 1
         if hi < 2 * lo:
             shape = "steady — a fixed interval, not contention"
-        elif at == 0:
-            shape = "one-off at frame 0 — the worker's warm-up, not a per-frame cost"
+        elif 0 <= at <= warmup_last:
+            shape = (f"one-off at frame {at} — sent before the worker's first "
+                     f"reply lands, so the warm-up, not a per-frame cost")
         else:
             shape = f"a one-off at frame {at} — not the warm-up, so worth looking at"
         print(f"{name} spread: min {lo:.1f}  median {mid:.1f}  max {hi:.1f} ms "
