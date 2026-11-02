@@ -10,12 +10,18 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Next: `r2026-11-02-bc` is queued - 1440p with pixels and `--send-ahead 2`. The user has chosen
-  1440p and max FPS, so the serial loop is now the target. The pipelining code already exists
-  (`_pipelined_loop` in minimal/loop.py); the flag just is not used in measurement runs. Serial at
-  1440p pixel is 2.9 + 4.8 + 26.2 + 2.1 = ~36 ms; pipelined the frame should fall toward
-  max(worker 26.2, client 10.5). At 1080p the flag only saved 1.8 ms because the worker dominated;
-  at 1440p there is more client time to hide. Read bc against bb's 39.7 ms median. No code change.
+* Next: `r2026-11-02-bd` is queued - the same 1440p-with-pixels shape as bc and bb, but with
+  `--shm --send-ahead 2`. bc answered the pipelining question and the answer is no: on the pipe
+  path the client's send median went to 35.1 ms (the worker's own ~33 ms) while recv went to 0.0,
+  so the blocking write moved the wait out of recv and into send and nothing overlapped. Steady
+  median 44.7 ms vs bb's 39.7 ms serial - slightly worse. A pipe with one reader cannot overlap a
+  frame the worker is still computing. Shared memory is the one place the send does not block on
+  the worker's read, so bd is the real test of whether the serialisation is the transport or the
+  worker's own loop. No code change; both flags already exist.
+  After the run: `minimal/__main__.py:312-316` labels any spread maximum at a frame other than 0
+  "not the warm-up", and with `--send-ahead` the warm-up lands at frame 1 (the second send blocks
+  while the worker JITs), so bc's 4411.9 ms block was mislabelled as a real stall. Worth a small
+  fix that asks whether the frame is the first *reply* rather than the first index.
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
@@ -758,3 +764,23 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   member `blockCount_`, set from the model, so a non-71 model loads beside the 71-block parity
   reference; the big model's path is untouched. The suite still has the 9 pre-existing libGL/SDL2
   import failures; 320 tests pass.
+
+* learned: `r2026-11-02-bc` answers the pipelining question, and the answer is no (2026-11-02 tick).
+  Exit 0, 120/0, 1440p with pixels, same worker patch as bb (`0aabc30ec374` at port 9d08f41) and a
+  client tree that differs from bb's c44718c only by docs commits - so `--send-ahead 2` is the only
+  variable. Steady median **44.7 ms / 22.4 fps** against bb's serial **39.7 ms / 25.2 fps**: 5 ms
+  *worse*, not better. The mechanism is in the split, not the total - `send` median 5.2 -> **35.1 ms**
+  (min 10.4) while `recv` median 29.4 -> **0.0 ms**, and the sum is unchanged (bb 34.6; bc 35.1). The
+  wait did not go away, it moved into the send. A pipe with one reader cannot hold two frames in
+  flight: writing frame N+1 blocks until the worker reads it, and the worker only reads after it
+  finishes N - which is what `loop.py`'s own docstring already said ("pipelining would need a second
+  frame slot"). The worker's own clock also reads higher under it (frames 29/59/89/119: 33.9/36.2/
+  31.9/28.8 ms against bb's 25.9/25.3/29.1/24.8), 26 -> ~33 ms; whether that is two-in-flight memory
+  traffic or noise is not settled. Two side readings: bc's send max 4411.9 ms lands at frame 1, which
+  is exactly where a send-ahead pipeline puts the worker's JIT warm-up (the second send blocks while
+  the worker warms), so the report's "a one-off at frame 1 - not the warm-up, so worth looking at" is
+  wrong - the heuristic at `minimal/__main__.py:312-316` exempts frame 0 by index only; and
+  **bc's `bc-1440p.png` is byte-identical to bb's (`4dc4d07bec92f58134ec01e8221e25e049557c4f`), so
+  send-ahead moves no pixel** - the flag is a timing knob only, as claimed. Verdict: pipelining on the
+  pipe path is a dead lever at 1440p; the serial loop stands and the only place the client can
+  overlap a computing worker is shared memory, which is `r2026-11-02-bd`.
