@@ -10,26 +10,31 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* `--shm` is the lever the pipeline had not used in a measurement run, and it is a flag:
-  `r2026-11-02-be` (1440p, pixels, `--shm`) reads **26.4 ms / 37.9 fps** against `r2026-11-02-bb`'s
-  39.7 ms on the pipe - **13.3 ms off the same frame**, byte-identical output
-  (`28292742c88b8e01`). That is the client's pipe read cost, not the worker. So the shippable 1440p
-  path is 26.4 ms, not 39.7, and it needs no build. `r2026-11-02-bg` completes the set at 1080p.
-  Separately, `--send-ahead 2` (bd/bf) reproducibly changes the frame (`1694ccd3a506` vs
-  `28292742c88b`) so it is *not* output-neutral and must not be used until that is understood -
-  bf's 21.7 ms / 46.0 fps is a different picture, not a faster one.
-* Next: read `r2026-11-02-bg`. If 1080p-with-pixels lands near 18-19 ms with `--shm`, the pixel
-  channel question is answered on the client side and the remaining work is the worker's own frame
-  (neural pass 12.7 ms + area scaling). If it lands near 31 ms, the 13.3 ms saving is
-  1440p-specific and worth understanding before anything else. Also worth a decision: whether to
-  make `--shm` the default for pixel runs, since every measurement so far except bd/be/bf used the
-  slower pipe path and under-reported the port.
+* `--shm` is transport, not a 1440p artefact, and the pipe costs ~12-13 ms on the pixel shape both
+  ways: `r2026-11-02-bg` (1080p, pixels, `--shm`) reads **19.5 ms / 51.2 fps** against `az`'s
+  31.6 ms on the same build, shape and frame - `bg-1080p.png` is byte-identical to `az-1080p.png`
+  (`4d1e3152cb34`) - so 12.1 ms off, matching `be`'s 13.3 ms over `bb` at 1440p. A fixed client
+  cost, not per-pixel work. The pixel channel itself is nearly free under shm: worker readback 2.2
+  + reply 0.7 ms at 1080p (bg), 2.3 + 1.7 at 1440p (be). Every no-pixel reference (ax 25.8 /
+  ay 26.4 / ba 14.9 / ao 13.6) was run on the pipe, so the 13.6 ms/16.7 ms "pixel channel" deltas
+  on the record are transport figures. Also settled: `--send-ahead 2` reproducibly changes the
+  frame (bd/bf `1694ccd3a506` vs `28292742c88b`) and stays off; serial shm moves no pixel
+  (`be == bb == bc`, `bg == az`).
+* Next: `r2026-11-02-bh` - 1440p, no pixels, `--shm`, 120 frames, same build - is the missing
+  same-transport cell and the one that sizes the pixel channel at the target resolution. If it
+  lands near 14 ms the ~12 ms pipe cost is fixed and the shippable 1440p floor is pixel-free, so
+  the gap to 16.7 ms is the neural pass (12.7 ms) plus the client's own capture+send+display; if
+  it lands near 22-26 ms the shm saving is smaller when no byte comes back and `be`'s 26.4 ms is
+  near the no-pixel floor. Also worth a decision (not this tick's to take): whether to make
+  `--shm` the default for pixel runs, since every measurement before bd/be/bf/bg used the slower
+  pipe path and under-reported the port.
 
 * Blocked, and not mine to decide: the remaining lever is the worker's own frame - readback +
   reply + the neural pass, i.e. the pixel channel, which is the programme now that the user has
   fixed 1440p and max FPS. Building there waits on the reply-format product decision in "Ask
   first" (FP8 vs changed-tiles vs accept <60 fps at 1440p). Nothing queues for it until the user
-  makes that call, and `bf` is the only thing this section can hand the next pass in the meantime.
+  makes that call; `r2026-11-02-bh` above is the last measurement this section can hand the next
+  pass, and it is a run, not a build.
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
@@ -73,9 +78,28 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   and the neural pass's area scaling. FP8 halves payload but buys only ~4-6 ms; changed-tiles would
   buy less on a full-screen stream. 1440p-with-pixels measures 39.7 ms, so 60 fps needs the neural
   pass cut as well. Product choice: accept FP8's quality loss, ship changed-tiles, or accept <60 fps
-  at 1440p. Nothing gets built until this call is made.
+  at 1440p. Nothing gets built until this call is made. **Re-priced on the shm numbers (bg/be,
+  2026-11-02): the part of the reply path that motivated FP8 was the pipe's ~13 ms, not the
+  channel. Under shm the worker's readback+reply is 2.3 + 1.7 ms at 1440p (be) and 2.2 + 0.7 at
+  1080p (bg), i.e. FP8's ~4-6 ms would now be the whole channel and more - so the reply format may
+  not be worth any quality trade at all. Decide on the shm figures, not bb's pipe ones.**
 
 ## Learned
+
+* learned: `r2026-11-02-bg` answers the 1080p half, and the answer is that the pipe was the cost,
+  not the pixels (2026-11-02 tick). Exit 0, 120/0, 1080p with pixels, `--shm`, worker patch
+  `0aabc30ec374` at port 9d08f41, gate released at WARN with no wait. Steady median **19.5 ms /
+  51.2 fps** (the 55.3 ms / 18.1 fps headline is the 4.2 s frame-0 recv), against az's 31.6 ms /
+  31.6 fps on the same build and shape - 12.1 ms off, at the low end of the 18-19 ms prediction.
+  Same build, same n=119 input: `bg-1080p.png` is byte-identical to `az-1080p.png`
+  (`4d1e3152cb345e90cdfc2b53345cb679cfa54c90`), so the serial shm path moved no 1080p pixel either.
+  Split: capture 2.5, send 1.3 (min 1.0, max 3.1 at frame 0), recv 14.7 (min 13.5, max 4193.6 at
+  frame 0), display 1.1; worker 12.9/13.3/14.1/13.2 ms at frames 29/59/89/119 =
+  network+composite 7.9 + proxy 2.2 + readback 2.2 + reply 0.7. So at 1080p the pixel channel is
+  ~2.9 ms of the worker, not the 16.7 ms the az-vs-ba pipe pair attributed to it - that delta was
+  mostly the client's pipe read. 1080p-with-pixels is now 19.5 ms / 51.2 fps, 2.8 ms over the
+  16.7 ms 60 fps budget; every no-pixel reference in the table is a pipe number, so
+  `r2026-11-02-bh` (1440p, no pixels, `--shm`) is queued to size the channel at 1440p.
 
 * learned: (2026-11-02 tick). Exit 0, 120/0, `gpu_before` = WARN after waiting the full 150s, `gpu_after` =
   BUSY at 59% utilisation, so all three gate fields are now populated and the require_idle flag is

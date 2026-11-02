@@ -1,0 +1,9 @@
+{
+  "id": "r2026-11-02-bh",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--shm", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "The missing same-transport cell. Every pixel-channel delta on record compares a shm run against a pipe run: bb (1440p pixels, pipe 39.7) vs be (shm 26.4), az (1080p pixels, pipe 31.6) vs bg (shm 19.5) - both ~12-13 ms, which is the client's pipe read, not per-pixel work. But the no-pixel references (ax 25.8, ay 26.4 at 1440p; ba 14.9, ao 13.6 at 1080p) were all run on the pipe, so 'the pixel channel costs 13.6 ms at 1440p' today mixes transport into what it claims to measure. This is 1440p with no pixels, on shm, same build (worker patch 0aabc30ec374 at port 9d08f41) and same 120-frame shape as ax/ay, no --save-after so no byte comes back - that is the point. If it lands near 14 ms the ~12 ms pipe cost is fixed overhead and 1440p without pixels already clears the 16.7 ms 60 fps budget, leaving the neural pass (12.7 ms) and the client's own 4.9 ms of capture+send+display as the gap from be's 26.4; if it lands near 22-26 ms the shm saving is smaller when no reply crosses and be's 26.4 is close to the no-pixel floor."
+}
