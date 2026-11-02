@@ -1,0 +1,9 @@
+{
+  "id": "r2026-11-02-bf",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--send-ahead", "2", "--shm", "--save-after", "bf-1440p.png", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": ["bf-1440p.png"],
+  "note": "One determinism repeat, not a timing run. be proved the serial shared-memory path moves no pixel (be == bb == bc, sha256 28292742c88b8e016245b5f00cadc1748b5e93...), but bd's saved frame is NOT byte-identical to be's (mean abs diff 0.41 levels per channel, max 13, 37% of the bytes differ) even though both hold the same fixture frame (bar at x=833, n=119). So 'shared memory + send-ahead 2 moves no pixel' - asserted in bd's own note - is false as written; the cause is unattributed (the worker's temporal history under overlap, or the save path under send-ahead). This run takes bd's exact shape (--shm --send-ahead 2) and saves bf-1440p.png. Read only the pixels: if bf == bd then shared memory plus the second frame in flight deterministically changes the output and every 'moves no pixel' claim needs that caveat; if bf == be (sha256 28292742c88b8e016245b5f00cadc1748b5e93...) then bd's image was a one-off and no image diff across runs can be quoted. Do not quote the timing - a repeat of known numbers is explicitly not wanted."
+}
