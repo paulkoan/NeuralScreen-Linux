@@ -10,16 +10,29 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Next: `r2026-11-02-be` is queued - the shm-serial 1440p-with-pixels run (bd's shape, `--shm`,
-  minus `--send-ahead 2`). When its result lands, read the send/recv split against bd's 26.5 ms /
-  37.7 fps (shm + overlap) and bb's 39.7 ms / 25.2 fps (pipe serial): a steady median near 26 ms
-  means the concurrency buys nothing on shm and the whole ~13 ms win is the transport; near 40 ms
-  means the overlap is the lever and shm only enables it. That closes the transport-vs-concurrency
-  question, and after it the plan's last enumerated run is spent. The remaining lever is the
-  worker's own frame - readback + reply + the neural pass, i.e. the pixel channel, which is the
-  programme now that the user has fixed 1440p and max FPS. Building there is blocked on the
-  reply-format product decision in "Ask first" below (FP8 vs changed-tiles vs accept <60 fps), so
-  no run queues after be until that call is made.
+* Next: `r2026-11-02-bf` - one determinism repeat, and the only executable item left. Queue it as
+  `runs/queue/r2026-11-02-bf.json`: entry `minimal`, args `--frames 120 --headless --source
+  synthetic --size 2560x1440 --shm --send-ahead 2 --save-after bf-1440p.png --worker-log`,
+  `timeout_s` 300, artifact `bf-1440p.png` - i.e. `r2026-11-02-bd`'s exact shape. Then hash the
+  saved PNG against bd's and be's. `bf == bd` means shared memory plus the second frame in flight
+  deterministically changes the output and every "moves no pixel" claim in the notes needs that
+  caveat; `bf == be` (sha256 `28292742c88b...`) means bd's image was a one-off and no image diff
+  across runs can be quoted. This is not a timing run - a repeat of known numbers is explicitly
+  not wanted, so read only the pixels.
+
+* Loose end, found by the be read: `r2026-11-02-bd`'s saved frame is NOT byte-identical to be's
+  (mean abs diff 0.41 levels per channel, max 13, 37% of the bytes differ) even though the fixture
+  frame is the same (the bar sits at x=833, i.e. n=119, in both) and `be == bb == bc` exactly
+  (sha256 `28292742c88b8e016245b5f00cadc1748b5e93...`). So "shared memory serial moves no pixel" is
+  now proved and "shared memory + send-ahead 2 moves no pixel" - asserted in bd's own note - is
+  false as written. Cause unattributed: the worker's temporal history under overlap, or the save
+  path under send-ahead. `bf` is the cheap way to tell.
+
+* Blocked, and not mine to decide: the remaining lever is the worker's own frame - readback +
+  reply + the neural pass, i.e. the pixel channel, which is the programme now that the user has
+  fixed 1440p and max FPS. Building there waits on the reply-format product decision in "Ask
+  first" (FP8 vs changed-tiles vs accept <60 fps at 1440p). Nothing queues for it until the user
+  makes that call, and `bf` is the only thing this section can hand the next pass in the meantime.
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
@@ -809,3 +822,22 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   plan's last enumerated run is spent, and the remaining lever (the worker's own readback + reply
   + neural pass) waits on the reply-format product decision in "Ask first", so the pipeline pauses
   there rather than repeating known numbers.
+
+* learned: `r2026-11-02-be` closes the transport-vs-concurrency question, and the answer is the
+  transport (2026-11-02 tick). Exit 0, 120/0, 1440p with pixels, `--shm` serial (bd's shape minus
+  `--send-ahead 2`), worker patch `0aabc30ec374` at port 9d08f41, gate released at WARN with no
+  wait; `gpu_before` and `gpu_after` both WARN (resident, not contending). Steady median **26.4 ms
+  / 37.9 fps** against bd's shared-memory-plus-overlap **26.5 ms / 37.7 fps** - identical to 0.1 ms
+  - so the second frame in flight buys nothing once the frame is in shared memory, and the whole
+  ~13 ms win over bb's pipe serial 39.7 ms is the transport. The split says it twice: be's send
+  median **1.2 ms** (min 1.1, max 5.4 at frame 0) and recv median **20.4 ms** (max 3952.5 at frame
+  0) against bb's send 5.4 / recv 29.4. Both ends get cheaper - the client's send stops blocking
+  (~4 ms), and the worker's own frame drops from bb's 25.9/25.3/29.1/24.8 ms at frames 29/59/89/119
+  to 20.2/18.1/18.1/19.4 (`network+composite` 14.4 -> 12.2, `reply` 4.8 -> 1.7) - because shared
+  memory removes the worker's blocking 14.7 MB pixel write as well as the client's frame write.
+  So `--send-ahead` is only ever a liability here: free where frames already overlap (bd 26.5 vs be
+  26.4, inside noise) and actively harmful where they cannot (bc 44.7 vs bb 39.7, the pipe read
+  serialising). be's `be-1440p.png` IS byte-identical to bb's and bc's (sha256
+  `28292742c88b8e016245b5f00cadc1748b5e93...`), so on the serial path the wire moves no pixel -
+  but bd's saved frame is not (mean abs diff 0.41 levels/channel, max 13), which is the loose end
+  now first in section 1 and what `r2026-11-02-bf` is for.
