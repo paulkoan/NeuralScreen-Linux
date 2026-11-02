@@ -47,6 +47,14 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   readback + reply instead of shrinking them. That is the largest remaining lever with no picture
   cost, and it needs code in the worker and the client.
 
+* Next: `r2026-11-03-live-1440p` is queued as a MANUAL request - the end-to-end product path with
+  real portal capture of a live window, display on, shm, pixels saved. It is the only measurement
+  that can decide whether the app case is real, because every number on record used `--source
+  synthetic` and the input leg (~19 ms stocked, up to 159 ms dribbling) has never been measured in
+  this pipeline. Run it tomorrow at the box with run_manually.sh and click the portal dialog. Read
+  the capture split first: if `read` is ~19 ms the product frame is ~45 ms before the worker and no
+  worker work reaches 60 fps.
+
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
 > so "no open item" means nothing queues and nothing runs, which is what happened overnight.
