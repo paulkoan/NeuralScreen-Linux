@@ -79,6 +79,7 @@ class Pipeline:
                  worker_cwd: Path | None = None, capture=None, display=None,
                  work_scale: float = 1.0, motion_small: bool = False,
                  no_motion: bool = False, shm: bool = False,
+                 motion_guides: bool = False,
                  want_pixels: bool = True,
                  bypass: bool = False, send_ahead: int = 1,
                  frame_timeout: float = 60.0, writev: bool = False,
@@ -110,6 +111,16 @@ class Pipeline:
         # cost to what the network receives — our field is all zeros either way.
         self.motion_small = bool(motion_small)
         self.no_motion = bool(no_motion)
+        # Estimate the motion field instead of sending zeros. The estimator is guides.py's
+        # TemporalGuideGenerator (DIS optical flow on a downscaled gray frame, with a noise
+        # floor so capture jitter does not become motion); it was written and then never
+        # wired in, so every measurement so far sent a field of zeros and the port's own
+        # reprojection was the identity. A real field is bytes that must go out, so this
+        # also turns the no-motion default off for this run.
+        self.motion_guides = bool(motion_guides)
+        self.guides = None
+        if self.motion_guides:
+            self.no_motion = False
         self.shm = bool(shm)
         # Whether the caller can use the pixels at all. The worker's reply carries a 14.7MB
         # readback and a 14.7MB write-back when this is set, and 12.8ms of its 37ms frame at
@@ -178,6 +189,12 @@ class Pipeline:
             self.zero_motion = np.zeros((FLOW_H, FLOW_W, 2), dtype=np.float16)
         else:
             self.zero_motion = np.zeros((self.work_h, self.work_w, 2), dtype=np.float16)
+        if self.motion_guides:
+            # Imported here, not at module scope: guides pulls in cv2, and the synthetic and
+            # mock paths must keep working on a machine where OpenCV is not installed.
+            import guides as guides_module
+            self.guides = guides_module.TemporalGuideGenerator(
+                self.work_w, self.work_h, emit_small=self.motion_small)
         #: Split of the capture leg, when the source can tell us (the portal
         #: can: how long the frame took to arrive, then how long it took to
         #: copy). Not part of the total — they are a breakdown OF capture.
@@ -206,6 +223,20 @@ class Pipeline:
         finally:
             self.timings[name].append(time.monotonic() - t0)
 
+    def _guide_motion(self, frame: np.ndarray, index: int) -> tuple[np.ndarray, bool]:
+        """The motion field to send with this frame, and whether it resets history.
+
+        Without an estimator that is one reused zero field, and only frame 0 resets. With
+        `motion_guides` the field is estimated per frame: current-to-previous flow at the
+        optical-flow size, zeroed below the estimator's noise floor, and a scene cut also
+        asks the worker to reset. The returned buffer is reused by the next call, which is
+        safe because send copies it before the next frame is captured.
+        """
+        if self.guides is None:
+            return self.zero_motion, index == 0
+        guide = self.guides.process(frame)
+        return guide.motion, bool(index == 0 or guide.reset)
+
     def process_one(self, index: int, timeout: float = 60.0,
                     present: bool = True) -> np.ndarray | None:
         """Grab, send, present, receive one frame.
@@ -232,8 +263,8 @@ class Pipeline:
                 f"{(self.height, self.width)} — the screen changed size")
         self.last_input = frame
 
-        reset = index == 0
-        self._timed("send", self.worker.send, index, frame, self.zero_motion,
+        motion, reset = self._guide_motion(frame, index)
+        self._timed("send", self.worker.send, index, frame, motion,
                     reset, pts=index, want_pixels=self.want_pixels,
                     bgra=self.bgra)
         result = self._timed("recv", self.worker.recv, index, timeout)
@@ -525,8 +556,9 @@ class Pipeline:
                     f"{(self.height, self.width)} — the screen changed size")
             self.last_input = frame
 
-            self._timed("send", self.worker.send, index, frame, self.zero_motion,
-                        index == 0, pts=index, want_pixels=self.want_pixels,
+            motion, reset = self._guide_motion(frame, index)
+            self._timed("send", self.worker.send, index, frame, motion,
+                        reset, pts=index, want_pixels=self.want_pixels,
                         bgra=self.bgra)
             window.append((index, frame if keep_inputs else None))
             index += 1

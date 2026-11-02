@@ -31,6 +31,15 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   1080p shm no-pixel control is off-target now that the user has fixed 1440p, so this item stays
   here until that call is made; it is a build item, not a run.
 
+* Next: `r2026-11-02-bh` is queued - the first run with real motion vectors. `guides.py` was on
+  main since 807d852 and never imported by anything; it is now wired behind `--motion-guides`
+  (which also turns the no-motion default off for that run, because a real field is bytes that
+  must go out). Read it against `be` (1440p, pixels, shm, zero field, 26.4 ms / 37.9 fps) for the
+  estimator's cost, and against `be`'s picture (`28292742c88b8e01`) for whether the field reaches
+  the composite - a real field must change the output, a zero field must not. This is also the
+  prerequisite for frame interpolation and for any temporal upscaling, so its result decides
+  whether those stay options.
+
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
 > so "no open item" means nothing queues and nothing runs, which is what happened overnight.

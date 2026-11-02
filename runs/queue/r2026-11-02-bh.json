@@ -2,8 +2,8 @@
   "id": "r2026-11-02-bh",
   "entry": "minimal",
   "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
-           "--shm", "--worker-log"],
+           "--shm", "--motion-guides", "--save-after", "bh-1440p.png", "--worker-log"],
   "timeout_s": 300,
-  "artifacts": [],
-  "note": "The missing same-transport cell. Every pixel-channel delta on record compares a shm run against a pipe run: bb (1440p pixels, pipe 39.7) vs be (shm 26.4), az (1080p pixels, pipe 31.6) vs bg (shm 19.5) - both ~12-13 ms, which is the client's pipe read, not per-pixel work. But the no-pixel references (ax 25.8, ay 26.4 at 1440p; ba 14.9, ao 13.6 at 1080p) were all run on the pipe, so 'the pixel channel costs 13.6 ms at 1440p' today mixes transport into what it claims to measure. This is 1440p with no pixels, on shm, same build (worker patch 0aabc30ec374 at port 9d08f41) and same 120-frame shape as ax/ay, no --save-after so no byte comes back - that is the point. If it lands near 14 ms the ~12 ms pipe cost is fixed overhead and 1440p without pixels already clears the 16.7 ms 60 fps budget, leaving the neural pass (12.7 ms) and the client's own 4.9 ms of capture+send+display as the gap from be's 26.4; if it lands near 22-26 ms the shm saving is smaller when no reply crosses and be's 26.4 is close to the no-pixel floor."
+  "artifacts": ["bh-1440p.png"],
+  "note": "First run with real motion vectors. guides.py (TemporalGuideGenerator, DIS optical flow at 320x180 with a 0.5px noise floor) was on main and never imported; it is now wired behind --motion-guides, which also turns the no-motion default off for the run. Compare against be (1440p, pixels, shm, zero field): 26.4 ms / 37.9 fps. Two things to read: the estimator's own cost (it runs on the CPU between capture and send, so it should show in send or as extra frame time), and whether bh's picture differs from be's - if the field is real the composite reprojects history and the output must change. The synthetic card moves a 320px bar with the grab index, so there is genuine motion to find. bh-1440p.png is the artifact; compare with be-1440p.png (28292742c88b8e01)."
 }
