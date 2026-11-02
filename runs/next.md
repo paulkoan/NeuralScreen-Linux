@@ -10,18 +10,16 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Next: `r2026-11-02-be` is a shared-memory serial run - the same 1440p-with-pixels shape as bd
-  (`--shm`) but without `--send-ahead 2`, so the transport and the concurrency are separated.
-  bd answered the transport question: on shm the send no longer blocks (send median 2.3 ms against
-  bc's 35.1) and the steady median fell to 26.5 ms / 37.7 fps against bb's pipe serial 39.7 ms /
-  25.2 fps. So bc's serialisation was the pipe, not the worker's loop. What bd cannot say is how
-  much of the ~13 ms gain is shm and how much is the second frame in flight, because it changed
-  both. be changes one. If be lands near 26 ms the concurrency buys nothing on shm and the win is
-  all transport; if it lands near bb's 40 ms the overlap is the lever and shm only enables it.
-  No code change; both flags already exist.
-  After the run: read the send/recv split - shm serial should keep send at ~2-3 ms and put the
-  worker's ~28 ms in recv, so a steady median near 30 ms means the handoff costs ~2 ms and bd's
-  26.5 was real overlap.
+* Next: `r2026-11-02-be` is queued - the shm-serial 1440p-with-pixels run (bd's shape, `--shm`,
+  minus `--send-ahead 2`). When its result lands, read the send/recv split against bd's 26.5 ms /
+  37.7 fps (shm + overlap) and bb's 39.7 ms / 25.2 fps (pipe serial): a steady median near 26 ms
+  means the concurrency buys nothing on shm and the whole ~13 ms win is the transport; near 40 ms
+  means the overlap is the lever and shm only enables it. That closes the transport-vs-concurrency
+  question, and after it the plan's last enumerated run is spent. The remaining lever is the
+  worker's own frame - readback + reply + the neural pass, i.e. the pixel channel, which is the
+  programme now that the user has fixed 1440p and max FPS. Building there is blocked on the
+  reply-format product decision in "Ask first" below (FP8 vs changed-tiles vs accept <60 fps), so
+  no run queues after be until that call is made.
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
@@ -799,3 +797,15 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   first reply (`at <= send_ahead - 1`) instead of only at index 0, so a send-ahead run's 4.4s block
   at frame 1 is no longer called a stall. Suite 363 pass / 32 skip / 9 fail, the same libGL/SDL2
   import errors this box always has.
+
+* learned: `r2026-11-02-be` is queued (2026-11-02 tick) - the shm-serial 1440p-with-pixels run,
+  bd's shape (`--shm`) minus `--send-ahead 2` (`runs/queue/r2026-11-02-be.json`, artifact
+  `be-1440p.png`). bd changed two variables at once (shared memory and the second frame in
+  flight), so be changes one and separates transport from concurrency; nothing is measured yet.
+  The next tick reads be's send/recv split against bd's 26.5 ms (send 2.3 / recv 16.8) and bb's
+  39.7 ms - a steady median near 26 ms means transport alone is the win, near 40 ms means the
+  overlap is. be's after.png should be byte-identical to bb's and bc's
+  (sha 4dc4d07bec92f58134ec01e8221e25e049557c4f) - the flag is a timing knob only. After be the
+  plan's last enumerated run is spent, and the remaining lever (the worker's own readback + reply
+  + neural pass) waits on the reply-format product decision in "Ask first", so the pipeline pauses
+  there rather than repeating known numbers.
