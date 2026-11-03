@@ -53,6 +53,12 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   with run_manually.sh and click the portal dialog. Read the capture split first; if the buffer
   line says 64 KiB the resize was refused and the run measures nothing new.
 
+* Next: two MANUAL live runs are queued and they are one sitting - run_manually.sh takes whatever
+  is outstanding. `r2026-11-03-live-pipe1m` isolates the capture transport change (1 MiB pipe +
+  read-into-the-frame) and should read near 7 ms of capture against 13.1, so ~40 ms end to end.
+  `r2026-11-03-live-prefetch` adds `--prefetch` on top and should absorb the capture leg entirely,
+  landing near 30 ms. Read the capture split on the first and the prefetch line on the second.
+
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
 > so "no open item" means nothing queues and nothing runs, which is what happened overnight.
@@ -108,6 +114,29 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   tick's to edit - a user call, not a measurement.
 
 ## Learned
+
+* learned: `--send-ahead 2`'s picture change has a name, and it is not a mystery (2026-11-03 tick,
+  reading protocol.py). `SharedFrameBuffer` says it outright: "there is one slot. Frame N+1 must
+  not be placed until the worker has returned the result for frame N, otherwise we overwrite the
+  pixels under its hands. The main loop is strictly paired (send -> recv), so the invariant holds.
+  Add pipelining and a second slot will be needed." `--send-ahead 2` sends a second frame into
+  that one slot while the worker is still reading the first, so bd/bf's `1694ccd3a506` is
+  corrupted input, not a different picture from a different schedule. The output section has the
+  same shape: one slot with a seqlock that detects a torn write, not a newer frame. So real
+  pipelining needs the worker's protocol changed (a slot index in the frame header - FRAME_FMT
+  already carries a reserved word - and per-slot output with the index in the header), which is a
+  port change, not a client one.
+
+* learned: the serial loop's capture cost is removable today, by a flag that already exists
+  (2026-11-03 tick). The loop is capture -> send -> recv -> display with no overlap, so the 12.8 ms
+  grab is dead time with the worker idle. `minimal/prefetch.py` (7 tests, opt-in `--prefetch`,
+  never used in a live run) drains the source on its own thread and hands the loop the newest
+  frame; its own docstring records why the flag exists: a screencast whose client stops consuming
+  stops producing, so the capture leg otherwise absorbs a producer round trip every frame. This is
+  safe against the single-slot invariant above, because the slot is still written at send time,
+  on the main thread, after the previous reply. Expect ~13 ms off the live frame (46.6 -> ~33, and
+  with the pipe/copy fixes ~30), paid for with dropped stale frames - so the picture differs from a
+  serial run by design and a byte comparison against it is meaningless.
 
 * learned: the capture leg's transport is a pipe, and its buffer was the kernel default
   (2026-11-03 tick). The live run's capture read is 13.1 ms/frame for a 14.7 MB RGBA frame =
