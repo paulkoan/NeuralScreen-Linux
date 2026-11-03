@@ -47,6 +47,12 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   readback + reply instead of shrinking them. That is the largest remaining lever with no picture
   cost, and it needs code in the worker and the client.
 
+* Next: `r2026-11-03-live-pipe1m` is queued as MANUAL - the live run again, now with the capture
+  pipe enlarged to 1 MiB. It is the same shape as `r2026-11-03-live-1440p` it should beat, and
+  the only difference is the buffer, so the pair prices that change directly. Run it at the box
+  with run_manually.sh and click the portal dialog. Read the capture split first; if the buffer
+  line says 64 KiB the resize was refused and the run measures nothing new.
+
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
 > so "no open item" means nothing queues and nothing runs, which is what happened overnight.
@@ -102,6 +108,22 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   tick's to edit - a user call, not a measurement.
 
 ## Learned
+
+* learned: the capture leg's transport is a pipe, and its buffer was the kernel default
+  (2026-11-03 tick). The live run's capture read is 13.1 ms/frame for a 14.7 MB RGBA frame =
+  1.12 GB/s, which is the pipe ceiling, not the portal's - the same disease `--shm` cured on the
+  frame channel, one layer out. Benchmarked both buffer sizes with the real shape (a producer
+  streaming 1440p frames, a consumer draining one per grab): **64 KiB 12.70 ms/frame, 1 MiB 8.90
+  ms**, and a shared-memory ring 4.93 ms. The resize is the free part and it is in: the client
+  asks `F_SETPIPE_SZ` for 1 MiB (/proc/sys/fs/pipe-max-size on stock Linux) on the pipe it
+  already owns, best-effort, and logs what was granted. `timing_summary` now reports
+  `capture_pipe_bytes` and the report's capture-split line names the buffer, because `read` means
+  different things at 64 KiB and 1 MiB - the "~19 ms means stocked" note was only true of the
+  default. A test caught a real hole while writing this: `fcntl` raises ValueError on a bad
+  descriptor, not OSError, so a refused resize would have taken the whole capture down.
+  Prediction for the next live run: capture read ~9 ms, frame ~42 ms (from 46.6). The bigger
+  prize is the same one as on the frame channel - hand the frame over through shared memory or
+  take the PipeWire buffer directly (4.93 ms), which needs the producer replaced, not resized.
 
 * learned: the live end-to-end run landed and it rewrites the floor (2026-11-03 tick, read of
   `r2026-11-03-live-1440p`). Real portal capture of a live window at 2560x1440, `--shm`, pixels

@@ -1,0 +1,10 @@
+{
+  "id": "r2026-11-03-live-pipe1m",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--source", "window", "--size", "2560x1440", "--shm",
+           "--save-before", "pipe1m-before.png", "--save-after", "pipe1m-after.png", "--worker-log"],
+  "timeout_s": 900,
+  "artifacts": ["pipe1m-before.png", "pipe1m-after.png"],
+  "manual": true,
+  "note": "Same shape as r2026-11-03-live-1440p (real portal capture, 2560x1440, shm, pixels saved, 120 frames, 46.6 ms / 21.5 fps) but with the frame pipe enlarged. The capture leg reads 14.7 MB per frame through gst-launch's fdsink, and the kernel's default 64 KiB pipe buffer made the producer and consumer take turns ~230 times a frame: measured on the sandbox at 12.70 ms/frame at 64 KiB against 8.90 ms at 1 MiB. The client now asks for 1 MiB on the pipe it already owns (best-effort: F_SETPIPE_SZ is capped at /proc/sys/fs/pipe-max-size and a refusal leaves the old speed). Read the capture split line first - it now names the buffer the kernel granted, and at 1 MiB a stocked pipe should read ~9 ms against the 13.1 ms measured at 64 KiB, so the frame should land near 42 ms. If the split says the buffer is still 64 KiB, the resize was refused and the number is unchanged for a known reason."
+}

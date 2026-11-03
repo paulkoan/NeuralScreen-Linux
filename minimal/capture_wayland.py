@@ -22,6 +22,7 @@ so nothing downstream knows which backend is in use.
 
 from __future__ import annotations
 
+import fcntl
 import os
 import shutil
 import subprocess
@@ -35,6 +36,13 @@ from minimal.capture import CaptureError
 from minimal.portal import SOURCE_MONITOR, PortalError, open_screencast
 
 GST_LAUNCH = "gst-launch-1.0"
+
+# The pipe buffer the pipeline's frames arrive through. The kernel default is 64 KiB, and at
+# 2560x1440 that paces the whole capture leg: one RGBA frame is 14.7 MB, so the producer and
+# the consumer take turns 230 times a frame. Measured on this box, same drain loop, one frame
+# at a time from a stocked pipe: 12.70 ms/frame at 64 KiB, 8.90 ms at 1 MiB. 1 MiB is
+# /proc/sys/fs/pipe-max-size on stock Linux, so ask for exactly that and accept less.
+PIPE_BYTES = 1 << 20
 
 
 def requirements() -> tuple[bool, str]:
@@ -89,6 +97,8 @@ class PortalCapture:
         # Present from construction so a caller can read them unconditionally.
         self.last_wait = 0.0
         self.last_read = 0.0
+        # What the kernel granted for the frame pipe, for the report.
+        self.pipe_bytes = 0
 
         usable, why = requirements()
         if not usable:
@@ -175,8 +185,36 @@ class PortalCapture:
             # The child holds its own copy; keeping ours open would leak one
             # descriptor per capture for as long as the process lives.
             err.close()
+        self._enlarge_pipe()
         self._log(f"  pipeline pid {self._proc.pid}: "
                   f"{' '.join(self._pipeline_args())}")
+
+    def _enlarge_pipe(self) -> None:
+        """Ask for a buffer big enough that the pipe does not pace the capture.
+
+        Best-effort and logged, not required: the request can be refused (the limit is
+        /proc/sys/fs/pipe-max-size and growing beyond it needs privileges), and a capture
+        that runs at the old speed is still a working capture. F_SETPIPE_SZ returns the
+        size actually granted, which is what gets logged.
+        """
+        stream = self._proc.stdout if self._proc is not None else None
+        if stream is None:
+            return
+        try:
+            before = fcntl.fcntl(stream.fileno(), fcntl.F_GETPIPE_SZ)
+            after = fcntl.fcntl(stream.fileno(), fcntl.F_SETPIPE_SZ, PIPE_BYTES)
+        except (OSError, ValueError) as exc:
+            # ValueError as well as OSError: fcntl rejects a bad descriptor before it ever
+            # reaches the kernel, so a closed pipe raises ValueError, and a resize that
+            # cannot even be attempted must leave a working capture behind, not end it.
+            self._log(f"  pipe buffer unchanged ({exc}); the capture will run at the "
+                      f"64 KiB default")
+            return
+        self.pipe_bytes = int(after)
+        if after == before:
+            self._log(f"  pipe buffer {before // 1024} KiB (unchanged)")
+        else:
+            self._log(f"  pipe buffer {before // 1024} -> {after // 1024} KiB")
 
     @property
     def resolution(self) -> tuple[int, int]:

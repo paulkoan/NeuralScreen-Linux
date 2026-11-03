@@ -334,6 +334,11 @@ class Pipeline:
         if self.capture_split["wait"]:
             out["capture_wait"] = mean(self.capture_split["wait"])
             out["capture_read"] = mean(self.capture_split["read"])
+        # What the kernel granted for the frame pipe. It decides what `read` means, so it
+        # belongs next to it rather than being inferred from it.
+        pipe_bytes = getattr(getattr(self, "capture", None), "pipe_bytes", 0)
+        if pipe_bytes:
+            out["capture_pipe_bytes"] = pipe_bytes
         return out
 
     def _capture_cpu(self) -> float | None:
