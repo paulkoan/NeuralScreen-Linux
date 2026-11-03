@@ -55,18 +55,13 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   shared surface, frame generation) is a product call in "Ask first", so the only unblocked action
   left is the one-line policy entry for `port-profile` below; nothing is queued this tick.
 
-* NEEDS ONE LINE FROM THE USER: a policy entry for `tools/port_profile.sh`. The port's pass is
-  12.0-13.5 ms at 1440p against NGX's 7.1 ms and the schedule is ruled out, so the next step is
-  per-dispatch timings - and argv is fixed in /opt/neuralscreen/policy.toml, which nothing here
-  may edit ("never edit /opt/neuralscreen"). The line is:
-
-      [[entry]]
-      name = "port-profile"
-      argv = ["bash", "tools/port_profile.sh"]
-
-  Then `{"id": "r2026-11-03-profile", "entry": "port-profile", ...}` can be queued and the answer
-  lands in the results branch. Until that exists the tool can also just be run at the box, in a
-  terminal, which needs no policy change at all.
+* Next: the port's FFN is the target, not its schedule. `r2026-11-03-profile` answered the question
+  it was queued for: 9.749 ms total, three FFN dispatches holding 25% of it, barriers costing ~1 us
+  each so they are irrelevant. Two things follow. First, re-run the profile when the GPU is idle -
+  this run was at 93% utilisation with six resident browsers, so its per-kernel numbers are soft.
+  Second, read the composite: the worker's "network+composite" is 12.0-13.5 ms while the profile's
+  whole pass is 9.749, so the composite and per-frame overhead are ~2.5-3.7 ms and have never been
+  broken down. That is now the larger unexamined share and it needs the same instrument.
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
@@ -123,6 +118,24 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   tick's to edit - a user call, not a measurement.
 
 ## Learned
+
+* learned: the port's own arithmetic, measured - and the NGX gap is smaller than this plan said
+  (2026-11-03, `r2026-11-03-profile` via the `port-profile` entry, exit 0 in 4.6 s). **Total 9.749
+  ms** for the 2560x1440 pass (sum of per-dispatch spans), against NGX's 7.1 ms for the same
+  weights - so the gap is **1.37x, not the 1.7x** the plan has been quoting. The barrier question
+  is also settled by measurement rather than by reading the source: "400 trivial dispatches +
+  barriers: 0.411 ms (1.03 us each)", so a full barrier costs ~1 us and the port's ~330 dispatches
+  cannot be paying more than ~0.3 ms in barriers. The cost is the FFN: three dispatches are 25% of
+  the total (ffn_ptx 14720x256 e8 r3 0.980 ms / 10.0%, ffn_ptx 58880x128 e4 r4 +proj 0.908 / 9.3%,
+  ffn_ptx 235520x64 e2 r4 +proj 0.516 / 5.3%). Nothing else reaches 6.3%. Also note the profile
+  total (9.749) is BELOW the live worker's "network+composite" (12.0-13.5), even though the profile
+  runs with barriers on: so ~2.5-3.7 ms of the worker's figure is the composite and the per-frame
+  overhead, not the network. Chasing the network's 1.37x therefore recovers at most ~2.6 ms, and
+  the composite is the bigger unexamined share of that 13 ms. The route disables chaining by
+  design (per-dispatch spans need the barriers) so its total is not a frame time and must not be
+  compared against one - the comparison that matters is kernel against kernel and against NGX's
+  7.1 ms, both measured the same way. GPU was BUSY (93%) during the run, so the numbers carry a
+  neighbour's load; a repeat when idle would firm them up.
 
 * learned: both capture changes landed on the box and the live frame fell from 46.6 to **33.8 ms /
   29.6 fps**; `--prefetch` lost and stays off (2026-11-03, runs live-pipe1m and live-prefetch read
