@@ -103,6 +103,24 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* learned: the live end-to-end run landed and it rewrites the floor (2026-11-03 tick, read of
+  `r2026-11-03-live-1440p`). Real portal capture of a live window at 2560x1440, `--shm`, pixels
+  saved, 120/120 frames, exit 0, 28.0 s. Steady **46.6 ms / 21.5 fps**, headline 11.09 fps.
+  Stage medians: capture 12.8 (split: wait 0.3, **read 13.1** - the portal pipe was stocked, so
+  this is the honest portal cost, not a dribble), send 2.3, recv 26.7 (worker's own frame 21.2-24.7
+  on frames 29/59/89/119), display 4.2. The stages are serial, so 12.8+2.3+26.7+4.2 ~= 46.0 against
+  the reported 46.6. Two consequences. First, **every fps figure this plan has quoted for 1440p was
+  measured on a synthetic card** whose capture+send+display cost 6.2 ms; live capture+send+display
+  costs ~19.3 ms, so the real-input floor is ~20 ms above the shm figures - `be`'s 26.4 ms becomes
+  **46.6 ms** end to end (its worker steady 18.1-20.2 ms against live 21.2-24.7 accounts for ~3 ms
+  of the difference; the other ~17 ms is capture, send and display on a real source). Second, the
+  worker's ~22 ms already exceeds the entire 16.7 ms budget before any client work, so 60 fps at
+  1440p needs the worker cut by ~2.4x, not by 9.7 ms. The 9.7 ms gap this plan was written around
+  was a synthetic-input figure and should not be quoted as the target any more. Artifacts:
+  `live-before.png`, `live-after.png`. The capture spread's one-off at frame 29 (37.7 ms) and the
+  display's at frame 27 (33.5 ms) are worth a look in the next run; both are outside the warm-up.
+  Also: 39% of one core for the gst pipeline, so capture is CPU-costly as well as slow.
+
 * learned: `r2026-11-02-motion-guides` and `r2026-11-02-bi` are the same run twice, and together
   they price the motion field (2026-11-02 tick). Both exit 0, 120/0, 1440p with pixels,
   `--shm --motion-guides --save-after`, worker patch `0aabc30ec374` at port 9d08f41;
