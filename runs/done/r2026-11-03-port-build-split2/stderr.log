@@ -1,0 +1,15 @@
+shaders/composite_serve.comp
+shaders/fused_block32.comp
+shaders/gemm_f16.comp
+shaders/gemm_fp8.comp
+shaders/gemm_mlp.comp
+shaders/gemm_reduce.comp
+shaders/global_attend.comp
+shaders/global_attention.comp
+shaders/global_normalize.comp
+shaders/ops.comp
+shaders/preprocess.comp
+shaders/proxy_expand.comp
+shaders/qkv_attention.comp
+shaders/window_attend.comp
+shaders/window_normalize.comp
