@@ -123,6 +123,23 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* learned: the split measurement lands, and the composite is NOT the missing 3 ms (2026-11-03,
+  `r2026-11-03-split`, 60 frames synthetic 1440p shm, exit 0). The worker's own timestamps, now
+  printed per frame when DLSS5VK_SERVE_SPLIT is set: **network 10.5-11.1 ms, composite 0.3 ms**,
+  proxy 2.5 [copy 1.6-1.7, submit 0.9], readback 0.0 and reply 0.0 because no pixels were asked
+  for. Steady frame 29: 14.0 ms total in the worker. So "network+composite" is ~10.8 ms on shm,
+  and the 12.0-13.5 ms the plan has been quoting is a PIPE-era figure that survived into the shm
+  section by accident. The composite is 0.3 ms - a rounding error, not the 2.5-3.7 ms guessed at
+  earlier; that guess was arithmetic on two numbers that were not measured the same way and is
+  withdrawn. The client side of the same run: capture 3.1, send 1.8, recv median 14.8, display 0.0,
+  median 19.2 ms/frame = **52.0 fps steady**. Note the split's own cost: its timestamps are
+  BOTTOM_OF_PIPE, so they flush the queue twice a frame and the median is 19.2 against the
+  un-instrumented 18.5 - about 0.7 ms, which is why the flag is gated. The consequence: the whole
+  remaining gap to 60 fps at 1440p on shm is 2.5 ms (19.2 -> 16.7), and the network's 1.37x against
+  NGX (10.5 measured here vs 7.1) is worth ~3.4 ms - enough to clear it if the port's FFN gets
+  within a few tenths of NGX. That is now the single highest-value target in the project, and it is
+  a port-side change with no picture cost.
+
 * learned: the profile route is stable enough to be a baseline (2026-11-03, `r2026-11-03-profile-idle`
   against the profile run taken at 93% GPU). Idle total **9.751 ms** against 9.749 ms with six
   resident browsers - 0.002 ms apart, and the barrier probe 0.408 vs 0.411 ms. That is what the
