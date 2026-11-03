@@ -1,0 +1,7 @@
+{
+  "id": "r2026-11-03-profile2",
+  "entry": "port-profile",
+  "args": [],
+  "timeout_s": 600,
+  "note": "Re-run of r2026-11-03-profile on an idle card (GPU status: IDLE). The first profile ran at 93% utilisation and its per-kernel numbers are soft; this run repeats the same 2560x1440 per-dispatch timings to firm them up. The plan's second ask - breaking down the composite - reads from this run's worker split as well as the profile total. No artifacts: the output is the timing table itself."
+}
