@@ -2,6 +2,6 @@
   "id": "r2026-11-03-port-build-split",
   "entry": "port-build",
   "args": [],
-  "timeout_s": 1800,
+  "timeout_s": 900,
   "note": "Apply the updated linux-port.patch to the staged port and rebuild dlss5vk. The patch now carries the split-timing instrumentation behind DLSS5VK_SERVE_SPLIT: three bottom-of-pipe timestamps around the neural graph and the composite, printed as 'network X, composite Y' instead of the combined figure. Nothing changes when the variable is unset. This build must land before any split run, and the rebuild script ends by asking the new binary which patch it carries, so a stale binary reports OUT OF SYNC rather than measuring the old code."
 }
