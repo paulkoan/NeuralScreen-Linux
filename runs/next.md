@@ -56,16 +56,8 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   shared surface, frame generation) is a product call in "Ask first", so the only unblocked action
   left is the one-line policy entry for `port-profile` below; nothing is queued this tick.
 
-* learned: the composite is 0.3 ms, not 2.5-3.7 (2026-11-03 tick, `r2026-11-03-split`). The split
-  instrumentation answers the question the profile could not: at 1440p no-pixel, shm, the worker's
-  `network` reads 11.0 / 11.1 / 11.1 / 10.5 ms at frames 0/1/2/29 and `composite` 0.2 / 0.3 / 0.3 /
-  0.3 ms. So the old "network+composite 12-13.5, of which ~2.5-3.7 is composite" subtraction is
-  retracted: the composite is a third of a millisecond, and the whole of that stage is the neural
-  pass. Against the profile's 9.75 ms of dispatch spans, the wall time is 10.5-11.1, so the gaps
-  between dispatches are ~0.8-1.4 ms - the pass is the arithmetic plus about a millisecond of
-  scheduling, and there is no hidden composite cost left to chase. The run's own 19.2 ms median /
-  52.0 fps is inflated by the timestamp flush by design and is not a frame rate; it does sit 0.7 ms
-  over bh's 18.5 ms on the same shape, which bounds that inflation at well under a millisecond.
+* learned: the composite is 0.3 ms, not 2.5-3.7 - the split run priced it; the full reading is in
+  the Learned section under `r2026-11-03-split` (2026-11-03 tick).
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
