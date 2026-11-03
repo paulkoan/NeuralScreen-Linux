@@ -263,14 +263,14 @@ class PortalCapture:
         self.last_read = None
 
         t0 = time.monotonic()
-        buf = self._read_exact(need)
+        frame = self._read_frame(need)
         total = time.monotonic() - t0
 
         if self.last_wait is None:      # no chunk ever arrived — cannot happen
             self.last_wait, self.last_read = total, 0.0
         else:
             self.last_read = total - self.last_wait
-        return np.frombuffer(buf, dtype=np.uint8).reshape(self.height, self.width, 4)
+        return frame
 
     def cpu_seconds(self) -> float | None:
         """CPU time the capture pipeline has used, or None if it is not running.
@@ -291,7 +291,7 @@ class PortalCapture:
     def pipeline_pid(self) -> int | None:
         return self._proc.pid if self._proc is not None else None
 
-    def _read_exact(self, need: int) -> bytes:
+    def _read_frame(self, need: int) -> np.ndarray:
         """Read exactly `need` bytes, or explain why we could not.
 
         The pipeline writing an unexpected number of bytes is the normal shape
@@ -299,28 +299,40 @@ class PortalCapture:
         stderr: GStreamer names the problem, and paraphrasing it would only lose
         the detail.
         """
-        chunks: list[bytes] = []
         got = 0
         stream = self._proc.stdout if self._proc is not None else None
         if stream is None:
             raise CaptureError("the capture pipeline is not running")
+        # Read into the frame's own buffer. Building bytes and then viewing them cost a
+        # second copy of all 14.7 MB (measured: 6.74 ms/frame this way against 8.71 through
+        # a chunk list and b"".join at a 1 MiB pipe, and 10.56 against 12.49 at the default).
+        frame = np.empty((self.height, self.width, 4), dtype=np.uint8)
+        view = memoryview(frame).cast("B")
+        # readinto1, not readinto: readinto blocks for the WHOLE request the way read does
+        # and would swallow the wait/read split this loop exists to report. readinto1
+        # returns as soon as some data has arrived.
+        read_into = getattr(stream, "readinto1", None)
+        if read_into is None:
+            read_into = getattr(stream, "readinto", stream.read)
         # When the first chunk comes back is when the frame started arriving —
         # the difference between the compositor being slow and our copy being
         # slow. read1 (not read) because read blocks for the WHOLE request, which
         # hides the split entirely.
-        read1 = getattr(stream, "read1", None)
         t0 = time.monotonic()
         while got < need:
-            chunk = read1(need - got) if read1 is not None else stream.read(need - got)
-            if not chunk:
+            read = read_into(view[got:])
+            # read could be bytes (the stream.read fallback) or a count; count either.
+            count = len(read) if isinstance(read, (bytes, bytearray)) else read
+            if not count:
                 raise CaptureError(
                     "the PipeWire pipeline ended before a whole frame arrived "
                     f"({got} of {need} bytes).\n" + self._stderr_tail())
+            if isinstance(read, (bytes, bytearray)):
+                view[got:got + count] = read
             if self.last_wait is None:
                 self.last_wait = time.monotonic() - t0
-            chunks.append(chunk)
-            got += len(chunk)
-        return b"".join(chunks)
+            got += count
+        return frame
 
     def _stderr_tail(self, lines: int = 12) -> str:
         if self._stderr is None or not self._stderr.exists():

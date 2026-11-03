@@ -121,7 +121,12 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   different things at 64 KiB and 1 MiB - the "~19 ms means stocked" note was only true of the
   default. A test caught a real hole while writing this: `fcntl` raises ValueError on a bad
   descriptor, not OSError, so a refused resize would have taken the whole capture down.
-  Prediction for the next live run: capture read ~9 ms, frame ~42 ms (from 46.6). The bigger
+  Then the drain loop itself: it built bytes and viewed them, a second copy of all 14.7 MB, so
+  it now reads straight into the frame's own numpy buffer via `readinto1` (not `readinto`, which
+  blocks for the whole request and would swallow the wait/read split). Measured at a 1 MiB pipe:
+  **8.71 ms/frame through `b"".join` against 6.74 ms reading into the frame**, and 10.56 against
+  12.49 at the 64 KiB default, so the loop is worth ~2 ms even if the resize is refused.
+  Prediction for the next live run: capture read ~7 ms, frame ~40 ms (from 46.6). The bigger
   prize is the same one as on the frame channel - hand the frame over through shared memory or
   take the PipeWire buffer directly (4.93 ms), which needs the producer replaced, not resized.
 

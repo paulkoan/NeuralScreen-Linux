@@ -1,10 +1,25 @@
 {
   "id": "r2026-11-03-live-pipe1m",
   "entry": "minimal",
-  "args": ["--frames", "120", "--source", "window", "--size", "2560x1440", "--shm",
-           "--save-before", "pipe1m-before.png", "--save-after", "pipe1m-after.png", "--worker-log"],
+  "args": [
+    "--frames",
+    "120",
+    "--source",
+    "window",
+    "--size",
+    "2560x1440",
+    "--shm",
+    "--save-before",
+    "pipe1m-before.png",
+    "--save-after",
+    "pipe1m-after.png",
+    "--worker-log"
+  ],
   "timeout_s": 900,
-  "artifacts": ["pipe1m-before.png", "pipe1m-after.png"],
+  "artifacts": [
+    "pipe1m-before.png",
+    "pipe1m-after.png"
+  ],
   "manual": true,
-  "note": "Same shape as r2026-11-03-live-1440p (real portal capture, 2560x1440, shm, pixels saved, 120 frames, 46.6 ms / 21.5 fps) but with the frame pipe enlarged. The capture leg reads 14.7 MB per frame through gst-launch's fdsink, and the kernel's default 64 KiB pipe buffer made the producer and consumer take turns ~230 times a frame: measured on the sandbox at 12.70 ms/frame at 64 KiB against 8.90 ms at 1 MiB. The client now asks for 1 MiB on the pipe it already owns (best-effort: F_SETPIPE_SZ is capped at /proc/sys/fs/pipe-max-size and a refusal leaves the old speed). Read the capture split line first - it now names the buffer the kernel granted, and at 1 MiB a stocked pipe should read ~9 ms against the 13.1 ms measured at 64 KiB, so the frame should land near 42 ms. If the split says the buffer is still 64 KiB, the resize was refused and the number is unchanged for a known reason."
+  "note": "Same shape as r2026-11-03-live-1440p (real portal capture, 2560x1440, shm, pixels saved, 120 frames, 46.6 ms / 21.5 fps) with two changes to the capture leg. First the frame pipe was enlarged: it reads 14.7 MB per frame through gst-launch's fdsink and the kernel's 64 KiB default made the producer and consumer take turns ~230 times a frame, so the client now asks F_SETPIPE_SZ for 1 MiB (/proc/sys/fs/pipe-max-size) on the pipe it already owns, best-effort. Second the drain loop reads straight into the frame's own numpy buffer instead of building bytes and viewing them, which was a second copy of all 14.7 MB. Measured on the sandbox with the real streaming shape: 12.70 ms/frame as it was, 6.74 ms with both changes (8.71 with the buffer alone, 10.56 with the buffer alone). Read the capture split first: it now names the buffer the kernel granted, and at 1 MiB a stocked pipe should read near 7 ms against the 13.1 ms measured at 64 KiB, putting the frame near 40 ms. If the buffer line says 64 KiB the resize was refused and only the copy saving applies."
 }

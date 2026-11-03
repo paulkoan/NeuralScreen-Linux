@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from minimal.capture import CaptureError
 from minimal.capture_wayland import PIPE_BYTES, PortalCapture
 
 
@@ -98,3 +99,90 @@ def test_the_resize_does_not_touch_the_bytes():
             os.close(write_fd)
             stream.close()
         assert np.frombuffer(got, dtype=np.uint8).reshape(48, 64, 4).tolist() == frame.tolist()
+
+class _FakePipeCapture(PortalCapture):
+    """A capture whose only real part is the pipeline's stdout.
+
+    Subclasses the real thing so grab() and _read_frame() are the production code, with
+    __init__ replaced to skip the portal handshake.
+    """
+
+    def __init__(self, stream, width=8, height=6):
+        self.width, self.height = width, height
+        self._proc = SimpleNamespace(stdout=stream)
+        self._stderr = None
+        self.last_wait = None
+
+    def _log(self, message):
+        pass
+
+
+def test_a_frame_is_read_straight_into_its_own_buffer():
+    """One copy, not two: the array the caller keeps is the array the pipe filled."""
+    width, height = 64, 48
+    frame = np.arange(height * width * 4, dtype=np.uint8).reshape(height, width, 4)
+    stream, write_fd = _pipe_pair()
+    try:
+        capture = _FakePipeCapture(stream, width, height)
+        os.write(write_fd, frame.tobytes())
+        got = PortalCapture._read_frame(capture, frame.nbytes)
+    finally:
+        os.close(write_fd)
+        stream.close()
+    assert got.shape == (height, width, 4) and got.dtype == np.uint8
+    assert got.tolist() == frame.tolist()
+    assert capture.last_wait is not None, "the first byte's arrival is still timed"
+
+
+def test_the_grab_reports_wait_and_read_separately():
+    """The split is the whole point of the loop and must survive readinto1."""
+    width, height = 64, 48
+    frame = np.zeros((height, width, 4), dtype=np.uint8)
+    stream, write_fd = _pipe_pair()
+    try:
+        capture = _FakePipeCapture(stream, width, height)
+        os.write(write_fd, frame.tobytes())
+        got = PortalCapture.grab(capture)
+    finally:
+        os.close(write_fd)
+        stream.close()
+    assert got.shape == (height, width, 4)
+    assert capture.last_wait is not None and capture.last_read is not None
+    assert capture.last_wait >= 0 and capture.last_read >= 0
+
+
+def test_a_pipeline_that_ends_mid_frame_says_how_far_it_got():
+    width, height = 64, 48
+    stream, write_fd = _pipe_pair()
+    try:
+        capture = _FakePipeCapture(stream, width, height)
+        os.write(write_fd, b"\x00" * 100)
+        os.close(write_fd)                     # EOF part-way through the frame
+        write_fd = None
+        try:
+            PortalCapture._read_frame(capture, width * height * 4)
+        except CaptureError as exc:
+            assert "100 of" in str(exc), f"the error must name the shortfall: {exc}"
+        else:
+            raise AssertionError("a short frame must not be returned as a frame")
+    finally:
+        stream.close()
+        if write_fd is not None:
+            os.close(write_fd)
+
+
+def test_the_read_does_not_need_readinto1():
+    """BufferedReader has readinto1; anything else must still work (read + copy)."""
+    width, height = 32, 24
+    frame = np.arange(height * width * 4, dtype=np.uint8).reshape(height, width, 4)
+    read_fd, write_fd = os.pipe()
+    try:
+        stream = os.fdopen(read_fd, "rb", 0)          # unbuffered: no readinto1
+        assert not hasattr(stream, "readinto1")
+        capture = _FakePipeCapture(stream, width, height)
+        os.write(write_fd, frame.tobytes())
+        got = PortalCapture._read_frame(capture, frame.nbytes)
+    finally:
+        os.close(write_fd)
+        stream.close()
+    assert got.tolist() == frame.tolist()
