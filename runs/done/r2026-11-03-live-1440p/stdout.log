@@ -1,0 +1,26 @@
+  CreateSession
+  session /org/freedesktop/portal/desktop/session/1_9743056/nsl_port
+  SelectSources
+  Start  (the compositor will ask you to choose a screen)
+  stream node=215 serial=23596 0x0
+  OpenPipeWireRemote
+  window stream reports no size; using the requested 2560x1440
+  pipeline pid 3545380: gst-launch-1.0 -q pipewiresrc fd=5 target-object=23596 ! videoconvert ! videoscale ! video/x-raw,format=RGBA,width=2560,height=1440,pixel-aspect-ratio=1/1 ! queue max-size-buffers=1 leaky=downstream ! fdsink fd=1
+source window  capture 2560x1440  ->  work 2560x1440 (work scale 1.00, NGX ceiling 2560x1440)
+params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+worker: /opt/neuralscreen/port/build/dlss5vk serve --model /opt/neuralscreen/model
+version: repo 2232db3 (+29 uncommitted) · worker built from patch 0aabc30ec374 at port 9d08f41 · in sync
+[main] shared memory agreed: 29.5 MB, the frame does not go through the pipe
+frame 0 is the worker's warm-up: the window stays black until its first answer lands
+pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+frames: 120 done, 0 skipped, 10.821s (11.09 fps headline, 21.48 fps steady), worker exit 0
+timing: capture 13.4ms  send 2.6ms  recv 66.9ms  display 4.9ms   (mean 87.8ms/frame, 11.4 fps; median 46.6ms/frame, 21.5 fps steady)
+send spread: min 0.8  median 2.3  max 8.3 ms at frame 0 of 120   (one-off at frame 0 — sent before the worker's first reply lands, so the warm-up, not a per-frame cost)
+recv spread: min 20.8  median 26.7  max 4664.3 ms at frame 0 of 120   (one-off at frame 0 — sent before the worker's first reply lands, so the warm-up, not a per-frame cost)
+capture spread: min 7.3  median 12.8  max 37.7 ms at frame 29 of 120   (a one-off at frame 29 — not the warm-up, so worth looking at)
+display spread: min 2.6  median 4.2  max 33.5 ms at frame 27 of 120   (a one-off at frame 27 — not the warm-up, so worth looking at)
+capture split: wait 0.3ms  read 13.1ms   (read ~19ms at 2560x1440 means we are draining a stocked pipe; read far above that means the compositor was dribbling)
+capture cpu: the pipeline used 4.19s over 10.82s = 39% of one core
+  before -> live-before.png
+  after  -> live-after.png
