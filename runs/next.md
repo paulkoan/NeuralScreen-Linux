@@ -113,6 +113,13 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* learned: the profile route is stable enough to be a baseline (2026-11-03, `r2026-11-03-profile-idle`
+  against the profile run taken at 93% GPU). Idle total **9.751 ms** against 9.749 ms with six
+  resident browsers - 0.002 ms apart, and the barrier probe 0.408 vs 0.411 ms. That is what the
+  route's per-dispatch minimum over 7 frames is for: contention does not reach the numbers, so
+  earlier runs taken on a busy GPU were not wasted and the baseline stands. Confirmed idle total:
+  **9.751 ms**, FFN 0.974 / 0.909 / 0.517 ms, `block32_ptx 58880w f74` 0.619 ms.
+
 * learned: `r2026-11-03-profile2` landed but is NOT a usable repeat (2026-11-03 tick). Exit 0 in
   6.9 s after waiting 297.5 s; gpu_before BUSY at 94% and gpu_after BUSY at 79%, with
   DyingLightGame_TheBeast running (6.2 GB) in both probes, so by this plan's own gate rule its
@@ -133,9 +140,11 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   the total (ffn_ptx 14720x256 e8 r3 0.980 ms / 10.0%, ffn_ptx 58880x128 e4 r4 +proj 0.908 / 9.3%,
   ffn_ptx 235520x64 e2 r4 +proj 0.516 / 5.3%). Nothing else reaches 6.3%. Also note the profile
   total (9.749) is BELOW the live worker's "network+composite" (12.0-13.5), even though the profile
-  runs with barriers on: so ~2.5-3.7 ms of the worker's figure is the composite and the per-frame
-  overhead, not the network. Chasing the network's 1.37x therefore recovers at most ~2.6 ms, and
-  the composite is the bigger unexamined share of that 13 ms. The route disables chaining by
+  runs with barriers on: so ~2.5-3.7 ms of the worker's figure is composite and/or the gaps between
+  dispatches, not the network's spans. Careful with that subtraction though - a sum of per-dispatch
+  spans is not a wall clock, so it cannot be subtracted from one and called "composite"; all it
+  proves is that the pass's arithmetic is 9.75 ms and the worker's wall time for the same region is
+  12-13.5. Chasing the network's 1.37x therefore recovers at most ~2.6 ms. The route disables chaining by
   design (per-dispatch spans need the barriers) so its total is not a frame time and must not be
   compared against one - the comparison that matters is kernel against kernel and against NGX's
   7.1 ms, both measured the same way. GPU was BUSY (93%) during the run, so the numbers carry a
