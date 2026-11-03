@@ -47,14 +47,6 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   readback + reply instead of shrinking them. That is the largest remaining lever with no picture
   cost, and it needs code in the worker and the client.
 
-* Next: `r2026-11-03-live-1440p` is queued as a MANUAL request - the end-to-end product path with
-  real portal capture of a live window, display on, shm, pixels saved. It is the only measurement
-  that can decide whether the app case is real, because every number on record used `--source
-  synthetic` and the input leg (~19 ms stocked, up to 159 ms dribbling) has never been measured in
-  this pipeline. Run it tomorrow at the box with run_manually.sh and click the portal dialog. Read
-  the capture split first: if `read` is ~19 ms the product frame is ~45 ms before the worker and no
-  worker work reaches 60 fps.
-
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
 > so "no open item" means nothing queues and nothing runs, which is what happened overnight.
@@ -970,3 +962,17 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   and 22-26 ms) and closer to neither, so quote 18.5, not an interpolation. Nothing queued this
   tick: no remaining timing shape adds a number, and the 1080p shm no-pixel control is off-target
   with 1440p fixed. The `--shm`-as-default question is now under "Ask first".
+
+* learned: `r2026-11-03-live-1440p` ran the real product path and the input leg is NOT the
+  bottleneck the plan feared (2026-11-03 tick). Exit 0, 120/0, portal capture of a live window at
+  2560x1440, `--shm`, pixels saved; worker patch `0aabc30ec374` at port 9d08f41, in sync. Steady
+  median **46.6 ms / 21.5 fps** (the 87.8 ms / 11.4 fps headline is the frame-0 warm-up: recv max
+  4664.3 ms at frame 0). The capture split reads **read 13.1 ms** against the 19 ms "stocked pipe"
+  reference - under it, so the compositor was not dribbling and the predicted ~45 ms pre-worker
+  frame did not materialise. Client split: capture 13.4, send 2.6, recv 66.9, display 4.9 mean;
+  worker steady 21.2/24.7/24.5/22.4 ms at frames 29/59/89/119 (proxy 3.6-4.5, network+composite
+  ~13.2, readback 2.9-5.5, reply 1.1-2.0). So the live path lands within ~4 ms of the synthetic
+  pixel runs' worker cost; the 46.6 ms frame is dominated by the ~40 ms recv+handoff, not by a
+  slow input leg. Capture CPU 39% of one core (4.19 s over 10.82 s). gpu_before/after both WARN
+  (resident, not contending), idle_waited_s 0.0. The "app case is unreal" hypothesis is refuted;
+  the lever remains the worker's own frame, as recorded above.
