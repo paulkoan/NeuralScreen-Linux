@@ -124,6 +124,27 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* learned: both capture changes landed on the box and the live frame fell from 46.6 to **33.8 ms /
+  29.6 fps**; `--prefetch` lost and stays off (2026-11-03, runs live-pipe1m and live-prefetch read
+  against live-1440p). `r2026-11-03-live-pipe1m`: pipe buffer 64 -> 1024 KiB as asked, **capture
+  13.4 -> 6.5 ms** (split: wait 0.5, **read 6.0** against 13.1 before - the prediction was ~9,
+  the floor was lower), send 2.6 -> 1.5, recv median 26.7 -> 23.0, display 4.9 -> 3.2, so the
+  frame is **33.8 ms steady / 29.6 fps**, and capture is no longer a problem worth a design.
+  `r2026-11-03-live-prefetch` then added `--prefetch` on top and was **worse: 35.2 ms / 28.4 fps**
+  - capture 0.0 ms as designed (387 drained, 386 dropped, frame age 15.6 ms mean) but send 2.7 and
+  recv median 28.4 both rose, so the drain thread's CPU and the churn cost more than the 6.5 ms it
+  hid. That is the whole story of the flag: it was written when a grab inside the loop measured
+  ~238 ms, and against a 6.5 ms grab it is a regression. Do not queue it again without a reason
+  that starts from 33.8 ms.
+
+* learned: the live frame is now 33.8 ms and it is one leg (2026-11-03). Stage medians of
+  live-pipe1m: capture 6.5, send 1.5, recv 23.0 (the worker's own frame), display 3.2 - serial, so
+  they sum to the frame. The worker is 68% of it and the pass is 12-13.5 of the worker's ~20, with
+  proxy ~3 and readback ~4 around it. Nothing client-side can move the number much now: even a
+  free capture, free send and free display would leave the worker's 23 ms. So the programme is the
+  port's arithmetic (tools/port_profile.sh) and then, if that road ends, the pixel channel's
+  readback - which is a dma-buf change, not a knob.
+
 * learned: the live capture line is closed, and the answer is the buffer, not the overlap (2026-11-03
   tick, read of `r2026-11-03-live-pipe1m` and `r2026-11-03-live-prefetch`). Both exit 0, 120/0, real
   portal capture of a live 2560x1440 window, `--shm`, same worker patch `0aabc30ec374` at port 9d08f41.
