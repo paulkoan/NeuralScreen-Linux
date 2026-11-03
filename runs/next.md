@@ -47,17 +47,13 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   readback + reply instead of shrinking them. That is the largest remaining lever with no picture
   cost, and it needs code in the worker and the client.
 
-* Next: `r2026-11-03-live-pipe1m` is queued as MANUAL - the live run again, now with the capture
-  pipe enlarged to 1 MiB. It is the same shape as `r2026-11-03-live-1440p` it should beat, and
-  the only difference is the buffer, so the pair prices that change directly. Run it at the box
-  with run_manually.sh and click the portal dialog. Read the capture split first; if the buffer
-  line says 64 KiB the resize was refused and the run measures nothing new.
-
-* Next: two MANUAL live runs are queued and they are one sitting - run_manually.sh takes whatever
-  is outstanding. `r2026-11-03-live-pipe1m` isolates the capture transport change (1 MiB pipe +
-  read-into-the-frame) and should read near 7 ms of capture against 13.1, so ~40 ms end to end.
-  `r2026-11-03-live-prefetch` adds `--prefetch` on top and should absorb the capture leg entirely,
-  landing near 30 ms. Read the capture split on the first and the prefetch line on the second.
+* Next: **nothing queues.** The live pair closed the capture line (learned, top of the list):
+  a 1 MiB pipe plus read-into-the-frame takes the live frame **46.6 -> 33.8 ms** and the capture
+  read 13.1 -> 6.0 ms, and `--prefetch` stacked on top reads **35.2 ms** - no further gain, inside
+  the run-to-run spread. So the client's capture+send+display is now ~11 ms of the 33.8 and the
+  worker's own **20.5-22.3 ms** is the entire remaining lever. Every way into it (reply format,
+  shared surface, frame generation) is a product call in "Ask first", so the only unblocked action
+  left is the one-line policy entry for `port-profile` below; nothing is queued this tick.
 
 * NEEDS ONE LINE FROM THE USER: a policy entry for `tools/port_profile.sh`. The port's pass is
   12.0-13.5 ms at 1440p against NGX's 7.1 ms and the schedule is ruled out, so the next step is
@@ -127,6 +123,25 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   tick's to edit - a user call, not a measurement.
 
 ## Learned
+
+* learned: the live capture line is closed, and the answer is the buffer, not the overlap (2026-11-03
+  tick, read of `r2026-11-03-live-pipe1m` and `r2026-11-03-live-prefetch`). Both exit 0, 120/0, real
+  portal capture of a live 2560x1440 window, `--shm`, same worker patch `0aabc30ec374` at port 9d08f41.
+  pipe1m: the resize was **granted** (`pipe buffer 64 -> 1024 KiB`), capture split wait 0.5 / read 6.0,
+  steady **33.8 ms / 29.59 fps** (headline 14.13) against live-1440p's 46.6 ms / 21.5 fps on the same
+  build and shape - **12.8 ms off**, with the capture read 13.1 -> 6.0 exactly as the bench predicted.
+  prefetch stacked on top: it drained 387 frames on its own thread, dropped 386, frame age mean 15.6
+  max 39.0 - and still read **35.2 ms / 28.44 fps**, 1.4 ms *worse* than pipe1m's serial 33.8 (inside
+  the 29.1-vs-35.3 ms spread, but nowhere near the ~30 ms the plan predicted). So handing the loop the
+  newest frame on a thread buys nothing once the pipe already drains in 6 ms: the worker is idle for
+  ~6.5 ms of capture, not 13, and the drop path costs what it saves. The serial loop stands; prefetch
+  stays opt-in and unused, and its picture differs from the serial run by design (no byte comparison).
+  Where the live frame now sits: worker 21.8/20.5/22.3/20.7 ms at frames 29/59/89/119 (pixel channel =
+  readback ~4 + reply ~1.7, network+composite ~12.5) inside a 33.8 ms frame, so the worker is ~63% of
+  it and capture+send+display is ~11 ms. 60 fps at 1440p needs ~17 ms off the worker's 21, i.e. the
+  reply-format / shared-surface / frame-generation decision, not another run. Artifacts:
+  `pipe1m-before.png` / `pipe1m-after.png`, `pf-before.png` / `pf-after.png`; gpu WARN before and after
+  on both (resident, not contending), so they are usable samples.
 
 * learned: the schedule is not the port's 1.7x gap - the arithmetic is (2026-11-03 tick, read of
   the port sources at /opt/data/tmp/odl-src). The port's pass is 12.0-13.5 ms at 1440p against
