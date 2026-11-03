@@ -1,0 +1,23 @@
+warning: The `native-tls` setting is deprecated and will be removed in a future release. Use `system-certs` instead.
+[worker] serve: 2560x1440, model /opt/neuralscreen/model, shaders /opt/neuralscreen/port/build/shaders, seed 0
+[worker] serve: built from port 9d08f41 (17 modified) patch 0aabc30ec374cc01893092ebb8538d537e6cd888
+[worker] serve: frame channel open (29.5 MB, NeuralScreen_2121187_757db538)
+[worker] serve: pixel channel open (2560x1440, 14.7 MB, NeuralScreenOut_2121187_0bd60e)
+[main] shared memory: frames in and pixels out through /dev/shm (frame 29.5MB, pixels 14.7MB)
+[worker] serve: the caller declared no motion field: the reprojection is the identity
+[worker] serve: and the five-tap history filter is the centre tap, which is the pixel
+[worker] serve: itself - so no published byte can move for it
+[worker] serve: device NVIDIA GeForce RTX 4080 SUPER
+[worker] serve: blend scale 0.7397 (block70.layer0.blend_scale)
+[worker] serve: graph fused (DLSS5VK_UNFUSED not set)
+[worker] serve: warming up (the PTX modules are JIT-compiled on first use)
+[worker] serve: warm-up 3324 ms
+[worker] serve: frame 0 carries reset: no history for this frame, and this frame primes the next
+[worker] serve: head -7.8555..0.2688 mean -0.95310; residual mean 0.0010 -0.0009 -0.0011 (rgb, head/4), logit mean -3.8082; non-finite 0 of 14745600; first 8 -0.0234 -0.0240 -0.0341 -3.2383 -0.0279 -0.0282 -0.0368 -3.4844
+[worker] serve frame 0: 157.1 ms (proxy 3.2 [copy 2.1, submit 1.1], network+composite 45.8, readback 101.3, reply 6.9)
+[worker] serve frame 1: 40.8 ms (proxy 3.9 [copy 2.4, submit 1.5], network+composite 25.9, readback 8.6, reply 2.5)
+[worker] serve frame 2: 38.7 ms (proxy 4.5 [copy 2.3, submit 2.2], network+composite 26.1, readback 4.9, reply 3.3)
+[worker] serve frame 29: 26.0 ms (proxy 3.7 [copy 2.6, submit 1.1], network+composite 12.7, readback 6.1, reply 3.5)
+[worker] serve frame 59: 26.7 ms (proxy 4.4 [copy 2.5, submit 1.9], network+composite 12.5, readback 6.9, reply 3.0)
+[worker] serve frame 89: 28.9 ms (proxy 6.5 [copy 2.9, submit 3.7], network+composite 13.2, readback 5.8, reply 3.4)
+[worker] serve frame 119: 24.9 ms (proxy 4.5 [copy 2.9, submit 1.6], network+composite 12.5, readback 5.8, reply 2.2)

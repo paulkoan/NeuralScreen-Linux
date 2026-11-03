@@ -1,0 +1,1 @@
+uv run python -m minimal --frames 120 --source window --size 2560x1440 --shm --prefetch --save-before pf-before.png --save-after pf-after.png --worker-log
