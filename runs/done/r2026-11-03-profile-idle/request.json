@@ -1,0 +1,7 @@
+{
+  "id": "r2026-11-03-profile-idle",
+  "entry": "port-profile",
+  "args": [],
+  "timeout_s": 600,
+  "note": "The same per-dispatch profile as r2026-11-03-profile, queued because the developer reports the GPU is now idle: that run was taken at 93% utilisation with six resident browsers, so its per-kernel spans are inflated by a neighbour and cannot be compared against NGX's 7.1 ms with any confidence. Nothing else differs - same binary, same model, 2560x1440, 7 frames per dispatch, minimum per dispatch. Read the total against 9.749 ms and the three FFN dispatches against 0.980 / 0.908 / 0.516 ms; if the idle total comes in under 9.7 the earlier figure was contention, and if it lands within a few tenths the profile route is stable enough to use as a baseline."
+}

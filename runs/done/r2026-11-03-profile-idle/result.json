@@ -1,0 +1,14 @@
+{
+  "exit_code": 0,
+  "seconds": 4.765,
+  "argv": [
+    "bash",
+    "tools/port_profile.sh"
+  ],
+  "artifacts": [],
+  "runner": "005dd2c6ea9e",
+  "entry_env": [],
+  "gpu_before": "WARN (resident but not contending: signal-desktop (pid 43509, 61.0 MiB); resident but not contending: Telegram (pid 988444, 36.0 MiB); resident but not contending: signon-ui (pid 3062205, 17.0 MiB))",
+  "gpu_after": "BUSY (utilization 66%; signal-desktop (pid 43509, 61.0 MiB); Telegram (pid 988444, 36.0 MiB); signon-ui (pid 3062205, 17.0 MiB))",
+  "idle_waited_s": 165.0
+}
