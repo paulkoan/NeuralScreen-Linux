@@ -59,6 +59,19 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   `r2026-11-03-live-prefetch` adds `--prefetch` on top and should absorb the capture leg entirely,
   landing near 30 ms. Read the capture split on the first and the prefetch line on the second.
 
+* NEEDS ONE LINE FROM THE USER: a policy entry for `tools/port_profile.sh`. The port's pass is
+  12.0-13.5 ms at 1440p against NGX's 7.1 ms and the schedule is ruled out, so the next step is
+  per-dispatch timings - and argv is fixed in /opt/neuralscreen/policy.toml, which nothing here
+  may edit ("never edit /opt/neuralscreen"). The line is:
+
+      [[entry]]
+      name = "port-profile"
+      argv = ["bash", "tools/port_profile.sh"]
+
+  Then `{"id": "r2026-11-03-profile", "entry": "port-profile", ...}` can be queued and the answer
+  lands in the results branch. Until that exists the tool can also just be run at the box, in a
+  terminal, which needs no policy change at all.
+
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
 > so "no open item" means nothing queues and nothing runs, which is what happened overnight.
@@ -114,6 +127,22 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   tick's to edit - a user call, not a measurement.
 
 ## Learned
+
+* learned: the schedule is not the port's 1.7x gap - the arithmetic is (2026-11-03 tick, read of
+  the port sources at /opt/data/tmp/odl-src). The port's pass is 12.0-13.5 ms at 1440p against
+  NGX's 7.1 ms for the same weights, and the obvious suspect was barrier overhead: the port has
+  counter chaining that drops the barrier between consecutive PTX launches, and it is gated in
+  `nr_graph.cpp` (`routes_.chain = ... chainEnabled() && options_.fusedBlocks && ...`) with a
+  resolution-dependent escape hatch - past `(fullHeight + 11) / 8 > kSyncCountersPerRegion`
+  (= 2048/4 = 512) it warns "running with barriers" and drops chaining. At 2560x1440 that
+  threshold is 181, and it is 271 at 4K, so **chaining is on at every resolution we ship** and
+  the live run's stderr carries no such warning. Chaining also defaults on (`getenv("DLSS5VK_CHAIN"
+  ) ? ... : true`) and only `profile` turns it off, deliberately, because per-dispatch timings
+  need the barriers. So the gap is inside the kernels, and the port already has the instrument:
+  `dlss5vk profile --model <dir> --width W --height H --frames N` prints every dispatch's span
+  and totals by kernel and by stage, taking the per-dispatch minimum so other tenants cannot
+  inflate it. That is `tools/port_profile.sh` now; it needs a runner entry (below) because it
+  must profile the binary port-build last produced, not a fresh one.
 
 * learned: `--send-ahead 2`'s picture change has a name, and it is not a mystery (2026-11-03 tick,
   reading protocol.py). `SharedFrameBuffer` says it outright: "there is one slot. Frame N+1 must
