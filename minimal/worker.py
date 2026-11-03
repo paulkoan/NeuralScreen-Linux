@@ -112,7 +112,8 @@ DLL_OVERRIDES = (
 ENABLE_NVAPI = "1"
 
 
-def worker_env(base: dict | None = None, nr_small: bool = False) -> dict:
+def worker_env(base: dict | None = None, nr_small: bool = False,
+               extra: dict | None = None) -> dict:
     """The environment to launch the worker with.
 
     nr_small is the product's NS_NR_SMALL: the network runs on a scaled-down
@@ -128,6 +129,10 @@ def worker_env(base: dict | None = None, nr_small: bool = False) -> dict:
     env.setdefault("WINEPREFIX", os.path.expanduser("~/.neuralscreen/wine"))
     if nr_small:
         env["NS_NR_SMALL"] = "1"
+    # Last, so a caller's explicit request wins over anything inherited. The policy's per-entry
+    # env already arrives in os.environ; this is for one run overriding it.
+    if extra:
+        env.update({str(k): str(v) for k, v in extra.items()})
     return env
 
 
@@ -241,7 +246,7 @@ class Worker:
                  nr_small: bool = False, motion_small: bool = False,
                  no_motion: bool = False, shm: bool = False,
                  bypass: bool = False, writev: bool = False,
-                 echo_logs: bool = False):
+                 echo_logs: bool = False, extra_env: dict | None = None):
         self.width, self.height = int(width), int(height)
         self.work_w, self.work_h = int(work_w), int(work_h)
         self.params = params
@@ -279,6 +284,10 @@ class Worker:
         # the answer is wanted. Off by default: the per-frame lines are noise in a
         # measurement run, and `--worker-log` is one flag away.
         self.echo_logs = bool(echo_logs)
+        # Extra environment for the worker only. A port-side switch (a gated diagnostic, a memory
+        # setting) should not have to become a policy entry to be turned on for one run, and a
+        # policy's env is per-entry, so a flag set there applies to every run of that entry.
+        self.extra_env = dict(extra_env or {})
         self.warmup = int(warmup)
         self.cmd = cmd or default_launcher()
         self.cwd = cwd or NATIVE_DIR
@@ -308,7 +317,7 @@ class Worker:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=worker_env(nr_small=self.nr_small),
+            env=worker_env(nr_small=self.nr_small, extra=self.extra_env),
         )
         threading.Thread(target=self._drain_stderr, daemon=True,
                          name="worker-stderr").start()
