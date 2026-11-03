@@ -26,7 +26,8 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 * Next: **nothing queues**, and the motion field is now priced (2026-11-02 tick, bi/mg read).
   The remaining lever is unchanged: the worker's own frame at 1440p - the pixel channel (7.9 ms
-  under shm) plus the neural pass (12.7) of `be`'s 26.4 ms - and any build there waits on the
+  under shm) plus the neural pass (12.7, now split-measured at 10.5-11.1 with the composite at 0.3)
+  of `be`'s 26.4 ms - and any build there waits on the
   reply-format product decision in "Ask first" (FP8 vs changed-tiles vs accept <60 fps at
   1440p). The guides pair is in and it is not a cheap lever: a real field costs **+15 ms** on
   the frame (send +2.9, the worker's own `network+composite` +6, recv +11.7) to move 0.47% of
@@ -55,7 +56,16 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   shared surface, frame generation) is a product call in "Ask first", so the only unblocked action
   left is the one-line policy entry for `port-profile` below; nothing is queued this tick.
 
-* learned: queued `r2026-11-03-profile2` to repeat the per-dispatch profile on an idle card (GPU probed IDLE); the composite's ~2.5-3.7 ms share still needs its own instrument (2026-11-03 tick).
+* learned: the composite is 0.3 ms, not 2.5-3.7 (2026-11-03 tick, `r2026-11-03-split`). The split
+  instrumentation answers the question the profile could not: at 1440p no-pixel, shm, the worker's
+  `network` reads 11.0 / 11.1 / 11.1 / 10.5 ms at frames 0/1/2/29 and `composite` 0.2 / 0.3 / 0.3 /
+  0.3 ms. So the old "network+composite 12-13.5, of which ~2.5-3.7 is composite" subtraction is
+  retracted: the composite is a third of a millisecond, and the whole of that stage is the neural
+  pass. Against the profile's 9.75 ms of dispatch spans, the wall time is 10.5-11.1, so the gaps
+  between dispatches are ~0.8-1.4 ms - the pass is the arithmetic plus about a millisecond of
+  scheduling, and there is no hidden composite cost left to chase. The run's own 19.2 ms median /
+  52.0 fps is inflated by the timestamp flush by design and is not a frame rate; it does sit 0.7 ms
+  over bh's 18.5 ms on the same shape, which bounds that inflation at well under a millisecond.
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
