@@ -1,4 +1,4 @@
-From 0aabc30ec374cc01893092ebb8538d537e6cd888 Mon Sep 17 00:00:00 2001
+From 088280e62d5047a684d65df2a3fb2dcf84d5f9d1 Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -112,10 +112,10 @@ per-frame timing line on stderr.
  src/nr_model.h               |   6 +
  src/nr_schedule.cpp          | 235 ++++++++++
  src/nr_schedule.h            |  56 +++
- src/serve.cpp                | 839 +++++++++++++++++++++++++++++++++++
+ src/serve.cpp                | 871 +++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |  71 ++-
  src/vk_context.h             |  23 +
- 16 files changed, 1876 insertions(+), 59 deletions(-)
+ 16 files changed, 1908 insertions(+), 59 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/proxy_expand.comp
@@ -1483,10 +1483,10 @@ index 0000000..8d64f1c
 +}  // namespace nr
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..888808f
+index 0000000..a95f1bc
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,839 @@
+@@ -0,0 +1,871 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -1930,9 +1930,18 @@ index 0000000..888808f
 +  // would silently disagree with the next model file.
 +  float blendScale = 1.0f;
 +
++  // Split timing for the one number this path could not produce: how much of "network+composite"
++  // is the pass and how much is the composite and the gap between the two. A sum of per-dispatch
++  // spans (what `dlss5vk profile` prints) cannot be subtracted from this path's wall clock, so the
++  // split has to be measured in place. Gated: the two BOTTOM_OF_PIPE timestamps flush the queue,
++  // which is a cost this path should not pay while it is serving frames.
++  const bool splitTiming = getenv("DLSS5VK_SERVE_SPLIT") != nullptr;
++  VkQueryPool splitPool = nullptr;
++
 +  auto startEngine = [&]() {
 +    context = std::make_unique<vk::Context>();
 +    fprintf(stderr, "serve: device %s\n", context->deviceName().c_str());
++    if (splitTiming) splitPool = context->createTimestampPool(3);
 +    // verifyHashes = true: each stage file is checked against the manifest's sha256, which
 +    // is what upstream does on load and what our extractor writes. bench passes false to
 +    // keep its timing loop honest, but this mode serves frames — a stage file that is
@@ -2198,6 +2207,10 @@ index 0000000..888808f
 +        const std::chrono::steady_clock::time_point afterUpload = std::chrono::steady_clock::now();
 +        context->resetDescriptorPool();
 +        VkCommandBuffer commands = context->beginCommands();
++        if (splitTiming && splitPool) {
++          vkCmdResetQueryPool(commands, splitPool, 0, 3);
++          vkCmdWriteTimestamp(commands, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, splitPool, 0);
++        }
 +        // The history, first in this recording, because imageBuffer still holds the frame that
 +        // was published last and this is the only moment it does - the composite below overwrites
 +        // it. The same expand the current frame gets, on the previous one: one dispatch and no
@@ -2207,6 +2220,8 @@ index 0000000..888808f
 +        preprocess.history = haveHistory ? &historyProxy : nullptr;
 +        kernels->preprocessFromProxy(commands, proxy, *features, preprocess);
 +        graph->record(commands, *features);
++        if (splitTiming && splitPool)
++          vkCmdWriteTimestamp(commands, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, splitPool, 1);
 +        // The composite, on the GPU: the head and the proxy in, RGBA8 out. Two reasons it is
 +        // not on the host any more — it is 11M pixels of fma, floor and half-truncation a
 +        // frame there, and publishing it here means the readback is the finished 14.7MB
@@ -2214,8 +2229,16 @@ index 0000000..888808f
 +        kernels->compositeToRgba8(commands, proxy, graph->head(), imageBuffer, workWidth, fullWidth,
 +                                  workWidth, workHeight, motionBuffer,
 +                                  haveHistory ? &historyProxy : nullptr, blendScale);
++        if (splitTiming && splitPool)
++          vkCmdWriteTimestamp(commands, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, splitPool, 2);
 +        context->endAndSubmit(commands, true);
 +        checkChainTimeouts(*kernels);
++        double splitNetworkMs = 0.0, splitCompositeMs = 0.0;
++        if (splitTiming && splitPool) {
++          const std::vector<double> stamps = context->readTimestampsMs(splitPool, 3);
++          splitNetworkMs = stamps[1] - stamps[0];
++          splitCompositeMs = stamps[2] - stamps[1];
++        }
 +        const std::chrono::steady_clock::time_point afterRecord = std::chrono::steady_clock::now();
 +
 +        // The head is read back for the diagnostic line. Frame 0's head is measured while
@@ -2307,13 +2330,22 @@ index 0000000..888808f
 +        // the record+submit+wait. A per-frame cost that grows across a run can only be one of
 +        // them - the memcpy moves host bytes, the submit is the queue - and the sum alone
 +        // cannot say which.
-+        if (frames <= 3 || frames % 30 == 0)
-+          fprintf(stderr,
-+                  "serve frame %u: %.1f ms (proxy %.1f [copy %.1f, submit %.1f], "
-+                  "network+composite %.1f, readback %.1f, reply %.1f)\n",
-+                  index, ms, since(began, afterUpload), uploadTimes.copyMs, uploadTimes.submitMs,
-+                  since(afterUpload, afterRecord), since(afterRecord, afterDownload),
-+                  since(afterDownload, afterSend));
++        if (frames <= 3 || frames % 30 == 0) {
++          if (splitTiming && splitPool)
++            fprintf(stderr,
++                    "serve frame %u: %.1f ms (proxy %.1f [copy %.1f, submit %.1f], "
++                    "network %.1f, composite %.1f, readback %.1f, reply %.1f)\n",
++                    index, ms, since(began, afterUpload), uploadTimes.copyMs, uploadTimes.submitMs,
++                    splitNetworkMs, splitCompositeMs, since(afterRecord, afterDownload),
++                    since(afterDownload, afterSend));
++          else
++            fprintf(stderr,
++                    "serve frame %u: %.1f ms (proxy %.1f [copy %.1f, submit %.1f], "
++                    "network+composite %.1f, readback %.1f, reply %.1f)\n",
++                    index, ms, since(began, afterUpload), uploadTimes.copyMs, uploadTimes.submitMs,
++                    since(afterUpload, afterRecord), since(afterRecord, afterDownload),
++                    since(afterDownload, afterSend));
++        }
 +      }
 +
 +      if (frameLimit > 0 && (int)frames >= frameLimit) {
