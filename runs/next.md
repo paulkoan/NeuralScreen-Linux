@@ -55,13 +55,7 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   shared surface, frame generation) is a product call in "Ask first", so the only unblocked action
   left is the one-line policy entry for `port-profile` below; nothing is queued this tick.
 
-* Next: the port's FFN is the target, not its schedule. `r2026-11-03-profile` answered the question
-  it was queued for: 9.749 ms total, three FFN dispatches holding 25% of it, barriers costing ~1 us
-  each so they are irrelevant. Two things follow. First, re-run the profile when the GPU is idle -
-  this run was at 93% utilisation with six resident browsers, so its per-kernel numbers are soft.
-  Second, read the composite: the worker's "network+composite" is 12.0-13.5 ms while the profile's
-  whole pass is 9.749, so the composite and per-frame overhead are ~2.5-3.7 ms and have never been
-  broken down. That is now the larger unexamined share and it needs the same instrument.
+* learned: queued `r2026-11-03-profile2` to repeat the per-dispatch profile on an idle card (GPU probed IDLE); the composite's ~2.5-3.7 ms share still needs its own instrument (2026-11-03 tick).
 
 > Keep this section stocked: when the last item is finished, write the next one in the same
 > tick. An empty section stops the pipeline - the tick only wakes on a result or a change here,
