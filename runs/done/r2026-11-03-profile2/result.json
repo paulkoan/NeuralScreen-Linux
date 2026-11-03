@@ -1,0 +1,14 @@
+{
+  "exit_code": 0,
+  "seconds": 6.928,
+  "argv": [
+    "bash",
+    "tools/port_profile.sh"
+  ],
+  "artifacts": [],
+  "runner": "005dd2c6ea9e",
+  "entry_env": [],
+  "gpu_before": "BUSY (utilization 94%; chromium (pid 43069, 221.0 MiB); signal-desktop (pid 43509, 61.0 MiB); msedge (pid 73501, 175.0 MiB); Telegram (pid 988444, 36.0 MiB); signon-ui (pid 3062205, 17.0 MiB); DyingLightGame_TheBeast_x64_rwdi.exe (pid 2215293, 6181.0 MiB))",
+  "gpu_after": "BUSY (utilization 79%; chromium (pid 43069, 221.0 MiB); signal-desktop (pid 43509, 61.0 MiB); msedge (pid 73501, 175.0 MiB); Telegram (pid 988444, 36.0 MiB); signon-ui (pid 3062205, 17.0 MiB); DyingLightGame_TheBeast_x64_rwdi.exe (pid 2215293, 6181.0 MiB))",
+  "idle_waited_s": 297.5
+}
