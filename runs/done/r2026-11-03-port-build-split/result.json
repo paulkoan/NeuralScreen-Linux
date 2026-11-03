@@ -1,0 +1,4 @@
+{
+  "exit_code": 126,
+  "refused": "timeout 1800s is outside 1..900"
+}
