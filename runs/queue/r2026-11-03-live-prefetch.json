@@ -1,0 +1,10 @@
+{
+  "id": "r2026-11-03-live-prefetch",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--source", "window", "--size", "2560x1440", "--shm", "--prefetch",
+           "--save-before", "pf-before.png", "--save-after", "pf-after.png", "--worker-log"],
+  "timeout_s": 900,
+  "artifacts": ["pf-before.png", "pf-after.png"],
+  "manual": true,
+  "note": "The live run again, now with the capture leg overlapped instead of serial. The loop is strictly capture -> send -> recv -> display, so a 12.8 ms grab is 12.8 ms of dead time with the worker idle; Prefetch (minimal/prefetch.py, already written and tested, never used in a live run) drains the source on its own thread and hands the loop the newest frame, so the grab costs what a handover costs and the producer is never throttled. Expect the frame to fall from ~40 (the pipe1m shape) toward ~30 ms: roughly send 2.3 + recv 26.7 + display 4.2, with capture absorbed. Read the prefetch line the report prints - drained count and frame age - because the age is the latency this buys and the price of it: stale frames are dropped, so the picture legitimately differs from a serial run and pf-after.png must NOT be expected to match pipe1m-after.png byte for byte. Note this is NOT --send-ahead: that was tried and it changes the picture for a real reason, see the plan - the worker's input section has one slot and the class documents that pipelining needs a second one. Prefetch leaves that invariant intact; the slot is still written only after the previous reply."
+}

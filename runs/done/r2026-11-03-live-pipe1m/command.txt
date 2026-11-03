@@ -1,0 +1,1 @@
+uv run python -m minimal --frames 120 --source window --size 2560x1440 --shm --save-before pipe1m-before.png --save-after pipe1m-after.png --worker-log

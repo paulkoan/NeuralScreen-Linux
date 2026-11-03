@@ -1,0 +1,34 @@
+{
+  "exit_code": 0,
+  "seconds": 62.625,
+  "argv": [
+    "uv",
+    "run",
+    "python",
+    "-m",
+    "minimal",
+    "--frames",
+    "120",
+    "--source",
+    "window",
+    "--size",
+    "2560x1440",
+    "--shm",
+    "--save-before",
+    "pipe1m-before.png",
+    "--save-after",
+    "pipe1m-after.png",
+    "--worker-log"
+  ],
+  "artifacts": [
+    "pipe1m-before.png",
+    "pipe1m-after.png"
+  ],
+  "runner": "005dd2c6ea9e",
+  "entry_env": [
+    "NS_WORKER_CMD"
+  ],
+  "gpu_before": "WARN (resident but not contending: chromium (pid 43069, 220.0 MiB); resident but not contending: signal-desktop (pid 43509, 61.0 MiB); resident but not contending: msedge (pid 73501, 176.0 MiB); resident but not contending: Telegram (pid 988444, 36.0 MiB); resident but not contending: shelly-ui (pid 1045732, 46.0 MiB); resident but not contending: signon-ui (pid 3062205, 17.0 MiB))",
+  "gpu_after": "WARN (resident but not contending: chromium (pid 43069, 220.0 MiB); resident but not contending: signal-desktop (pid 43509, 61.0 MiB); resident but not contending: msedge (pid 73501, 222.0 MiB); resident but not contending: Telegram (pid 988444, 36.0 MiB); resident but not contending: shelly-ui (pid 1045732, 46.0 MiB); resident but not contending: signon-ui (pid 3062205, 17.0 MiB))",
+  "idle_waited_s": 0.0
+}

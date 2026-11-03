@@ -22,6 +22,7 @@ so nothing downstream knows which backend is in use.
 
 from __future__ import annotations
 
+import fcntl
 import os
 import shutil
 import subprocess
@@ -35,6 +36,13 @@ from minimal.capture import CaptureError
 from minimal.portal import SOURCE_MONITOR, PortalError, open_screencast
 
 GST_LAUNCH = "gst-launch-1.0"
+
+# The pipe buffer the pipeline's frames arrive through. The kernel default is 64 KiB, and at
+# 2560x1440 that paces the whole capture leg: one RGBA frame is 14.7 MB, so the producer and
+# the consumer take turns 230 times a frame. Measured on this box, same drain loop, one frame
+# at a time from a stocked pipe: 12.70 ms/frame at 64 KiB, 8.90 ms at 1 MiB. 1 MiB is
+# /proc/sys/fs/pipe-max-size on stock Linux, so ask for exactly that and accept less.
+PIPE_BYTES = 1 << 20
 
 
 def requirements() -> tuple[bool, str]:
@@ -89,6 +97,8 @@ class PortalCapture:
         # Present from construction so a caller can read them unconditionally.
         self.last_wait = 0.0
         self.last_read = 0.0
+        # What the kernel granted for the frame pipe, for the report.
+        self.pipe_bytes = 0
 
         usable, why = requirements()
         if not usable:
@@ -175,8 +185,36 @@ class PortalCapture:
             # The child holds its own copy; keeping ours open would leak one
             # descriptor per capture for as long as the process lives.
             err.close()
+        self._enlarge_pipe()
         self._log(f"  pipeline pid {self._proc.pid}: "
                   f"{' '.join(self._pipeline_args())}")
+
+    def _enlarge_pipe(self) -> None:
+        """Ask for a buffer big enough that the pipe does not pace the capture.
+
+        Best-effort and logged, not required: the request can be refused (the limit is
+        /proc/sys/fs/pipe-max-size and growing beyond it needs privileges), and a capture
+        that runs at the old speed is still a working capture. F_SETPIPE_SZ returns the
+        size actually granted, which is what gets logged.
+        """
+        stream = self._proc.stdout if self._proc is not None else None
+        if stream is None:
+            return
+        try:
+            before = fcntl.fcntl(stream.fileno(), fcntl.F_GETPIPE_SZ)
+            after = fcntl.fcntl(stream.fileno(), fcntl.F_SETPIPE_SZ, PIPE_BYTES)
+        except (OSError, ValueError) as exc:
+            # ValueError as well as OSError: fcntl rejects a bad descriptor before it ever
+            # reaches the kernel, so a closed pipe raises ValueError, and a resize that
+            # cannot even be attempted must leave a working capture behind, not end it.
+            self._log(f"  pipe buffer unchanged ({exc}); the capture will run at the "
+                      f"64 KiB default")
+            return
+        self.pipe_bytes = int(after)
+        if after == before:
+            self._log(f"  pipe buffer {before // 1024} KiB (unchanged)")
+        else:
+            self._log(f"  pipe buffer {before // 1024} -> {after // 1024} KiB")
 
     @property
     def resolution(self) -> tuple[int, int]:
@@ -225,14 +263,14 @@ class PortalCapture:
         self.last_read = None
 
         t0 = time.monotonic()
-        buf = self._read_exact(need)
+        frame = self._read_frame(need)
         total = time.monotonic() - t0
 
         if self.last_wait is None:      # no chunk ever arrived — cannot happen
             self.last_wait, self.last_read = total, 0.0
         else:
             self.last_read = total - self.last_wait
-        return np.frombuffer(buf, dtype=np.uint8).reshape(self.height, self.width, 4)
+        return frame
 
     def cpu_seconds(self) -> float | None:
         """CPU time the capture pipeline has used, or None if it is not running.
@@ -253,7 +291,7 @@ class PortalCapture:
     def pipeline_pid(self) -> int | None:
         return self._proc.pid if self._proc is not None else None
 
-    def _read_exact(self, need: int) -> bytes:
+    def _read_frame(self, need: int) -> np.ndarray:
         """Read exactly `need` bytes, or explain why we could not.
 
         The pipeline writing an unexpected number of bytes is the normal shape
@@ -261,28 +299,40 @@ class PortalCapture:
         stderr: GStreamer names the problem, and paraphrasing it would only lose
         the detail.
         """
-        chunks: list[bytes] = []
         got = 0
         stream = self._proc.stdout if self._proc is not None else None
         if stream is None:
             raise CaptureError("the capture pipeline is not running")
+        # Read into the frame's own buffer. Building bytes and then viewing them cost a
+        # second copy of all 14.7 MB (measured: 6.74 ms/frame this way against 8.71 through
+        # a chunk list and b"".join at a 1 MiB pipe, and 10.56 against 12.49 at the default).
+        frame = np.empty((self.height, self.width, 4), dtype=np.uint8)
+        view = memoryview(frame).cast("B")
+        # readinto1, not readinto: readinto blocks for the WHOLE request the way read does
+        # and would swallow the wait/read split this loop exists to report. readinto1
+        # returns as soon as some data has arrived.
+        read_into = getattr(stream, "readinto1", None)
+        if read_into is None:
+            read_into = getattr(stream, "readinto", stream.read)
         # When the first chunk comes back is when the frame started arriving —
         # the difference between the compositor being slow and our copy being
         # slow. read1 (not read) because read blocks for the WHOLE request, which
         # hides the split entirely.
-        read1 = getattr(stream, "read1", None)
         t0 = time.monotonic()
         while got < need:
-            chunk = read1(need - got) if read1 is not None else stream.read(need - got)
-            if not chunk:
+            read = read_into(view[got:])
+            # read could be bytes (the stream.read fallback) or a count; count either.
+            count = len(read) if isinstance(read, (bytes, bytearray)) else read
+            if not count:
                 raise CaptureError(
                     "the PipeWire pipeline ended before a whole frame arrived "
                     f"({got} of {need} bytes).\n" + self._stderr_tail())
+            if isinstance(read, (bytes, bytearray)):
+                view[got:got + count] = read
             if self.last_wait is None:
                 self.last_wait = time.monotonic() - t0
-            chunks.append(chunk)
-            got += len(chunk)
-        return b"".join(chunks)
+            got += count
+        return frame
 
     def _stderr_tail(self, lines: int = 12) -> str:
         if self._stderr is None or not self._stderr.exists():
