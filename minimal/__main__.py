@@ -104,6 +104,11 @@ def build_parser() -> argparse.ArgumentParser:
                         "capture leg absorbs a producer round trip every frame "
                         "(measured: 238ms per grab in the loop against 13ms "
                         "with nothing else running). Costs a busy core")
+    p.add_argument("--worker-env", action="append", default=[], metavar="KEY=VALUE",
+                   help="set an environment variable in the worker process only. Repeatable. "
+                        "The policy's [entry.env] applies to every run of that entry, so this is "
+                        "how one run turns on a port-side switch (DLSS5VK_SERVE_SPLIT=1, a memory "
+                        "setting) without editing the policy or affecting other runs")
     p.add_argument("--bypass", action="store_true",
                    help="NR OFF: the worker skips NGX entirely and hands back "
                         "the frame it was given. A truer control than "
@@ -231,6 +236,12 @@ def main(argv: list[str] | None = None) -> int:
             # is already waiting instead of one the producer makes on demand.
             from minimal.prefetch import Prefetch
             source = Prefetch(source, log=print)
+        worker_extra = {}
+        for item in args.worker_env:
+            key, _, value = item.partition("=")
+            if not key or not _:
+                raise SystemExit(f"--worker-env wants KEY=VALUE, got {item!r}")
+            worker_extra[key] = value
         pipe = Pipeline(fullscreen=not args.windowed, headless=args.headless,
                         capture=source, params=params,
                         work_scale=args.work_scale,
@@ -247,7 +258,8 @@ def main(argv: list[str] | None = None) -> int:
                         want_pixels=(not args.headless) or bool(args.save_before or args.save_after),
                         frame_timeout=args.frame_timeout,
                         writev=args.writev,
-                        worker_log=args.worker_log)
+                        worker_log=args.worker_log,
+                        worker_env_extra=worker_extra)
     except (CaptureError, DisplayError) as exc:
         print(f"startup failed: {exc}", file=sys.stderr)
         return 2

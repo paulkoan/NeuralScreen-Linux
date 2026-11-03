@@ -76,6 +76,7 @@ class Pipeline:
     def __init__(self, *, monitor: int = 0, params: dict | None = None,
                  fullscreen: bool = False, headless: bool = False,
                  warmup: int = 2, worker_cmd: list[str] | None = None,
+                 worker_env_extra: dict | None = None,
                  worker_cwd: Path | None = None, capture=None, display=None,
                  work_scale: float = 1.0, motion_small: bool = False,
                  no_motion: bool = False, shm: bool = False,
@@ -168,6 +169,7 @@ class Pipeline:
             shm=self.shm,
             bypass=self.bypass,
             writev=self.writev,
+            extra_env=worker_env_extra,
             echo_logs=worker_log)
 
         if display is not None:
