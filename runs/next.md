@@ -113,6 +113,16 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* learned: `r2026-11-03-profile2` landed but is NOT a usable repeat (2026-11-03 tick). Exit 0 in
+  6.9 s after waiting 297.5 s; gpu_before BUSY at 94% and gpu_after BUSY at 79%, with
+  DyingLightGame_TheBeast running (6.2 GB) in both probes, so by this plan's own gate rule its
+  numbers must not be compared. It reads **14.090 ms** total against `r2026-11-03-profile`'s
+  9.749 ms, and the gap sits in a handful of stages (block 70 1.748 vs 0.571 ms, block 59 1.325
+  vs 0.142, block 10 1.318 vs 0.142, block 3 1.311 vs 0.141) rather than across the table. The
+  idle-card repeat stays unqueued: the game is running, a BUSY "before" invalidates the sample,
+  so another run now would wait 300 s and land BUSY again. The composite's ~2.5-3.7 ms share
+  still has no instrument.
+
 * learned: the port's own arithmetic, measured - and the NGX gap is smaller than this plan said
   (2026-11-03, `r2026-11-03-profile` via the `port-profile` entry, exit 0 in 4.6 s). **Total 9.749
   ms** for the 2560x1440 pass (sum of per-dispatch spans), against NGX's 7.1 ms for the same
