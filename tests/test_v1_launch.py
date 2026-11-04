@@ -131,3 +131,28 @@ def test_the_launcher_refuses_without_a_display(tmp_path):
                               "NEURALSCREEN_MODEL_DIR": str(model)})
     assert out.returncode != 0
     assert "WAYLAND_DISPLAY" in out.stderr or "DISPLAY" in out.stderr
+
+
+def test_the_v1_hotkeys_parse_and_do_not_need_a_numpad():
+    """A laptop has no keypad, and an override that fails to parse is dropped in silence."""
+    from hotkeys import build_bindings, parse_binding
+
+    cfg = json.loads(CONFIG.read_text())
+    overrides = cfg["hotkeys"]
+    for command, combo in overrides.items():
+        assert parse_binding(combo) is not None, f"{command}: {combo!r} does not parse"
+
+    bindings = build_bindings(overrides)
+    by_command = {entry[2]: entry[3] for entry in bindings.values()}
+    assert by_command["window"] == "Ctrl+Alt+5"
+    assert by_command["toggle"] == "Ctrl+Alt+1"
+    assert by_command["quit"] == "Ctrl+Alt+Q"
+
+
+def test_the_parser_knows_the_top_row_digits_and_letters():
+    """The gap that made every non-numpad rebind fail silently."""
+    from hotkeys import parse_binding
+
+    assert parse_binding("Ctrl+Alt+5") == (12, 0x35)
+    assert parse_binding("Ctrl+Alt+Z") == (12, 0x7A)
+    assert parse_binding("F5") is not None

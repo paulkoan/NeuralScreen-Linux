@@ -15,10 +15,13 @@
 > ./neuralscreen.sh my-config.json  # a config of your own
 > ```
 >
-> Hotkeys: Num1 NR on/off, Num2 settings, Num3 screenshot, Num0 record,
-> Num4/Num6 resolution, Num5 one window instead of the screen, Ctrl+Alt+Q quit.
-> Num5 is the one that matters for a game stream: it captures the GeForce Now
-> window rather than the whole desktop.
+> Hotkeys in `config.v1.json` are Ctrl+Alt+1 NR on/off, Ctrl+Alt+2 settings,
+> Ctrl+Alt+3 screenshot, Ctrl+Alt+0 record, Ctrl+Alt+4/6 resolution,
+> **Ctrl+Alt+5 one window instead of the screen**, Ctrl+Alt+Q quit. Ctrl+Alt+5
+> is the one that matters for a game stream: it captures the GeForce Now window
+> rather than the whole desktop. The built-in defaults are the numeric keypad
+> (Num1..Num6, Num0); the config rebinds them because a laptop or TKL keyboard
+> has no numpad. Delete the `hotkeys` block to get the numpad bindings back.
 >
 > `python main_linux.py` on its own still needs a `config.json` and will fail
 > with `FileNotFoundError`; that is why the launcher exists.

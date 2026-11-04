@@ -82,6 +82,14 @@ _KEY_NAMES.update({
     # Letters (uppercase A-Z map to lowercase X keysyms)
     "Q": 0x0071,  # X11 lowercase q
 })
+# The top-row digits and the rest of the letters. Without these an override like "Ctrl+Alt+5"
+# parsed to None and was dropped in silence, which left a keyboard with no numpad - a laptop, a
+# TKL - unable to rebind anything except the F-keys and Q. X11 keysyms: digits are 0x30-0x39 and
+# letters are the lowercase ASCII range, which is what the existing "Q" entry already used.
+for _digit in range(10):
+    _KEY_NAMES[str(_digit)] = 0x30 + _digit
+for _letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+    _KEY_NAMES.setdefault(_letter, 0x61 + (ord(_letter) - ord("A")))
 
 # Default bindings — same as the Windows version but with Linux keysyms
 # id -> (mods, keysym, command, human-readable name)
