@@ -533,8 +533,13 @@ class Display:
             sdl2.SDL_HideWindow(self.window)
 
     def reveal(self):
-        """Raise the window to the top of the stacking order and restore input
-        focus (useful after a compositor or another window stole focus)."""
+        """Show the window, raise it, and restore input focus.
+
+        SDL_ShowWindow is here as well as in set_visible: a window created without
+        SDL_WINDOW_SHOWN is not guaranteed to be mapped, and on Wayland a fullscreen-desktop
+        window that is never shown is simply invisible - which is what "no output window" was.
+        """
+        sdl2.SDL_ShowWindow(self.window)
         sdl2.SDL_RaiseWindow(self.window)
 
         # On X11 we also need to explicitly request focus

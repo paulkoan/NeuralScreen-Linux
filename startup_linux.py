@@ -224,6 +224,10 @@ def bring_up(st) -> None:
     st.display = Display(st.width, st.height,
                          fullscreen=bool(st.cfg["fullscreen"]))
     print("[main] display ready")
+    # Show it now, before the first frame: the first grab can block until the compositor sends
+    # one, and a window that only appears after that looks like a program that never started.
+    st.display.reveal()
+    print("[main] output window shown - waiting for the first frame from the portal")
     st.display.set_lang(st.lang)
     st.startup_menu = bool(st.cfg.get("open_menu_on_start", True))
     st.split_pos = min(1.0, max(0.0, float(st.cfg.get("split", 0.0))))
