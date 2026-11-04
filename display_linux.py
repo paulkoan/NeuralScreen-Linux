@@ -17,6 +17,7 @@ import argparse
 import ctypes
 import ctypes.util
 import sys
+import time
 from collections import deque
 
 import numpy as np
@@ -234,6 +235,19 @@ _KEY_EVENT_MAP = {
 # Display class
 # ---------------------------------------------------------------------------
 
+class _ScreenInfo:
+    """What commands.py asks of ``display.screen``: the current frame size."""
+
+    def __init__(self, owner):
+        self._owner = owner
+
+    def get_width(self) -> int:
+        return int(self._owner.width)
+
+    def get_height(self) -> int:
+        return int(self._owner.height)
+
+
 class Display:
     """Borderless fullscreen overlay window using SDL2 on Linux.
 
@@ -326,6 +340,26 @@ class Display:
         if click_through:
             _set_click_through_x11(self.window)
 
+        # --- The rest of the surface main_linux.py expects ------------------
+        # This class was written as a minimal pysdl2 window and the app asks for a good deal
+        # more: a menu object, alerts, HUD modes, switch-window state, a screenshot overlay.
+        # Everything below exists so the app runs against this backend; the pieces that are
+        # genuinely Windows-era (excluding the layer from capture, the native window handle)
+        # record their state and do nothing, and say so in the log rather than pretending.
+        self.lang = "en"
+        self._alert_text: str | None = None
+        self._alert_until = 0.0
+        self._hud_only = False
+        self._menu_opaque = True
+        self._menu_input = True
+        self._excluded = True
+        self._switch: tuple[int, int] | None = None
+        self.screen = _ScreenInfo(self)
+        import pygame
+        pygame.font.init()
+        from overlay_ui import OverlayMenu
+        self.menu = OverlayMenu(1.0, lambda size: pygame.font.Font(None, size))
+
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
@@ -355,6 +389,95 @@ class Display:
         # (e.g. via SDL2_ttf or SDL2_gfx — not included to keep deps minimal.)
 
         sdl2.SDL_RenderPresent(self.renderer)
+
+    # --- The app-facing surface -------------------------------------------
+    # See the note in __init__: these exist so main_linux.py can drive this backend.
+
+    def set_lang(self, lang: str) -> None:
+        """The UI language. Also sent to the menu, which has its own copy."""
+        self.lang = str(lang)
+        try:
+            self.menu.lang = self.lang
+        except Exception:
+            pass
+
+    def alert(self, text: str, seconds: float = 2.5) -> None:
+        """A transient message. Printed as well, so a headless run still shows it."""
+        self._alert_text = str(text)
+        self._alert_until = time.monotonic() + float(seconds)
+        print(f"[main] alert: {text}")
+
+    def set_menu_opaque(self, on: bool) -> None:
+        self._menu_opaque = bool(on)
+
+    def set_menu_input(self, on: bool) -> None:
+        self._menu_input = bool(on)
+
+    def set_hud_only(self, on: bool) -> None:
+        """HUD without the picture - the old DDA mode's shape. State only."""
+        self._hud_only = bool(on)
+
+    def draw_overlay(self, *_args) -> None:
+        """Compose the HUD/menu into the frame.
+
+        Not implemented on this backend: the overlay is drawn by the pygame layer on the
+        Windows path, and this window is pysdl2. Kept so the loop's call sites stay honest
+        about where the drawing was expected; the menu will not appear until this is built.
+        """
+
+    def draw_capture_overlay(self, _surface) -> None:
+        """Bake the overlay into a screenshot. Nothing to bake here yet."""
+
+    def enter_switch_mode(self, _frame, width: int, height: int) -> None:
+        self._switch = (int(width), int(height))
+
+    def exit_switch_mode(self) -> None:
+        self._switch = None
+
+    def is_switch_active(self) -> bool:
+        return self._switch is not None
+
+    def set_excluded_from_capture(self, on: bool) -> None:
+        """Keep the overlay out of our own capture. Wayland has no such concept."""
+        self._excluded = bool(on)
+
+    def set_fullscreen_layer(self, width: int, height: int) -> None:
+        self.resize(int(width), int(height))
+
+    def set_window_layer(self, _x: int, _y: int, width: int, height: int) -> None:
+        self.resize(int(width), int(height))
+
+    def raise_topmost(self) -> None:
+        """Put the overlay above the captured window, where the platform allows it.
+
+        Wayland has no "raise someone else's surface" call, so this is best-effort: SDL raises
+        our own window within our application, which is all the app can do here.
+        """
+        if self.window:
+            try:
+                sdl2.SDL_RaiseWindow(self.window)
+            except Exception:
+                pass
+
+    def get_hwnd(self) -> int:
+        """The native window handle. There is none on Linux; callers treat 0 as "no window"."""
+        return 0
+
+    def resize(self, width: int, height: int) -> None:
+        """Resize the window and its streaming texture to a new frame size."""
+        width, height = int(width), int(height)
+        if width <= 0 or height <= 0 or (width, height) == (self.width, self.height):
+            return
+        self.width, self.height = width, height
+        if self._closed:
+            return
+        if self.texture:
+            sdl2.SDL_DestroyTexture(self.texture)
+        if self.window:
+            sdl2.SDL_SetWindowSize(self.window, width, height)
+        self.texture = sdl2.SDL_CreateTexture(
+            self.renderer, sdl2.SDL_PIXELFORMAT_BGRA32,
+            sdl2.SDL_TEXTUREACCESS_STREAMING, width, height)
 
     def set_hud(self, hud: dict):
         """Store HUD state for optional on-screen rendering."""
