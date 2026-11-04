@@ -103,9 +103,12 @@ def configure(st) -> None:
     if isinstance(monitor_cfg, str):
         # Resolve devicename to index
         resolved = None
-        for idx, name in list_monitors():
-            if name == monitor_cfg:
-                resolved = idx
+        for entry in list_monitors():
+            # list_monitors returns (index, width, height, devicename); the name is the last field
+            # and the index the first. This unpacked two values and would have raised ValueError
+            # on any config that named its monitor instead of numbering it.
+            if entry[-1] == monitor_cfg:
+                resolved = entry[0]
                 break
         if resolved is None:
             print(f"[main] monitor {monitor_cfg!r} not connected - using 0",
@@ -230,7 +233,10 @@ def bring_up(st) -> None:
 
     # Build bindings using the cross-platform hotkeys module
     from hotkeys import build_bindings, describe as describe_hotkeys
-    from commands import COMMAND_MAP  # noqa: F401 — ensures commands are importable
+    # commands is imported at module scope by main_linux, so there is nothing to
+    # ensure here - and COMMAND_MAP never existed in it, so this was an ImportError
+    # waiting for the first run that got this far.
+    import commands  # noqa: F401
     st.hotkey_bindings = build_bindings(hotkey_overrides)
     st.hotkeys = []  # track registered combos
 

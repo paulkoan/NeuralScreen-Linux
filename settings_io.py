@@ -16,6 +16,8 @@ import os
 import sys
 from pathlib import Path
 
+from capture_linux import (devicename_for_output_idx, list_adapters,
+                          list_monitors)
 from paths import BASE_DIR
 # The work caps are the worker's contract, not a setting: the same two
 # numbers size the shared motion buffer in the SHMI handshake.

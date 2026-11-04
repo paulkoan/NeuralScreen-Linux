@@ -262,6 +262,7 @@ def rebuild_pipeline(st, note: str) -> None:
             st.display.close()
         except Exception:
             pass
+        from display_linux import Display      # local: display_linux imports overlay_ui, which is heavy
         st.display = Display(st.width, st.height,
                              fullscreen=bool(st.cfg["fullscreen"]))
         recreated = True
@@ -318,6 +319,7 @@ def rebuild_pipeline(st, note: str) -> None:
 
 def switch_monitor(st, new_monitor: int | str) -> None:
     """Switch capture/output monitor - a full pipeline restart."""
+    from i18n import STRINGS as UI_STRINGS
     if isinstance(new_monitor, str):
         from capture_linux import list_monitors
         # Try to resolve by devicename; fall back to index 0

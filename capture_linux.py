@@ -237,25 +237,6 @@ class ScreenCapture:
         self._backend.close()
 
 
-def list_monitors() -> list[tuple[int, str]]:
-    """Return [(index, description), ...] for available monitors.
-
-    Uses MSS if available; returns a placeholder on Wayland since
-    monitor enumeration needs the portal to be active.
-    """
-    if _HAS_MSS:
-        try:
-            with mss.mss() as sct:
-                return list(enumerate(m["monitor"] for m in sct.monitors))
-        except Exception:
-            pass
-    return [(0, "Primary (PipeWire)")]
-
-
-# ---------------------------------------------------------------------------
-# Test mode
-# ---------------------------------------------------------------------------
-
 def devicename_for_output_idx(output_idx: int) -> str | None:
     """Return a monitor identifier string (Linux: just the index as string).
 

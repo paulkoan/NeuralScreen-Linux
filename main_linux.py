@@ -144,6 +144,17 @@ class _Pipeline:
         "want_present", "cfg_path", "gpu_text", "warmup",
     )
 
+    def __init__(self):
+        """Every slot exists from the start, as None.
+
+        The cleanup path runs after bring_up has failed, and it reads these - the last log line
+        of the first v1 attempts was "could not save the menu layout: '_Pipeline' object has no
+        attribute 'split_pos'". An unset slot should read as "not there yet", not as a second
+        exception thrown from inside the handler for the first.
+        """
+        for name in self.__slots__:
+            object.__setattr__(self, name, None)
+
 
 # ---------------------------------------------------------------------------
 # Main
