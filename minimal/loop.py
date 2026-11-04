@@ -452,7 +452,13 @@ class Pipeline:
 
         if save_before and pair_before is not None:
             _save_rgba(save_before, pair_before, bgra=self.bgra)
-        if (self.report_diff or self.save_diff) and pair_before is not None and last_after is not None:
+        if (self.report_diff or self.save_diff) and self.bypass:
+            # The A/B timer leaves the pass off half the time. Reporting a diff from that half
+            # says "MAD 0.000" and reads as "the pass does nothing" when it says no such thing.
+            print("diff: skipped - the last frame was the bypass half of the A/B; quit while the "
+                  "badge reads ON, or run with --ab-alternate 0", flush=True)
+        if ((self.report_diff or self.save_diff) and pair_before is not None
+                and last_after is not None and not self.bypass):
             # The matched pair: both from one iteration, so the number is the pass's effect and
             # not whatever moved on screen between two frames.
             metrics = diff_metrics(pair_before, last_after)
