@@ -10,6 +10,23 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
+* v1 IS BUILT (2026-11-04): `./neuralscreen.sh` starts the app with the native port as its
+  worker. `pipeline_linux.start_worker` honours `NS_WORKER_CMD` (it hard-coded
+  `native/run_worker.sh`, so the port could not be started from the app at all), `config.v1.json`
+  is the 1440p shape (capture in this process, pixels through shm, work scale 1.0), and the
+  launcher supplies the binary, the model and the config and refuses to start without any of them
+  or without a display. 9 tests cover the switch, the header, the config and the refusals; suite
+  397 passed / 9 known environment failures.
+
+* Next: the v1 acceptance run, and it needs the developer at the box. `./neuralscreen.sh` in the
+  graphical session, then Num5 to capture the GeForce Now window rather than the desktop. What to
+  watch, in order: the worker line prints the port's own banner (`serve: 2560x1440, model ...`)
+  rather than Wine's; the first frame is black for the warm-up (~3.3 s) and then the picture
+  appears; Num1 toggles NR and the difference should be visible on stream compression artefacts;
+  Ctrl+Alt+Q exits cleanly. If the worker never answers, the header is the first suspect - the app
+  sends the same HEADER_FMT the port's serve reads, but that pairing has never been exercised
+  outside `minimal/`. Nothing else in v1 is unbuilt; this run is the gate.
+
 * The shm table is complete at both resolutions, and it says the transport was the pipe:
   `r2026-11-02-bh` (1440p, no pixels, `--shm`, 120 frames, same build) reads **18.5 ms / 54.1
   fps** steady against ax/ay's pipe 25.8/26.4 on the same shape - **7.5 ms off** - so the
