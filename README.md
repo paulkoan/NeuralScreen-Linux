@@ -2,12 +2,29 @@
 
 > ## 🚧 Linux port — this is the upstream Windows README below
 >
-> **Do not start with `python main_linux.py`.** That is the legacy port entry
-> point; it needs a `config.json` that is not in this repository and will fail
-> with `FileNotFoundError`, which tells you nothing useful.
+> **v1 is `./neuralscreen.sh`.** It starts the app (`main_linux.py`) with the
+> native port as its worker and `config.v1.json` as its config: 1440p, pixels
+> through shared memory, capture in this process. It needs the port binary at
+> `/opt/neuralscreen/port/build/dlss5vk` and the model at
+> `/opt/neuralscreen/model`; both are overridable with `NEURALSCREEN_PORT_BIN`
+> and `NEURALSCREEN_MODEL_DIR`. It must run in the graphical session, because
+> the capture is a portal screen-cast.
 >
-> The active work is the MVP in **[`minimal/`](minimal/README.md)**, with the
-> plan and milestones in **[`docs/MVP-PLAN.md`](docs/MVP-PLAN.md)**.
+> ```bash
+> ./neuralscreen.sh                 # v1, config.v1.json
+> ./neuralscreen.sh my-config.json  # a config of your own
+> ```
+>
+> Hotkeys: Num1 NR on/off, Num2 settings, Num3 screenshot, Num0 record,
+> Num4/Num6 resolution, Num5 one window instead of the screen, Ctrl+Alt+Q quit.
+> Num5 is the one that matters for a game stream: it captures the GeForce Now
+> window rather than the whole desktop.
+>
+> `python main_linux.py` on its own still needs a `config.json` and will fail
+> with `FileNotFoundError`; that is why the launcher exists.
+>
+> The measurement harness is the MVP in **[`minimal/`](minimal/README.md)**, with
+> the plan and milestones in **[`docs/MVP-PLAN.md`](docs/MVP-PLAN.md)**.
 >
 > ```bash
 > ls native/nvngx_dlssnr.dll    # 159 MB, gitignored — must be supplied

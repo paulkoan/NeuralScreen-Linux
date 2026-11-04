@@ -87,13 +87,29 @@ def start_worker(
 
     Returns (worker, logs, reader, stop).
     """
-    if not _RUN_WORKER_SH.is_file():
-        raise FileNotFoundError(
-            f"worker launcher not found: {_RUN_WORKER_SH}\n"
-            "Ensure native/run_worker.sh exists and is executable."
-        )
-
-    cmd = ["bash", str(_RUN_WORKER_SH)]
+    # Which worker. The Wine/NGX launcher is the default and the only one this app had;
+    # NS_WORKER_CMD points it at the native port instead (`dlss5vk serve --model ...`), which is
+    # what v1 ships. Same protocol either way - the port's serve mode speaks this header - so the
+    # rest of the app does not know which one it is talking to.
+    override = os.environ.get("NS_WORKER_CMD")
+    if override:
+        import shlex
+        cmd = shlex.split(override)
+        if not cmd:
+            raise ValueError("NS_WORKER_CMD is set but empty")
+        # A relative script path would resolve against whatever cwd this process inherited, which
+        # under a desktop launcher is not the repository. Resolve it here, where the answer is known.
+        if len(cmd) >= 2 and not os.path.isabs(cmd[1]):
+            candidate = NATIVE_DIR.parent / cmd[1]
+            if candidate.exists():
+                cmd[1] = str(candidate)
+    else:
+        if not _RUN_WORKER_SH.is_file():
+            raise FileNotFoundError(
+                f"worker launcher not found: {_RUN_WORKER_SH}\n"
+                "Ensure native/run_worker.sh exists and is executable, or set NS_WORKER_CMD."
+            )
+        cmd = ["bash", str(_RUN_WORKER_SH)]
     env = os.environ.copy()
     env.setdefault("WINEPREFIX", os.path.expanduser("~/.neuralscreen/wine"))
 

@@ -1,0 +1,29 @@
+{
+  "_comment": "v1 defaults: 1440p, the native port as the worker, pixels through shared memory. The app reads this file at startup; edit it rather than the code. capture_in_worker is false because the port takes frames from this process - it has no desktop-duplication path of its own - and motion_on_gpu is false because the guides are estimated here and sent with each frame.",
+
+  "monitor": 0,
+  "width": 2560,
+  "height": 1440,
+  "fullscreen": true,
+  "warmup": 2,
+
+  "profile": "Natural",
+  "intensity": 1.0,
+  "local_tone": 1.0,
+  "local_structure": 1.0,
+  "skin_structure": -1.0,
+
+  "capture_in_worker": false,
+  "pixels_in_shm": true,
+  "work_scale": 1.0,
+  "nr_small": false,
+  "motion_on_gpu": false,
+  "worker_present": true,
+
+  "open_menu_on_start": false,
+  "split": 0.0,
+  "lang": "en",
+  "theme": "dark",
+  "record_audio": false,
+  "rec_indicator": true
+}
