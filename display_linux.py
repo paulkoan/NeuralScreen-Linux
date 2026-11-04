@@ -254,7 +254,7 @@ class Display:
     Interface expected by NeuralScreen's Python process:
 
         __init__(width, height, fullscreen, click_through)
-        show(frame: np.ndarray)        # (H, W, 4) uint8, BGRA
+        show(frame: np.ndarray)        # (H, W, 4) uint8, RGBA
         set_hud(hud: dict)
         poll_events() -> list[str]
         close()
@@ -322,10 +322,12 @@ class Display:
         # Disable vsync so we can target 60 FPS via timing instead
         sdl2.SDL_GL_SetSwapInterval(0)
 
-        # Streaming texture matching the expected BGRA pixel format
+        # Streaming texture in the order the worker actually returns: RGBA. The port's composite
+        # writes RGBA8 (the same bytes minimal/ saves as a PNG), so a BGRA texture here would show
+        # every frame with red and blue swapped. The Wine path returned BGRA; v1 ships the port.
         self.texture = sdl2.SDL_CreateTexture(
             self.renderer,
-            sdl2.SDL_PIXELFORMAT_BGRA32,
+            sdl2.SDL_PIXELFORMAT_RGBA32,
             sdl2.SDL_TEXTUREACCESS_STREAMING,
             width,
             height,
@@ -365,7 +367,7 @@ class Display:
     # ------------------------------------------------------------------
 
     def show(self, frame: np.ndarray):
-        """Present a frame.  *frame* is (H, W, 4) uint8, BGRA byte order."""
+        """Present a frame.  *frame* is (H, W, 4) uint8, RGBA byte order."""
         if self._closed or not self._visible:
             return
 
@@ -476,7 +478,7 @@ class Display:
         if self.window:
             sdl2.SDL_SetWindowSize(self.window, width, height)
         self.texture = sdl2.SDL_CreateTexture(
-            self.renderer, sdl2.SDL_PIXELFORMAT_BGRA32,
+            self.renderer, sdl2.SDL_PIXELFORMAT_RGBA32,
             sdl2.SDL_TEXTUREACCESS_STREAMING, width, height)
 
     def set_hud(self, hud: dict):
