@@ -79,6 +79,8 @@ class Pipeline:
                  warmup: int = 2, worker_cmd: list[str] | None = None,
                  worker_env_extra: dict | None = None,
                  indicator: bool | None = None,
+                 report_diff: bool = False, save_diff: str | None = None,
+                 diff_gain: float = 8.0, ab_alternate: float = 0.0,
                  worker_cwd: Path | None = None, capture=None, display=None,
                  work_scale: float = 1.0, motion_small: bool = False,
                  no_motion: bool = False, shm: bool = False,
@@ -162,6 +164,14 @@ class Pipeline:
         # Commands from the global hotkeys (or anything else) are drained between frames. A
         # command rather than a shared flag so a toggle cannot be missed or applied twice.
         self.commands: queue.Queue = queue.Queue()
+        self.report_diff = bool(report_diff)
+        self.save_diff = save_diff
+        self.diff_gain = float(diff_gain)
+        # Flip the pass on and off every N seconds. The alternative is a keypress, and a global
+        # one does not reach a Wayland-native window; a timer needs nothing from the user and
+        # the badge says which half you are looking at.
+        self.ab_alternate = max(0.0, float(ab_alternate))
+        self._next_flip = 0.0
         self.running = True
         # Set by --hotkeys: polled between frames, so the window does not need focus.
         self.hotkey_poll = None
@@ -442,6 +452,20 @@ class Pipeline:
 
         if save_before and pair_before is not None:
             _save_rgba(save_before, pair_before, bgra=self.bgra)
+        if (self.report_diff or self.save_diff) and pair_before is not None and last_after is not None:
+            # The matched pair: both from one iteration, so the number is the pass's effect and
+            # not whatever moved on screen between two frames.
+            metrics = diff_metrics(pair_before, last_after)
+            r, g, b = metrics["mad_rgb"]
+            print(f"diff: MAD {metrics['mad']:.3f} (R {r:.3f} G {g:.3f} B {b:.3f})  "
+                  f"max {metrics['max']}  PSNR {metrics['psnr']:.2f} dB  "
+                  f">{2}: {100 * metrics['over_2']:.2f}%  >8: {100 * metrics['over_8']:.2f}%",
+                  flush=True)
+            if self.save_diff:
+                _save_rgba(self.save_diff, amplified_diff(pair_before, last_after,
+                                                          self.diff_gain))
+                print(f"  diff   -> {self.save_diff} (amplified x{self.diff_gain:g})",
+                      flush=True)
         if save_after and last_after is not None:
             # The worker always answers in RGBA, whatever went in.
             _save_rgba(save_after, last_after, bgra=False)
@@ -506,8 +530,22 @@ class Pipeline:
             self._drain_commands()
             if not self.running:
                 break
-            if "quit" in self.display.poll_events():
+            events = self.display.poll_events()
+            if "quit" in events:
                 break
+            if "toggle" in events:
+                self.commands.put("toggle")
+                self._drain_commands()
+            if self.ab_alternate:
+                now = time.monotonic()
+                if self._next_flip == 0.0:
+                    self._next_flip = now + self.ab_alternate
+                elif now >= self._next_flip:
+                    self._next_flip = now + self.ab_alternate
+                    self.bypass = not self.bypass
+                    self.worker.bypass = self.bypass
+                    print(f"[nr] A/B: enhancement {'off' if self.bypass else 'on'}",
+                          flush=True)
             after = self.process_one(index, present=True)
             if after is not None:
                 # process_one keeps the input it fed for this iteration, so the
@@ -641,6 +679,45 @@ def _to_rgba(frame: np.ndarray, *, bgra: bool = False) -> np.ndarray:
     if not bgra:
         return frame
     return frame[:, :, [2, 1, 0, 3]]
+
+
+def diff_metrics(before: np.ndarray, after: np.ndarray) -> dict:
+    """How far the pass moved the picture, in the terms that decide whether it is visible.
+
+    MAD is the average absolute change per channel: a pass that changes nothing has 0. The
+    "over" counts say how much of the frame moved by more than a step or two, which is closer to
+    what an eye notices than a mean is - a small mean over a large area of subtle change and a
+    small mean over a few strongly changed pixels are very different pictures.
+    """
+    a = before[..., :3].astype(np.int16)
+    b = after[..., :3].astype(np.int16)
+    delta = np.abs(b - a)
+    per_channel = [float(delta[..., i].mean()) for i in range(3)]
+    total = delta.size
+    return {
+        "mad": float(delta.mean()),
+        "mad_rgb": per_channel,
+        "max": int(delta.max()),
+        "over_2": float((delta.max(axis=2) > 2).sum()) / (before.shape[0] * before.shape[1]),
+        "over_8": float((delta.max(axis=2) > 8).sum()) / (before.shape[0] * before.shape[1]),
+        "psnr": float("inf") if delta.max() == 0 else float(
+            20 * np.log10(255.0 / np.sqrt(float((delta.astype(np.float64) ** 2).mean())))),
+    }
+
+
+def amplified_diff(before: np.ndarray, after: np.ndarray, gain: float = 8.0) -> np.ndarray:
+    """A picture of the difference: mid-grey where nothing moved, brighter/darker where it did.
+
+    Useful precisely because the pass is subtle on real content - a 1-2 level change is invisible
+    in the frames themselves and unmissable here.
+    """
+    a = before[..., :3].astype(np.float32)
+    b = after[..., :3].astype(np.float32)
+    shifted = 128.0 + (b - a) * float(gain)
+    out = np.empty((*shifted.shape[:2], 4), dtype=np.uint8)
+    out[..., :3] = np.clip(shifted, 0, 255).astype(np.uint8)
+    out[..., 3] = 255
+    return out
 
 
 def _save_rgba(path: str, frame: np.ndarray, *, bgra: bool = False) -> None:

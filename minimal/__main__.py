@@ -105,6 +105,19 @@ def build_parser() -> argparse.ArgumentParser:
                         "the frame, so a saved PNG stays clean")
     p.add_argument("--no-indicator", dest="indicator", action="store_false",
                    help="do not draw the badge")
+    p.add_argument("--ab-alternate", type=float, default=0.0, metavar="SECONDS",
+                   help="flip the enhancement on and off every SECONDS. An A/B with no keypress, "
+                        "which matters because a global X grab does not see keys pressed in a "
+                        "Wayland-native window")
+    p.add_argument("--report-diff", action="store_true",
+                   help="print how far the pass moved the picture: per-channel MAD, maximum, "
+                        "PSNR and the share of pixels that changed by more than 2 and 8 levels")
+    p.add_argument("--save-diff", metavar="PATH",
+                   help="write the difference as a PNG, amplified so a one-level change is "
+                        "visible (see --diff-gain)")
+    p.add_argument("--diff-gain", type=float, default=8.0,
+                   help="amplification for --save-diff (default 8: 128 is no change, +/-8 levels "
+                        "maps to the full range at gain 16)")
     p.add_argument("--windowed", action="store_true",
                    help="draw in a window instead of fullscreen")
     p.add_argument("--prefetch", action="store_true",
@@ -265,12 +278,17 @@ def main(argv: list[str] | None = None) -> int:
                         # Ask for them only when something consumes them: a window to
                         # draw or a PNG to write. A headless benchmark that saves
                         # nothing should not pay for a channel it throws away.
-                        want_pixels=(not args.headless) or bool(args.save_before or args.save_after),
+                        want_pixels=((not args.headless) or bool(args.save_before or args.save_after)
+                                     or bool(args.report_diff or args.save_diff)),
                         frame_timeout=args.frame_timeout,
                         writev=args.writev,
                         worker_log=args.worker_log,
                         worker_env_extra=worker_extra,
-                        indicator=args.indicator)
+                        indicator=args.indicator,
+                        report_diff=args.report_diff,
+                        save_diff=args.save_diff,
+                        diff_gain=args.diff_gain,
+                        ab_alternate=args.ab_alternate)
     except (CaptureError, DisplayError) as exc:
         print(f"startup failed: {exc}", file=sys.stderr)
         return 2

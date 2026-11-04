@@ -198,6 +198,11 @@ class Display:
             elif event.type == sdl2.SDL_KEYDOWN and event.key.keysym.sym in (
                     sdl2.SDLK_ESCAPE, sdl2.SDLK_q):
                 events.append("quit")
+            elif event.type == sdl2.SDL_KEYDOWN and event.key.keysym.sym in (
+                    sdl2.SDLK_F1, sdl2.SDLK_SPACE):
+                # Window-level A/B. The global X grab cannot see keys pressed in a Wayland-native
+                # window, so this is the one that works whenever this window has focus.
+                events.append("toggle")
         return events
 
     def close(self) -> None:

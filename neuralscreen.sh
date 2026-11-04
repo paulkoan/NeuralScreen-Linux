@@ -29,9 +29,15 @@
 #
 # HOTKEYS (global - they work while the game window has focus)
 #
-#   Ctrl+Alt+1   enhancement on/off - the A/B, live
+#   F1 / Space   enhancement on/off (the output window must have focus)
+#   Ctrl+Alt+1   the same, but global - and on Wayland a global X grab does not see keys
+#                pressed in a Wayland-native window, so treat it as a bonus when it works
 #   Ctrl+Alt+Q   quit
 #   Esc / q      quit (the output window needs focus for these)
+#
+# The A/B also runs on a timer: the enhancement flips every NEURALSCREEN_AB seconds (default 3,
+# 0 disables). That is the comparison that needs nothing from you, and the badge says which half
+# you are looking at. NEURALSCREEN_DIFF=0 turns off the end-of-run diff report.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -63,7 +69,14 @@ export PYTHONFAULTHANDLER=1
 PYTHON="$HERE/.venv/bin/python"
 [[ -x "$PYTHON" ]] || PYTHON="$(command -v python3)"
 
+AB="${NEURALSCREEN_AB:-3}"
+DIFF="${NEURALSCREEN_DIFF:-1}"
+extra=()
+[[ "$DIFF" != "0" ]] && extra+=(--report-diff)
+[[ "$AB" != "0" ]] && extra+=(--ab-alternate "$AB")
+
 echo "worker: $NS_WORKER_CMD"
 echo "size:   $SIZE"
+[[ "$AB" != "0" ]] && echo "A/B:    enhancement flips every ${AB}s"
 
-exec "$PYTHON" -m minimal --source window --size "$SIZE" --shm --hotkeys "$@"
+exec "$PYTHON" -m minimal --source window --size "$SIZE" --shm --hotkeys "${extra[@]}" "$@"
