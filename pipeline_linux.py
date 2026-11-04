@@ -363,6 +363,31 @@ def switch_window(st, hwnd: int) -> None:
     from settings_io import _work_size
     from protocol import send_dda
 
+    # The portal picks the window, not us: there is no hwnd to hand the worker, so the capture is
+    # recreated with the window source and the compositor's dialog answers. This is the v1 path -
+    # the port has no desktop-duplication mode, so capture_in_worker is off and the old branch
+    # below would refuse window mode outright.
+    from minimal.capture_wayland import PortalCapture
+    if not st.want_dda and isinstance(getattr(st.capture, "_backend", None), PortalCapture):
+        from minimal.portal import SOURCE_MONITOR, SOURCE_WINDOW
+        from capture_linux import ScreenCapture
+        st.display.enter_switch_mode(st.output_rgba, *st.capture.resolution)
+        teardown_pipeline(st)
+        try:
+            st.capture.close()
+        except Exception:
+            pass
+        st.capture = ScreenCapture(st.monitor,
+                                   source=SOURCE_WINDOW if hwnd else SOURCE_MONITOR)
+        st.width, st.height = st.capture.resolution
+        st.window_hwnd = int(hwnd) if hwnd else None
+        st.work_w, st.work_h = _work_size(st.width, st.height, st.work_scale)
+        st.follow_pos = None
+        st.follow_resize = None
+        st.follow_size = None
+        rebuild_pipeline(st, UI_STRINGS[st.lang]["win_mode_on" if hwnd else "win_mode_off"])
+        return
+
     if hwnd and not st.want_dda:
         st.display.alert(UI_STRINGS[st.lang]["win_fail"])
         print("[main] window mode needs capture in the worker "
