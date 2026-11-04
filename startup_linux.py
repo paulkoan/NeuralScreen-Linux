@@ -167,6 +167,28 @@ def configure(st) -> None:
     st.recorder: VideoRecorder | None = None
 
 
+def _register_hotkeys(st, register) -> list[str]:
+    """Register every binding; returns the combos that took.
+
+    `hotkey_bindings` maps an id to (mods, keysym, command, name) - the name is the string the
+    registrar parses. Iterating `.items()` and passing the value straight through handed it a
+    tuple, which is what the first v1 run that got this far crashed on.
+    """
+    def _make_callback(command: str):
+        def _cb(_name):
+            st.tray_commands.put(command)
+        return _cb
+
+    registered: list[str] = []
+    for _id, (_mods, _keysym, command, combo) in st.hotkey_bindings.items():
+        try:
+            register(combo, _make_callback(command))
+            registered.append(combo)
+        except (ValueError, RuntimeError) as exc:
+            print(f"[main] hotkey {combo} failed: {exc}", file=sys.stderr)
+    return registered
+
+
 def bring_up(st) -> None:
     """Make it exist: worker, overlay, hotkeys, guides, state defaults.
 
@@ -240,18 +262,7 @@ def bring_up(st) -> None:
     st.hotkey_bindings = build_bindings(hotkey_overrides)
     st.hotkeys = []  # track registered combos
 
-    def _make_callback(cmd: str):
-        """Wrap a command string so the hotkey pushes it into the queue."""
-        def _cb(_name):
-            st.tray_commands.put(cmd)
-        return _cb
-
-    for cmd, combo in st.hotkey_bindings.items():
-        try:
-            register_global_hotkey(combo, _make_callback(cmd))
-            st.hotkeys.append(combo)
-        except (ValueError, RuntimeError) as exc:
-            print(f"[main] hotkey {combo} failed: {exc}", file=sys.stderr)
+    st.hotkeys = _register_hotkeys(st, register_global_hotkey)
 
     if st.hotkeys:
         print(f"[main] hotkeys registered: {', '.join(st.hotkeys)} "
