@@ -24,7 +24,7 @@ class _FakePortal:
         self.monitor_idx = monitor_idx
         self.source = source
         self.closed = False
-        _FakePortal.made.append({"monitor_idx": monitor_idx, "source": source})
+        _FakePortal.made.append({"monitor_idx": monitor_idx, "source": source, **kwargs})
 
     @property
     def resolution(self):
@@ -86,3 +86,20 @@ def test_window_mode_recreates_the_capture_instead_of_refusing():
     # and the refusal must still exist for the Wine/DDA path, after the portal branch
     assert pipeline.index("SOURCE_WINDOW if hwnd else SOURCE_MONITOR") < pipeline.index(
         "window mode needs capture in the worker")
+
+
+def test_a_window_request_carries_the_size(wayland_without_pipewire):
+    """A window stream reports 0x0, so the pipeline has to name the size it wants."""
+    from minimal.portal import SOURCE_WINDOW
+    capture_linux.ScreenCapture(0, source=SOURCE_WINDOW, width=2560, height=1440)
+    made = _FakePortal.made[-1]
+    assert made["source"] == SOURCE_WINDOW
+    assert made["width"] == 2560 and made["height"] == 1440
+
+
+def test_the_v1_config_asks_for_a_window():
+    """A monitor request offers screen/workspace/region and no window at all."""
+    import json
+    from pathlib import Path
+    cfg = json.loads((Path(__file__).resolve().parent.parent / "config.v1.json").read_text())
+    assert cfg["capture_source"] == "window"

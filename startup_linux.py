@@ -124,7 +124,16 @@ def configure(st) -> None:
     st.lang = str(st.cfg["lang"])
 
     # Real monitor resolution overrides config
-    st.capture = ScreenCapture(monitor_idx=st.monitor)
+    # Which thing the portal is asked for. "window" is what a game stream wants - the compositor
+    # only pays for the window's pixels, and the desktop around it is not being watched - and it
+    # is also the only way to get a window picker: a monitor request offers screen/workspace/region
+    # and no window at all.
+    from minimal.portal import SOURCE_MONITOR, SOURCE_WINDOW
+    capture_source = str(st.cfg.get("capture_source", "screen")).strip().lower()
+    st.capture = ScreenCapture(
+        monitor_idx=st.monitor,
+        source=SOURCE_WINDOW if capture_source == "window" else SOURCE_MONITOR,
+        width=st.width, height=st.height)
     st.mon_w, st.mon_h = st.capture.resolution if hasattr(st.capture, 'resolution') else (0, 0)
     # If the capture doesn't expose resolution directly, try grabbing once
     if st.mon_w == 0 or st.mon_h == 0:

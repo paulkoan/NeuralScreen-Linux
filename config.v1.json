@@ -1,5 +1,5 @@
 {
-  "_comment": "v1 defaults: 1440p, the native port as the worker, pixels through shared memory. The app reads this file at startup; edit it rather than the code. capture_in_worker is false because the port takes frames from this process - it has no desktop-duplication path of its own - and motion_on_gpu is false because the guides are estimated here and sent with each frame. The hotkeys block rebinds the numpad defaults to Ctrl+Alt+digits, because a laptop or TKL keyboard has no numpad; delete the block to get the numpad bindings back.",
+  "_comment": "v1 defaults: 1440p, the native port as the worker, pixels through shared memory. The app reads this file at startup; edit it rather than the code. capture_in_worker is false because the port takes frames from this process - it has no desktop-duplication path of its own - and motion_on_gpu is false because the guides are estimated here and sent with each frame. The hotkeys block rebinds the numpad defaults to Ctrl+Alt+digits, because a laptop or TKL keyboard has no numpad; delete the block to get the numpad bindings back. capture_source is 'window' or 'screen': a window request is what makes the portal offer a window picker, and it is the cheaper capture for a game stream. Set it to 'screen' to capture the whole monitor.",
   "monitor": 0,
   "width": 2560,
   "height": 1440,
@@ -31,5 +31,6 @@
     "scale_up": "Ctrl+Alt+6",
     "record": "Ctrl+Alt+0",
     "quit": "Ctrl+Alt+Q"
-  }
+  },
+  "capture_source": "window"
 }

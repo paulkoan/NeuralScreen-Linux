@@ -182,7 +182,8 @@ class ScreenCapture:
     Raises RuntimeError if no backend is available.
     """
 
-    def __init__(self, monitor_idx: int = 0, source: int | None = None):
+    def __init__(self, monitor_idx: int = 0, source: int | None = None,
+                 width: int | None = None, height: int | None = None):
         self._backend: _PipeWireCapture | _XScreencapture
         self._closed = False
 
@@ -196,8 +197,11 @@ class ScreenCapture:
             # window; the user answers the dialog either way.
             from minimal.capture_wayland import PortalCapture
             from minimal.portal import SOURCE_MONITOR, SOURCE_WINDOW
+            # width/height matter for a window: the portal reports 0x0 for one (the size is
+            # negotiated later over PipeWire), so the pipeline has to name the size it wants.
             self._backend = PortalCapture(
-                monitor_idx, source=SOURCE_WINDOW if source == SOURCE_WINDOW else SOURCE_MONITOR)
+                monitor_idx, source=SOURCE_WINDOW if source == SOURCE_WINDOW else SOURCE_MONITOR,
+                width=width, height=height)
         elif _HAS_MSS:
             self._backend = _XScreencapture(monitor_idx)
         else:
