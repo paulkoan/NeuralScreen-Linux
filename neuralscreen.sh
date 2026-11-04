@@ -64,4 +64,20 @@ PYTHON="$HERE/.venv/bin/python"
 
 echo "worker: $NS_WORKER_CMD"
 echo "config: $CONFIG"
-exec "$PYTHON" "$HERE/main_linux.py" --config "$CONFIG"
+
+# The app redirects its own stdout/stderr into NeuralScreen.log as soon as it starts, so a
+# failure prints nothing at the terminal and the shell just comes back. Run it, and if it exits
+# non-zero, put the end of that log on screen - the alternative is a silent exit and a guess.
+LOG="$HERE/NeuralScreen.log"
+"$PYTHON" "$HERE/main_linux.py" --config "$CONFIG"
+status=$?
+if [[ $status -ne 0 ]]; then
+    echo >&2
+    echo "NeuralScreen exited $status. Last lines of $LOG:" >&2
+    if [[ -f "$LOG" ]]; then
+        tail -n 40 "$LOG" >&2
+    else
+        echo "  (no log file was written)" >&2
+    fi
+fi
+exit $status

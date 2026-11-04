@@ -690,12 +690,19 @@ def main() -> int:
     except KeyboardInterrupt:
         print("\n[main] interrupted (Ctrl+C)")
     except Exception as exc:
-        print(f"[main] ERROR: {exc}", file=sys.stderr)
-        if st.worker is not None and st.worker.poll() is not None:
-            print("[main] worker crashed; last stderr:",
-                  file=sys.stderr)
-            for line in st.worker_logs[-40:]:
-                print(f"  {line}", file=sys.stderr)
+        # Both streams: sys.stderr is the log file by now (_init_logging redirected it), and a
+        # failure that only lands there is a silent exit at the terminal - which is exactly what
+        # the first v1 launch looked like. sys.__stderr__ is the real one.
+        import traceback
+        for stream in (sys.stderr, sys.__stderr__):
+            if stream is None:
+                continue
+            print(f"[main] ERROR: {exc}", file=stream)
+            traceback.print_exc(file=stream)
+            if st.worker is not None and st.worker.poll() is not None:
+                print("[main] worker crashed; last stderr:", file=stream)
+                for line in st.worker_logs[-40:]:
+                    print(f"  {line}", file=stream)
         return 1
     finally:
         if st.recorder is not None:
@@ -742,6 +749,9 @@ if __name__ == "__main__":
         sys.exit(main())
     except Exception as exc:
         import traceback
-        traceback.print_exc()
-        print(f"\nNeuralScreen failed to start: {exc}", file=sys.stderr)
+        for stream in (sys.stderr, sys.__stderr__):
+            if stream is None:
+                continue
+            traceback.print_exc(file=stream)
+            print(f"\nNeuralScreen failed to start: {exc}", file=stream)
         sys.exit(1)
