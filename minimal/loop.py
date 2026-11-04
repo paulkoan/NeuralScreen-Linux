@@ -12,6 +12,7 @@ to prove the pass runs. Real optical flow is a later milestone.
 
 from __future__ import annotations
 
+import queue
 import time
 from collections import deque
 from pathlib import Path
@@ -157,6 +158,12 @@ class Pipeline:
         # the network at zero strength, this does not run it at all, so the
         # difference between the two is what the network actually costs.
         self.bypass = bool(bypass)
+        # Commands from the global hotkeys (or anything else) are drained between frames. A
+        # command rather than a shared flag so a toggle cannot be missed or applied twice.
+        self.commands: queue.Queue = queue.Queue()
+        self.running = True
+        # Set by --hotkeys: polled between frames, so the window does not need focus.
+        self.hotkey_poll = None
 
         self.worker = Worker(
             self.width, self.height, self.work_w, self.work_h, self.params,
@@ -238,6 +245,23 @@ class Pipeline:
             return self.zero_motion, index == 0
         guide = self.guides.process(frame)
         return guide.motion, bool(index == 0 or guide.reset)
+
+    def _drain_commands(self) -> None:
+        """Apply whatever the hotkeys queued since the last frame."""
+        while True:
+            try:
+                command = self.commands.get_nowait()
+            except queue.Empty:
+                return
+            if command == "toggle":
+                self.bypass = not self.bypass
+                # The worker builds the frame flag from its own copy, so both move together.
+                self.worker.bypass = self.bypass
+                print(f"[nr] enhancement {'off' if self.bypass else 'on'}",
+                      flush=True)
+            elif command == "quit":
+                self.running = False
+                print("[main] quit from the hotkey", flush=True)
 
     def process_one(self, index: int, timeout: float = 60.0,
                     present: bool = True) -> np.ndarray | None:
@@ -463,8 +487,16 @@ class Pipeline:
         """
         index = 0
         pair_before = last_after = None
-        while frames == 0 or index < frames:
+        while (frames == 0 or index < frames) and self.running:
             self._check_alive()
+            if self.hotkey_poll is not None:
+                try:
+                    self.hotkey_poll(block=False)
+                except Exception:
+                    pass
+            self._drain_commands()
+            if not self.running:
+                break
             if "quit" in self.display.poll_events():
                 break
             after = self.process_one(index, present=True)

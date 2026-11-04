@@ -1,16 +1,16 @@
 #!/bin/bash
-# neuralscreen.sh — start v1: the app, with the native port as its worker.
+# neuralscreen.sh — v1: the MVP pipeline, on the native port, with global hotkeys.
 #
-# WHAT THIS IS
+# WHY THIS AND NOT main_linux.py
 #
-# main_linux.py is the application: capture, guides, the worker, the overlay, the hotkeys. It
-# was written against the Wine/NGX worker and had no way to run the native port, which is what
-# v1 ships. This script supplies the two things the app cannot guess - which binary to run and
-# which config to read - and then gets out of the way.
+# main_linux.py is the Windows-derived GUI (menu, HUD, recording, window modes, monitor
+# switching) and its Linux backends were never finished: display_linux was a stub against an app
+# that expects twenty more methods, and pipeline_linux was missing five functions. Each attempt to
+# start it found the next unbuilt corner.
 #
-# The port speaks the same worker protocol as the Wine path, so nothing else in the app changes:
-# same header, same frames, same replies. NS_WORKER_CMD is the switch, and pipeline_linux honours
-# it (it used to hard-code native/run_worker.sh).
+# The MVP in minimal/ is the path that has actually worked for weeks: portal capture of one
+# window, the native port as the worker, an SDL window showing the result. It needed nothing
+# added except hotkeys, which it now has. So v1 runs that.
 #
 # WHAT IT NEEDS
 #
@@ -18,21 +18,26 @@
 #   the model         /opt/neuralscreen/model                (extract.py produces it)
 #   a graphical session, because the capture is a portal screen-cast
 #
-# Override any of them with NEURALSCREEN_PORT_BIN, NEURALSCREEN_MODEL_DIR, NEURALSCREEN_CONFIG.
+# Override with NEURALSCREEN_PORT_BIN, NEURALSCREEN_MODEL_DIR, NEURALSCREEN_SIZE.
 #
 # USAGE
 #
-#   ./neuralscreen.sh                 # config.v1.json beside this script
-#   ./neuralscreen.sh my-config.json  # a config of your own
+#   ./neuralscreen.sh                    # 2560x1440, one window
+#   ./neuralscreen.sh --frames 300       # extra flags go straight to minimal
 #
-# Hotkeys are the app's own: Num1 NR on/off, Num2 settings, Num3 screenshot, Num0 record,
-# Num4/Num6 resolution, Num5 one window instead of the screen, Ctrl+Alt+Q quit.
+# The portal asks which window to share. Pick the game stream window.
+#
+# HOTKEYS (global - they work while the game window has focus)
+#
+#   Ctrl+Alt+1   enhancement on/off - the A/B, live
+#   Ctrl+Alt+Q   quit
+#   Esc / q      quit (the output window needs focus for these)
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT_BIN="${NEURALSCREEN_PORT_BIN:-/opt/neuralscreen/port/build/dlss5vk}"
 MODEL_DIR="${NEURALSCREEN_MODEL_DIR:-/opt/neuralscreen/model}"
-CONFIG="${1:-${NEURALSCREEN_CONFIG:-$HERE/config.v1.json}}"
+SIZE="${NEURALSCREEN_SIZE:-2560x1440}"
 
 if [[ ! -x "$PORT_BIN" ]]; then
     echo "no port binary at $PORT_BIN" >&2
@@ -44,45 +49,21 @@ if [[ ! -d "$MODEL_DIR" ]]; then
     echo "  extract it with experiments/opendlss_weights/extract.py, or set NEURALSCREEN_MODEL_DIR" >&2
     exit 1
 fi
-if [[ ! -f "$CONFIG" ]]; then
-    echo "no config at $CONFIG" >&2
-    echo "  config.v1.json ships beside this script; pass another path as the first argument" >&2
-    exit 1
-fi
 if [[ -z "${WAYLAND_DISPLAY:-}" && -z "${DISPLAY:-}" ]]; then
     echo "no WAYLAND_DISPLAY or DISPLAY in this shell" >&2
     echo "  the capture is a portal screen-cast, so this has to run in the graphical session" >&2
     exit 1
 fi
 
-# The worker command. Left alone if the caller already set one, so a Wine run can still be
-# started by exporting NS_WORKER_CMD before this script.
 export NS_WORKER_CMD="${NS_WORKER_CMD:-$PORT_BIN serve --model $MODEL_DIR}"
 
-# A segfault in a C extension (SDL, cv2, Xlib) prints nothing useful without this: it makes
-# Python dump the Python-level stack on SIGSEGV, to fd 2, which is still the terminal even after
-# the app redirects sys.stderr into its log.
+# A segfault in a C extension (SDL, cv2, Xlib) prints nothing useful without this.
 export PYTHONFAULTHANDLER=1
 
 PYTHON="$HERE/.venv/bin/python"
 [[ -x "$PYTHON" ]] || PYTHON="$(command -v python3)"
 
 echo "worker: $NS_WORKER_CMD"
-echo "config: $CONFIG"
+echo "size:   $SIZE"
 
-# The app redirects its own stdout/stderr into NeuralScreen.log as soon as it starts, so a
-# failure prints nothing at the terminal and the shell just comes back. Run it, and if it exits
-# non-zero, put the end of that log on screen - the alternative is a silent exit and a guess.
-LOG="$HERE/NeuralScreen.log"
-"$PYTHON" "$HERE/main_linux.py" --config "$CONFIG"
-status=$?
-if [[ $status -ne 0 ]]; then
-    echo >&2
-    echo "NeuralScreen exited $status. Last lines of $LOG:" >&2
-    if [[ -f "$LOG" ]]; then
-        tail -n 40 "$LOG" >&2
-    else
-        echo "  (no log file was written)" >&2
-    fi
-fi
-exit $status
+exec "$PYTHON" -m minimal --source window --size "$SIZE" --shm --hotkeys "$@"

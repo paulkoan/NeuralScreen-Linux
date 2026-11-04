@@ -2,29 +2,24 @@
 
 > ## 🚧 Linux port — this is the upstream Windows README below
 >
-> **v1 is `./neuralscreen.sh`.** It starts the app (`main_linux.py`) with the
-> native port as its worker and `config.v1.json` as its config: 1440p, pixels
-> through shared memory, capture in this process. It needs the port binary at
-> `/opt/neuralscreen/port/build/dlss5vk` and the model at
-> `/opt/neuralscreen/model`; both are overridable with `NEURALSCREEN_PORT_BIN`
-> and `NEURALSCREEN_MODEL_DIR`. It must run in the graphical session, because
-> the capture is a portal screen-cast.
+> **v1 is `./neuralscreen.sh`.** It runs the MVP (`minimal/`) — portal capture of one
+> window, the native port as the worker, an SDL window showing the result — with global
+> hotkeys. That pipeline is the one that has worked for weeks; `main_linux.py` is the
+> Windows-derived GUI whose Linux backend was never finished, and v1 does not need it.
 >
 > ```bash
-> ./neuralscreen.sh                 # v1, config.v1.json
-> ./neuralscreen.sh my-config.json  # a config of your own
+> ./neuralscreen.sh                 # 2560x1440, one window
+> ./neuralscreen.sh --frames 300    # extra flags go to minimal
 > ```
 >
-> Hotkeys in `config.v1.json` are Ctrl+Alt+1 NR on/off, Ctrl+Alt+2 settings,
-> Ctrl+Alt+3 screenshot, Ctrl+Alt+0 record, Ctrl+Alt+4/6 resolution,
-> **Ctrl+Alt+5 one window instead of the screen**, Ctrl+Alt+Q quit.
+> It needs the port binary at `/opt/neuralscreen/port/build/dlss5vk` and the model at
+> `/opt/neuralscreen/model` (override with `NEURALSCREEN_PORT_BIN` /
+> `NEURALSCREEN_MODEL_DIR`), and it must run in the graphical session: the capture is a
+> portal screen-cast, so pick the game window when the dialog appears.
 >
-> `capture_source` in the config decides what the portal is asked for, and it
-> defaults to `"window"` — a monitor request offers screen/workspace/region and
-> no window at all, so a window picker only appears when the request is for a
-> window. Set it to `"screen"` to capture the whole monitor. The built-in defaults are the numeric keypad
-> (Num1..Num6, Num0); the config rebinds them because a laptop or TKL keyboard
-> has no numpad. Delete the `hotkeys` block to get the numpad bindings back.
+> **Ctrl+Alt+1** toggles the enhancement live — that is the A/B — and **Ctrl+Alt+Q** quits.
+> Both are global, so they work while the game has focus. Esc or `q` also quits, but the
+> output window has to be focused for that.
 >
 > `python main_linux.py` on its own still needs a `config.json` and will fail
 > with `FileNotFoundError`; that is why the launcher exists.
