@@ -435,6 +435,83 @@ def switch_window(st, hwnd: int) -> None:
     rebuild_pipeline(st, note)
 
 
+def request_apply(st, scale: float, profile: str, params: dict, new_small=None) -> None:
+    """Queue a settings change for the loop to apply after its cooldown.
+
+    A slider dragged across its range must not restart the worker per step, so the request is
+    stored and main's deferred-apply block calls do_restart once the cooldown has passed.
+    """
+    st.pending_apply = (float(scale), profile, params, new_small)
+    print(f"[main] settings queued: work_scale {float(scale):.2f}, profile {profile!r}")
+
+
+def apply_gpu(st, index: int) -> None:
+    """Run the worker on a different GPU: environment, then a restart."""
+    index = int(index)
+    os.environ["NS_GPU"] = str(index)
+    if isinstance(st.cfg, dict):
+        st.cfg["gpu"] = index
+    print(f"[main] GPU {index} selected - restarting the worker")
+    st.last_restart = time.monotonic()
+    teardown_pipeline(st)
+    rebuild_pipeline(st, "GPU")
+
+
+def do_restart(st, scale: float, profile: str, params: dict, new_small=None) -> None:
+    """Apply new settings by rebuilding the pipeline at the new work size.
+
+    The worker is built for one frame size and one set of parameters, so a settings change is a
+    restart rather than an update - the same reason switch_monitor and switch_window tear down.
+    """
+    st.work_scale = float(scale)
+    if isinstance(st.cfg, dict):
+        st.cfg["profile"] = profile
+    st.params = params
+    if new_small is not None:
+        st.nr_small = bool(new_small)
+        os.environ["NS_NR_SMALL"] = "1" if st.nr_small else "0"
+    st.work_w, st.work_h = _work_size(st.width, st.height, st.work_scale)
+    st.last_restart = time.monotonic()
+    print(f"[main] restarting at work_scale {st.work_scale:.2f} "
+          f"({st.work_w}x{st.work_h}), profile {profile!r}")
+    teardown_pipeline(st)
+    rebuild_pipeline(st, "settings")
+
+
+def _follow_size(st, label: str) -> None:
+    """Rebuild if the captured source's size changed under us.
+
+    A portal screen-cast is fixed at the size it was negotiated with, so in practice this only
+    fires if the source is recreated - but a monitor switch or a compositor scaling change would
+    otherwise leave the worker pushing one size and the display expecting another.
+    """
+    try:
+        size = st.capture.resolution
+    except Exception:
+        return
+    if not size or not size[0] or not size[1]:
+        return
+    width, height = int(size[0]), int(size[1])
+    if (width, height) == (st.width, st.height):
+        return
+    print(f"[main] {label} is now {width}x{height} "
+          f"(was {st.width}x{st.height}) - rebuilding")
+    st.width, st.height = width, height
+    st.work_w, st.work_h = _work_size(width, height, st.work_scale)
+    teardown_pipeline(st)
+    rebuild_pipeline(st, "resize")
+
+
+def follow_monitor(st) -> None:
+    """The captured screen changed size - rebuild if so."""
+    _follow_size(st, "capture")
+
+
+def follow_window(st) -> None:
+    """The captured window changed size - rebuild if so."""
+    _follow_size(st, "window")
+
+
 def apply_spout(st, enabled: bool) -> None:
     """Toggle Spout2 bridge (restarts worker)."""
     st.cfg["spout"] = bool(enabled)
