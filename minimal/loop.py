@@ -78,6 +78,7 @@ class Pipeline:
                  fullscreen: bool = False, headless: bool = False,
                  warmup: int = 2, worker_cmd: list[str] | None = None,
                  worker_env_extra: dict | None = None,
+                 indicator: bool | None = None,
                  worker_cwd: Path | None = None, capture=None, display=None,
                  work_scale: float = 1.0, motion_small: bool = False,
                  no_motion: bool = False, shm: bool = False,
@@ -182,8 +183,11 @@ class Pipeline:
         if display is not None:
             self.display = display
         else:
-            self.display = Display(self.width, self.height,
-                                   fullscreen=fullscreen, headless=headless)
+            self.display = Display(
+                self.width, self.height, fullscreen=fullscreen, headless=headless,
+                # On unless asked off, and never in a headless run: there is no window to
+                # draw it in, and a badge would be a per-frame cost for nothing.
+                indicator=(not headless) if indicator is None else bool(indicator))
 
         # One zero motion field, reused for every frame.
         # (H, W, 2) float16 — two channels, the same layout the pipe expects.
@@ -304,6 +308,11 @@ class Pipeline:
             return None
         self.frames_done += 1
         if present and self.display is not None:
+            # The badge follows the same flag the frame was built with, so it cannot disagree
+            # with the picture it is drawn on.
+            setter = getattr(self.display, "set_enhanced", None)
+            if setter is not None:
+                setter(not self.bypass)
             self._timed("display", self.display.show, result)
         return result
 
@@ -540,6 +549,9 @@ class Pipeline:
         if after is None:
             return sent_index, input_frame, None
         if self.display is not None:
+            setter = getattr(self.display, "set_enhanced", None)
+            if setter is not None:
+                setter(not self.bypass)
             self._timed("display", self.display.show, after)
         return sent_index, input_frame, after
 

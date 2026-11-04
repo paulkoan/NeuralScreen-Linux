@@ -21,6 +21,10 @@
 > Both are global, so they work while the game has focus. Esc or `q` also quits, but the
 > output window has to be focused for that.
 >
+> A badge in the top-left corner says **ON** in green while the pass runs and **OFF** in grey
+> when it is bypassed. The renderer draws it after uploading the frame, so a saved PNG is the
+> pass's output and nothing else. `--no-indicator` hides it, `--indicator` forces it on.
+>
 > `python main_linux.py` on its own still needs a `config.json` and will fail
 > with `FileNotFoundError`; that is why the launcher exists.
 >

@@ -99,6 +99,12 @@ def build_parser() -> argparse.ArgumentParser:
                    help="register global hotkeys: Ctrl+Alt+1 toggles the enhancement, "
                         "Ctrl+Alt+Q quits. Global, so they work while the game window has "
                         "focus; needs a running X server (XWayland is enough)")
+    p.add_argument("--indicator", dest="indicator", action="store_true", default=None,
+                   help="draw an ON/OFF badge in the top-left corner of the output window "
+                        "(default: on unless --headless). It is drawn by the renderer, not into "
+                        "the frame, so a saved PNG stays clean")
+    p.add_argument("--no-indicator", dest="indicator", action="store_false",
+                   help="do not draw the badge")
     p.add_argument("--windowed", action="store_true",
                    help="draw in a window instead of fullscreen")
     p.add_argument("--prefetch", action="store_true",
@@ -263,7 +269,8 @@ def main(argv: list[str] | None = None) -> int:
                         frame_timeout=args.frame_timeout,
                         writev=args.writev,
                         worker_log=args.worker_log,
-                        worker_env_extra=worker_extra)
+                        worker_env_extra=worker_extra,
+                        indicator=args.indicator)
     except (CaptureError, DisplayError) as exc:
         print(f"startup failed: {exc}", file=sys.stderr)
         return 2
