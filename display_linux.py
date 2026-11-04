@@ -77,6 +77,15 @@ def _ensure_x11():
                                       ctypes.c_void_p, ctypes.c_int]
     _XLIB.XFlush.argtypes = [ctypes.c_void_p]
     _XLIB.XCloseDisplay.argtypes = [ctypes.c_void_p]
+    _XLIB.XRaiseWindow.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+    _XLIB.XMapRaised.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+    _XLIB.XSendEvent.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int,
+                                 ctypes.c_long, ctypes.c_void_p]
+    _XLIB.XGetGeometry.argtypes = [ctypes.c_void_p, ctypes.c_ulong,
+                                   ctypes.POINTER(ctypes.c_ulong), ctypes.POINTER(ctypes.c_int),
+                                   ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_uint),
+                                   ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint),
+                                   ctypes.POINTER(ctypes.c_uint)]
 
     _DISPLAY_PTR = _XLIB.XOpenDisplay(None)
     if not _DISPLAY_PTR:
@@ -547,7 +556,12 @@ class Display:
         if ok and _XLIB is not None:
             info = sdl2.SDL_SysWMinfo()
             sdl2.SDL_VERSION(info.version)
-            sdl2.SDL_GetWindowWMInfo(self.window, ctypes.byref(info))
+            if not sdl2.SDL_GetWindowWMInfo(self.window, ctypes.byref(info)):
+                return
+            # Same guard as the click-through path: on a Wayland window the union holds Wayland
+            # data, and XRaiseWindow on a garbage id is a segfault, not an error.
+            if info.subsystem != sdl2.SDL_SYSWM_X11:
+                return
             x11_window = info.info.x11.window
 
             # Set _NET_ACTIVE_WINDOW message

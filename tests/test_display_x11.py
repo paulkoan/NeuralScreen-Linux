@@ -57,3 +57,21 @@ def test_click_through_is_skipped_when_the_window_is_not_x11():
     assert "info.subsystem != sdl2.SDL_SYSWM_X11" in source
     assert source.count("info.subsystem != sdl2.SDL_SYSWM_X11") >= 2, (
         "both the set and the unset path must check the subsystem")
+
+
+@pytest.mark.skipif(not _xlib_available(), reason="libX11 is not installed")
+def test_every_xlib_call_declares_its_signature():
+    """The general form of the segfault: any call without argtypes truncates a pointer argument."""
+    import re
+    source = open(display_linux.__file__, encoding="utf-8").read()
+    used = sorted(set(re.findall(r"_XLIB\.(X[A-Za-z]+)", source)))
+    assert used, "no Xlib calls found - the regex or the module changed"
+
+    display_linux._XLIB = None
+    display_linux._ensure_x11()
+    lib = display_linux._XLIB
+    assert lib is not None
+    undeclared = [name for name in used if not getattr(lib, name).argtypes]
+    assert not undeclared, (
+        "these are called without argtypes, so their pointer arguments are truncated: "
+        + ", ".join(undeclared))

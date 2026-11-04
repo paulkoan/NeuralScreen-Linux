@@ -65,3 +65,19 @@ def test_the_surface_includes_the_things_that_crashed():
                  "set_menu_opaque", "set_menu_input", "set_excluded_from_capture",
                  "set_fullscreen_layer", "set_window_layer"):
         assert name in defined, f"Display.{name} is gone"
+
+
+def test_every_xlib_call_declares_argtypes():
+    """A pointer passed to a function without argtypes is truncated - the v1 segfault, twice.
+
+    Static on purpose: it needs no display and no SDL, so it runs everywhere.
+    """
+    import re
+    source = DISPLAY.read_text()
+    used = set(re.findall(r"_XLIB\.(X[A-Za-z]+)", source))
+    declared = set(re.findall(r"_XLIB\.(X[A-Za-z]+)\.argtypes\s*=", source))
+    assert used, "no Xlib calls found - the regex or the module changed"
+    missing = sorted(used - declared)
+    assert not missing, (
+        "these are called without argtypes, so their pointer arguments are truncated: "
+        + ", ".join(missing))
