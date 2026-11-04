@@ -60,14 +60,28 @@ def _ensure_x11():
         return False, "libX11_not_found"
 
     _XLIB = ctypes.cdll.LoadLibrary(xlib_path)
+
+    # Declare the signatures BEFORE the first call. A Display* is a 64-bit pointer, and without
+    # restype ctypes assumes int - so XOpenDisplay returned a truncated pointer and the very next
+    # call, XDefaultRootWindow, dereferenced it and took the process down (v1's first segfault).
+    # Every Xlib entry point used below gets its types for the same reason.
+    _XLIB.XOpenDisplay.restype = ctypes.c_void_p
+    _XLIB.XOpenDisplay.argtypes = [ctypes.c_char_p]
+    _XLIB.XDefaultRootWindow.restype = ctypes.c_ulong
+    _XLIB.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+    _XLIB.XInternAtom.restype = ctypes.c_ulong
+    _XLIB.XInternAtom.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+    _XLIB.XChangeProperty.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong,
+                                      ctypes.c_ulong, ctypes.c_int, ctypes.c_int,
+                                      ctypes.c_void_p, ctypes.c_int]
+    _XLIB.XFlush.argtypes = [ctypes.c_void_p]
+    _XLIB.XCloseDisplay.argtypes = [ctypes.c_void_p]
+
     _DISPLAY_PTR = _XLIB.XOpenDisplay(None)
     if not _DISPLAY_PTR:
         return False, "cannot_open_display"
 
     _ROOT_WINDOW = _XLIB.XDefaultRootWindow(_DISPLAY_PTR)
-
-    # Intern atoms for window type hints
-    _XLIB.XInternAtom.restype = ctypes.c_ulong
     _ATOM_NET_WM_WINDOW_TYPE = _XLIB.XInternAtom(
         _DISPLAY_PTR, b"_NET_WM_WINDOW_TYPE", ctypes.c_int(False)
     )
@@ -79,6 +93,12 @@ def _ensure_x11():
         _XSHAPE = ctypes.cdll.LoadLibrary(xshape_path)
         # XShapeQueryVersion to verify shape extension is present
         _XSHAPE.XShapeQueryVersion.restype = ctypes.c_int
+        _XSHAPE.XShapeQueryExtension.restype = ctypes.c_int
+        _XSHAPE.XShapeQueryExtension.argtypes = [
+            ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
+        _XSHAPE.XShapeCombineRectangles.argtypes = [
+            ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
         error_base = ctypes.c_int()
         event_base = ctypes.c_int()
         if not _XSHAPE.XShapeQueryExtension(
@@ -97,10 +117,15 @@ def _set_click_through_x11(sdl_window):
     if not ok:
         return reason
 
-    # Get the X11 window ID from SDL
+    # Get the X11 window ID from SDL - but only if this window is an X11 one. On a Wayland
+    # session the union carries Wayland data, and reading info.info.x11.window would hand Xlib a
+    # window id that never existed. Click-through is an X11 trick; elsewhere it is simply skipped.
     info = sdl2.SDL_SysWMinfo()
     sdl2.SDL_VERSION(info.version)
-    sdl2.SDL_GetWindowWMInfo(sdl_window, ctypes.byref(info))
+    if not sdl2.SDL_GetWindowWMInfo(sdl_window, ctypes.byref(info)):
+        return "wm_info_failed"
+    if info.subsystem != sdl2.SDL_SYSWM_X11:
+        return "not_x11"
     x11_window = info.info.x11.window
 
     # 1. Set _NET_WM_WINDOW_TYPE to DESKTOP (some compositors respect this)
@@ -148,7 +173,10 @@ def _unset_click_through_x11(sdl_window):
 
     info = sdl2.SDL_SysWMinfo()
     sdl2.SDL_VERSION(info.version)
-    sdl2.SDL_GetWindowWMInfo(sdl_window, ctypes.byref(info))
+    if not sdl2.SDL_GetWindowWMInfo(sdl_window, ctypes.byref(info)):
+        return
+    if info.subsystem != sdl2.SDL_SYSWM_X11:
+        return
     x11_window = info.info.x11.window
 
     # Get window dimensions
