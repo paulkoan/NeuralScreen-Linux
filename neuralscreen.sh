@@ -59,6 +59,11 @@ fi
 # started by exporting NS_WORKER_CMD before this script.
 export NS_WORKER_CMD="${NS_WORKER_CMD:-$PORT_BIN serve --model $MODEL_DIR}"
 
+# A segfault in a C extension (SDL, cv2, Xlib) prints nothing useful without this: it makes
+# Python dump the Python-level stack on SIGSEGV, to fd 2, which is still the terminal even after
+# the app redirects sys.stderr into its log.
+export PYTHONFAULTHANDLER=1
+
 PYTHON="$HERE/.venv/bin/python"
 [[ -x "$PYTHON" ]] || PYTHON="$(command -v python3)"
 

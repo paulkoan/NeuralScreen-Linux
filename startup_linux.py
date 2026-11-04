@@ -198,6 +198,7 @@ def bring_up(st) -> None:
     # Display overlay
     st.display = Display(st.width, st.height,
                          fullscreen=bool(st.cfg["fullscreen"]))
+    print("[main] display ready")
     st.display.set_lang(st.lang)
     st.startup_menu = bool(st.cfg.get("open_menu_on_start", True))
     st.split_pos = min(1.0, max(0.0, float(st.cfg.get("split", 0.0))))
