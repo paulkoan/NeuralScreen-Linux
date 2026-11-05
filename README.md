@@ -17,6 +17,10 @@
 > `NEURALSCREEN_MODEL_DIR`), and it must run in the graphical session: the capture is a
 > portal screen-cast, so pick the game window when the dialog appears.
 >
+> Global hotkeys read `/dev/input/event*`, which needs read access — on Arch that is the
+> `input` group: `sudo usermod -aG input "$USER"`, then log out and back in. Without it the
+> launcher falls back to the X11 grab (which cannot see a Wayland window's keys) and says so.
+>
 > **Ctrl+Alt+1** toggles the enhancement live — that is the A/B — and **Ctrl+Alt+Q** quits.
 > Both are global, so they work while the game has focus. Esc or `q` also quits, but the
 > output window has to be focused for that.
