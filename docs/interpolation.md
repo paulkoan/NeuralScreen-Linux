@@ -30,6 +30,25 @@ The caveats:
    (1-mask)*original`) is cheap and client-side, but the 10.5 ms in the worker is still spent on
    pixels nobody sees. To actually save that time the masking has to happen inside the network —
    tiled or masked convolution — which is a research project, not a flag.
+
+   *Correction, after reading maximedgoulet/FoveatedDLSS5's FOVEATION.md:* "runs on the whole
+   frame" is true of the network's single evaluate, but the frame it evaluates need not be at
+   output resolution. That project squeezes the whole image into a smaller, non-uniformly sampled
+   grid — density 1.0 in a centre zone of output pixels, a smoothstep fall-off, and `Edge` density
+   (0.5 by default) beyond it, independently per axis so corners reach Edge×Edge. The network then
+   runs **once** on that smaller image with one temporal history, and every stage that maps
+   working↔full inverts the warp. At 7680×2160 the grid is 5540×2132 = 71% of the pixels; at
+   3840×2160 it is 3620×2132 = 93%. Their own doc says 3440×1440 bypasses the mode because it
+   saves under 5%.
+
+   That is a third path, and a cheaper one than masking or tiling: the cost cut comes from the
+   input being smaller, and the centre stays 1:1 so the foveal region is untouched. It needs no
+   protocol change here — one evaluate, one reply. What it does need is the same resample applied
+   to the guides: their `fov_guides` compute pass resamples depth and motion onto the warped grid
+   so NR's inputs stay registered. Our motion field is already at 320×180 and upscaled in the
+   worker, so resampling it is cheap. The limit for our 1440p 16:9 stream: the gain scales
+   with how much edge you give up, and a 3000-px centre does not even fit a 2560-wide frame — a
+   smaller centre leaves maybe 20-25% of the network's 10.5 ms on the table, not 50%.
 3. **The blend is what would change, and that is a picture decision.** Enhancing only moving
    regions means the HUD, text and static UI keep their stream artefacts while the world gets
    cleaned up. That may look *worse*: the eye compares the two regions directly. It is worth
