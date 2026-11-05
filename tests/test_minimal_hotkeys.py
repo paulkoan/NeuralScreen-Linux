@@ -78,5 +78,8 @@ def test_the_worker_sends_its_own_bypass_flag():
 def test_the_cli_offers_the_flag():
     source = (REPO / "minimal" / "__main__.py").read_text()
     assert '"--hotkeys"' in source
-    assert "Ctrl+Alt+1" in source and "Ctrl+Alt+Q" in source
-    assert "pipe.commands.put" in source, "the callbacks must only enqueue"
+    # The bindings moved to hotkeys_backend, which owns both the list and the backend choice.
+    assert "hotkeys_backend.install(pipe)" in source
+    backend = (REPO / "hotkeys_backend.py").read_text()
+    assert "Ctrl+Alt+1" in backend and "Ctrl+Alt+Q" in backend
+    assert "pipe.commands.put" in backend, "the callbacks must only enqueue"

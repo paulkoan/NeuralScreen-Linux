@@ -299,18 +299,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.hotkeys:
-        # Registered before the loop starts so the first frame already honours them. The
-        # callbacks only enqueue: the loop owns the state, and a toggle applied from an X11
-        # callback thread would race the frame it is building.
-        from hotkeys_linux import poll_x11_events, register_global_hotkey
-        try:
-            register_global_hotkey("Ctrl+Alt+1", lambda _name: pipe.commands.put("toggle"))
-            register_global_hotkey("Ctrl+Alt+Q", lambda _name: pipe.commands.put("quit"))
-        except (ValueError, RuntimeError) as exc:
-            print(f"hotkeys unavailable: {exc}", file=sys.stderr)
-        else:
-            pipe.hotkey_poll = poll_x11_events
-            print("hotkeys: Ctrl+Alt+1 enhance on/off, Ctrl+Alt+Q quit")
+        # Which backend is decided in hotkeys_backend: on Wayland the X11 grab cannot see a
+        # Wayland window's keys, and it fails *silently* — that is why Ctrl+Alt+1 registered and
+        # then did nothing. The callbacks only enqueue; the loop owns the state, and a toggle
+        # applied from a reader thread would race the frame it is building.
+        import hotkeys_backend
+        hotkeys_backend.install(pipe)
 
     print(f"source {args.source}"
           + (f" ({args.input_image})" if args.source == "image" else "")
