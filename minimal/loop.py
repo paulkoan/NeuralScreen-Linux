@@ -81,6 +81,7 @@ class Pipeline:
                  indicator: bool | None = None,
                  report_diff: bool = False, save_diff: str | None = None,
                  diff_gain: float = 8.0, ab_alternate: float = 0.0,
+                 report_gpu: bool = False,
                  worker_cwd: Path | None = None, capture=None, display=None,
                  work_scale: float = 1.0, motion_small: bool = False,
                  no_motion: bool = False, shm: bool = False,
@@ -172,6 +173,10 @@ class Pipeline:
         # the badge says which half you are looking at.
         self.ab_alternate = max(0.0, float(ab_alternate))
         self._next_flip = 0.0
+        # Sampled for the life of the run: the worker's timings say how long a frame took, this
+        # says whether the GPU was busy while it took it.
+        self.report_gpu = bool(report_gpu)
+        self.gpu: "GpuSampler | None" = None
         self.running = True
         # Set by --hotkeys: polled between frames, so the window does not need focus.
         self.hotkey_poll = None
@@ -406,6 +411,9 @@ class Pipeline:
         Returns a summary dict — the caller (or a test) can assert on it.
         """
         self.worker.start()
+        if self.report_gpu:
+            from minimal.gpustat import GpuSampler
+            self.gpu = GpuSampler().start()
         started = time.monotonic()
         # The capture chain's own CPU, sampled around the loop. It is invisible
         # in the grab time — the pipeline's copies and conversions happen while
@@ -439,6 +447,8 @@ class Pipeline:
             else:
                 pair_before, last_after, index = self._serial_loop(frames, on_frame)
         finally:
+            if self.gpu is not None:
+                self.gpu.stop()
             # Sample the capture's CPU before close(): close() drops the
             # pipeline handle, and taking the end reading after it reported
             # "pid None" and a failed reading on every run — the measurement

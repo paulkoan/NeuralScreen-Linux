@@ -109,6 +109,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="flip the enhancement on and off every SECONDS. An A/B with no keypress, "
                         "which matters because a global X grab does not see keys pressed in a "
                         "Wayland-native window")
+    p.add_argument("--report-gpu", action="store_true",
+                   help="sample GPU utilisation for the life of the run and report it with the "
+                        "timings. A frame that is slow while the GPU is idle is one better code "
+                        "could fix; one that is slow at 98%% means the work has to come out")
     p.add_argument("--report-diff", action="store_true",
                    help="print how far the pass moved the picture: per-channel MAD, maximum, "
                         "PSNR and the share of pixels that changed by more than 2 and 8 levels")
@@ -288,7 +292,8 @@ def main(argv: list[str] | None = None) -> int:
                         report_diff=args.report_diff,
                         save_diff=args.save_diff,
                         diff_gain=args.diff_gain,
-                        ab_alternate=args.ab_alternate)
+                        ab_alternate=args.ab_alternate,
+                        report_gpu=args.report_gpu)
     except (CaptureError, DisplayError) as exc:
         print(f"startup failed: {exc}", file=sys.stderr)
         return 2
@@ -460,6 +465,8 @@ def main(argv: list[str] | None = None) -> int:
         # a measurement that quietly looks like zero.
         print(f"capture cpu: NOT measured — {cc['reason']} "
               f"(pid {cc.get('pid')})")
+    if pipe.gpu is not None:
+        print(pipe.gpu.describe())
     if args.save_before:
         print(f"  before -> {args.save_before}")
     if args.save_after:

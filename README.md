@@ -21,6 +21,10 @@
 > Both are global, so they work while the game has focus. Esc or `q` also quits, but the
 > output window has to be focused for that.
 >
+> On exit the run prints how far the pass moved the picture (per-channel MAD, maximum, PSNR, and
+> the share of pixels that changed by more than 2 and 8 levels) and the GPU's utilisation over the
+> run. Both are diagnostics; neither changes what the pass does.
+>
 > A badge in the top-left corner says **ON** in green while the pass runs and **OFF** in grey
 > when it is bypassed. The renderer draws it after uploading the frame, so a saved PNG is the
 > pass's output and nothing else. `--no-indicator` hides it, `--indicator` forces it on.

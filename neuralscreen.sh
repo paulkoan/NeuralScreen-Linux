@@ -37,7 +37,8 @@
 #
 # The A/B also runs on a timer: the enhancement flips every NEURALSCREEN_AB seconds (default 3,
 # 0 disables). That is the comparison that needs nothing from you, and the badge says which half
-# you are looking at. NEURALSCREEN_DIFF=0 turns off the end-of-run diff report.
+# you are looking at. NEURALSCREEN_DIFF=0 turns off the end-of-run diff report, which is reported
+# alongside GPU utilisation (sampled once a second - each sample is an nvidia-smi call).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -73,6 +74,7 @@ AB="${NEURALSCREEN_AB:-3}"
 DIFF="${NEURALSCREEN_DIFF:-1}"
 extra=()
 [[ "$DIFF" != "0" ]] && extra+=(--report-diff)
+extra+=(--report-gpu)
 [[ "$AB" != "0" ]] && extra+=(--ab-alternate "$AB")
 
 echo "worker: $NS_WORKER_CMD"
