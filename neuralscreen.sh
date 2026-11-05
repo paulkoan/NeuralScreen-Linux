@@ -35,6 +35,13 @@
 #   Ctrl+Alt+Q   quit
 #   Esc / q      quit (the output window needs focus for these)
 #
+# SAVING THE STATS
+#
+# Every run is teed into runs/local/<timestamp>.log and, when it finishes, that file is
+# committed and pushed to main so the analysis clone can read it. The rest of the working
+# tree is left alone - on this box it may hold edits that are not ours to publish.
+# NEURALSCREEN_UPLOAD=0 keeps a run local; the log is still written.
+#
 # The A/B also runs on a timer: the enhancement flips every NEURALSCREEN_AB seconds (default 3,
 # 0 disables). That is the comparison that needs nothing from you, and the badge says which half
 # you are looking at. NEURALSCREEN_DIFF=0 turns off the end-of-run diff report, which is reported
@@ -81,4 +88,52 @@ echo "worker: $NS_WORKER_CMD"
 echo "size:   $SIZE"
 [[ "$AB" != "0" ]] && echo "A/B:    enhancement flips every ${AB}s"
 
-exec "$PYTHON" -m minimal --source window --size "$SIZE" --shm --hotkeys "${extra[@]}" "$@"
+# SAVE AND UPLOAD THE STATISTICS
+#
+# The stats are printed, not written: the [perf] lines, the diff summary and the GPU
+# samples all go to stdout. So the run is teed into a tracked log under runs/local/, and
+# only that one file is committed - never the rest of the working tree, which on this box
+# may hold local edits that are not ours to publish. The commit goes to main, so the next
+# pull in the analysis clone sees it.
+#
+# Set NEURALSCREEN_UPLOAD=0 to keep a run local (the log is still written).
+STATS_DIR="$HERE/runs/local"
+STATS_LOG="$STATS_DIR/$(date +%Y%m%d-%H%M%S).log"
+mkdir -p "$STATS_DIR"
+
+# Unbuffered, or the tee'd log arrives in 8 KiB blocks and a killed run loses its tail.
+export PYTHONUNBUFFERED=1
+
+"$PYTHON" -m minimal --source window --size "$SIZE" --shm --hotkeys "${extra[@]}" "$@" 2>&1 | tee "$STATS_LOG"
+STATUS=${PIPESTATUS[0]}
+
+upload_stats() {
+    local repo="$1" log="$2"
+    git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || {
+        echo "stats: not a git repository at $repo - saved to $log only" >&2
+        return 0
+    }
+    git -C "$repo" add -- "$log" 2>/dev/null || return 0
+    git -C "$repo" diff --cached --quiet && {
+        echo "stats: nothing new to upload" >&2
+        return 0
+    }
+    git -C "$repo" commit -q -m "stats: local run $(basename "$log" .log), exit $STATUS" || return 0
+    # The analysis clone also pushes to main; rebase first so a stats push cannot lose to it.
+    GIT_ASKPASS="${GIT_ASKPASS:-/opt/data/secrets/github-askpass.sh}" GIT_TERMINAL_PROMPT=0 \
+        git -C "$repo" pull -q --rebase origin main >/dev/null 2>&1 || true
+    GIT_ASKPASS="${GIT_ASKPASS:-/opt/data/secrets/github-askpass.sh}" GIT_TERMINAL_PROMPT=0 \
+        git -C "$repo" push -q origin HEAD:main || {
+        echo "stats: push failed - the commit is local in $repo" >&2
+        return 0
+    }
+    echo "stats: uploaded $(basename "$log")"
+}
+
+if [[ "${NEURALSCREEN_UPLOAD:-1}" == "0" ]]; then
+    echo "stats: saved to $STATS_LOG (upload disabled)"
+else
+    upload_stats "$HERE" "$STATS_LOG"
+fi
+
+exit "$STATUS"
