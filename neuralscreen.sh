@@ -107,33 +107,13 @@ export PYTHONUNBUFFERED=1
 "$PYTHON" -m minimal --source window --size "$SIZE" --shm --hotkeys "${extra[@]}" "$@" 2>&1 | tee "$STATS_LOG"
 STATUS=${PIPESTATUS[0]}
 
-upload_stats() {
-    local repo="$1" log="$2"
-    git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || {
-        echo "stats: not a git repository at $repo - saved to $log only" >&2
-        return 0
-    }
-    git -C "$repo" add -- "$log" 2>/dev/null || return 0
-    git -C "$repo" diff --cached --quiet && {
-        echo "stats: nothing new to upload" >&2
-        return 0
-    }
-    git -C "$repo" commit -q -m "stats: local run $(basename "$log" .log), exit $STATUS" || return 0
-    # The analysis clone also pushes to main; rebase first so a stats push cannot lose to it.
-    GIT_ASKPASS="${GIT_ASKPASS:-/opt/data/secrets/github-askpass.sh}" GIT_TERMINAL_PROMPT=0 \
-        git -C "$repo" pull -q --rebase origin main >/dev/null 2>&1 || true
-    GIT_ASKPASS="${GIT_ASKPASS:-/opt/data/secrets/github-askpass.sh}" GIT_TERMINAL_PROMPT=0 \
-        git -C "$repo" push -q origin HEAD:main || {
-        echo "stats: push failed - the commit is local in $repo" >&2
-        return 0
-    }
-    echo "stats: uploaded $(basename "$log")"
-}
-
+# The upload lives in tools/ so it can be tested on its own: it commits one file, pushes it, and
+# then asks the remote whether it really has it. Reporting success from a push's exit code is how
+# a run's stats went missing while the terminal said "uploaded".
 if [[ "${NEURALSCREEN_UPLOAD:-1}" == "0" ]]; then
     echo "stats: saved to $STATS_LOG (upload disabled)"
 else
-    upload_stats "$HERE" "$STATS_LOG"
+    "$HERE/tools/upload_stats.sh" "$HERE" "$STATS_LOG" "$STATUS"
 fi
 
 exit "$STATUS"
