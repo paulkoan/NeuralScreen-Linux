@@ -1,0 +1,38 @@
+  CreateSession
+  session /org/freedesktop/portal/desktop/session/1_1019765/nsl_port
+  SelectSources
+  Start  (the compositor will ask you to choose a screen)
+  stream node=182 serial=2799 0x0
+  OpenPipeWireRemote
+  window stream reports no size; using the requested 2560x1440
+  pipe buffer 64 -> 1024 KiB
+  pipeline pid 2435478: gst-launch-1.0 -q pipewiresrc fd=5 target-object=2799 ! videoconvert ! videoscale ! video/x-raw,format=RGBA,width=2560,height=1440,pixel-aspect-ratio=1/1 ! queue max-size-buffers=1 leaky=downstream ! fdsink fd=1
+hotkeys: reading 13 keyboard(s) via evdev: ENIAC Flexbar Keyboard, Yubico YubiKey OTP+FIDO+CCID, JosefAdamcik Sofle, JosefAdamcik Sofle Keyboard, keyd virtual keyboard, ydotoold virtual device, Logitech MX Master 2S, Logitech MX Ergo, Logitech G604 , Keychron  Keychron Link-KM Keyboard, Keychron  Keychron Link-KM Keyboard, Swiftpoint Z3 Receiver Keyboard, ENIAC Flexbar Keyboard
+hotkeys: Ctrl+Alt+1, Ctrl+Alt+Q via evdev (Wayland session)
+source window  capture 2560x1440  ->  work 2560x1440 (work scale 1.00, NGX ceiling 2560x1440)
+params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+worker: /opt/neuralscreen/port/build/dlss5vk serve --model /opt/neuralscreen/model
+version: repo 46235c4 (+34 uncommitted) · worker built from patch 088280e62d50 at port 9d08f41 · in sync
+[main] shared memory agreed: 29.5 MB, the frame does not go through the pipe
+[main] shared memory: frames in and pixels out through /dev/shm (frame 29.5MB, pixels 14.7MB)
+frame 0 is the worker's warm-up: the window stays black until its first answer lands
+[main] quit from the hotkey
+diff: MAD 6.462 (R 7.354 G 6.226 B 5.806)  max 99  PSNR 28.50 dB  >2: 88.76%  >8: 32.52%
+frames: 1442 done, 0 skipped, 89.085s (16.19 fps headline, 17.08 fps steady), worker exit 0
+timing: capture 13.7ms  send 4.3ms  recv 37.1ms  display 6.1ms   (mean 61.3ms/frame, 16.3 fps; median 58.5ms/frame, 17.1 fps steady)
+send spread: min 1.6  median 4.0  max 14.3 ms at frame 0 of 1442   (one-off at frame 0 — sent before the worker's first reply lands, so the warm-up, not a per-frame cost)
+recv spread: min 21.9  median 34.9  max 1517.0 ms at frame 0 of 1442   (one-off at frame 0 — sent before the worker's first reply lands, so the warm-up, not a per-frame cost)
+capture spread: min 5.4  median 13.2  max 33.2 ms at frame 1169 of 1442   (a one-off at frame 1169 — not the warm-up, so worth looking at)
+capture split: wait 0.7ms  read 13.0ms   (read near 9ms at 2560x1440 with a 1024 KiB pipe means we are draining a stocked pipe; far above that means the compositor was dribbling)
+capture cpu: the pipeline used 47.92s over 89.08s = 54% of one core
+          ! that work runs while the worker waits: the same 2560x1440 frame cost send 114.2ms through the portal against 67.3ms produced synthetically
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/opt/neuralscreen/state/repo/minimal/__main__.py", line 472, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/opt/neuralscreen/state/repo/minimal/__main__.py", line 462, in main
+    if pipe.gpu is not None:
+       ^^^^^^^^
+AttributeError: 'int' object has no attribute 'gpu'
