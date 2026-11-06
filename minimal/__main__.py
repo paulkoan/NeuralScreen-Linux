@@ -413,13 +413,13 @@ def main(argv: list[str] | None = None) -> int:
     # a slow grab is the compositor if the wait dominates, and us if the read
     # does.
     if "capture_wait" in t:
-        pipe = t.get("capture_pipe_bytes")
+        pipe_bytes = t.get("capture_pipe_bytes")
         # The threshold moves with the buffer: a drained frame is 14.7 MB at 2560x1440, and
         # the floor is what the pipe can carry. 64 KiB hosts give ~19 ms, 1 MiB ~9 ms. Naming
         # the buffer the kernel granted keeps the number from being read against the wrong one.
-        if pipe:
-            kib = pipe // 1024
-            floor = {65536: 19.0, 1048576: 9.0}.get(pipe, 0.3 * kib / 14.7)
+        if pipe_bytes:
+            kib = pipe_bytes // 1024
+            floor = {65536: 19.0, 1048576: 9.0}.get(pipe_bytes, 0.3 * kib / 14.7)
             note = (f"read near {floor:.0f}ms at 2560x1440 with a {kib} KiB pipe means we are "
                     f"draining a stocked pipe; far above that means the compositor was "
                     f"dribbling")
@@ -428,9 +428,9 @@ def main(argv: list[str] | None = None) -> int:
                     "that means the compositor was dribbling")
         print(f"capture split: wait {1000 * t['capture_wait']:.1f}ms  "
               f"read {1000 * t['capture_read']:.1f}ms   ({note})")
-    # What the prefetch drain saw. The frame age is the honest latency the
-    # capture adds: with old frames dropped it stays near one frame time rather
-    # than growing with a queue.
+    # What the prefetch drain saw. The frame age is the latency the capture
+    # adds, for real: with old frames dropped it stays near one frame time
+    # rather than growing with a queue.
     pf = summary.get("prefetch")
     if pf:
         mean = pf.get("age_mean")
