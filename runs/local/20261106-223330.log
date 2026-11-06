@@ -1,0 +1,5 @@
+  CreateSession
+  session /org/freedesktop/portal/desktop/session/1_994251/nsl_port
+  SelectSources
+  Start  (the compositor will ask you to choose a screen)
+startup failed: the screen-sharing prompt was cancelled
