@@ -1,0 +1,10 @@
+{
+  "id": "r2026-11-08-gil",
+  "entry": "minimal",
+  "args": ["--source", "video", "--input-video", "fixtures/stream-1440p-2s.mp4",
+           "--size", "2560x1440", "--headless", "--frames", "600", "--shm",
+           "--worker-log", "--gil-switch-ms", "1", "--save-after", "gil.png"],
+  "timeout_s": 900,
+  "artifacts": ["gil.png"],
+  "note": "The one hypothesis the recv split left. r2026-11-08-recsplit measured recv 29.6ms against a worker total of 19.7ms and reported the frame's own copy as 1.7ms - so ~8ms of every frame is neither the worker nor our memcpy, it is the handoff, and the copy being at the host memory rate says the plumbing is already right. CPython switches threads every 5ms by default, which is the same order as that gap: the reader thread cannot unpack a reply or copy the pixels until it holds the GIL, and the loop holds it through the capture and the frame write. This run sets the switch interval to 1ms and everything else identical to recsplit. Read the 'recv split' line: if 'waiting' falls by several ms with the copy unmoved, the gap was thread scheduling and the knob is the fix. If waiting does not move, the GIL is not it, the worker's own reply timestamp is not where the reply leaves it, and the next suspect is the worker's write of the pixels rather than the client's read. The frame time should land within the 4ms noise floor of recsplit's 32.6ms median; a change in the frame time with no change in the split means the knob cost something elsewhere."
+}

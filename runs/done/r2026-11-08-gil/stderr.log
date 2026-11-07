@@ -1,0 +1,39 @@
+warning: The `native-tls` setting is deprecated and will be removed in a future release. Use `system-certs` instead.
+[worker] serve: 2560x1440, model /opt/neuralscreen/model, shaders /opt/neuralscreen/port/build/shaders, seed 0
+[worker] serve: built from port 9d08f41 (17 modified) patch 088280e62d5047a684d65df2a3fb2dcf84d5f9d1
+[worker] serve: frame channel open (29.5 MB, NeuralScreen_4057527_449075d8)
+[worker] serve: pixel channel open (2560x1440, 14.7 MB, NeuralScreenOut_4057527_a752df)
+[main] shared memory: frames in and pixels out through /dev/shm (frame 29.5MB, pixels 14.7MB)
+[worker] serve: the caller declared no motion field: the reprojection is the identity
+[worker] serve: and the five-tap history filter is the centre tap, which is the pixel
+[worker] serve: itself - so no published byte can move for it
+[worker] serve: device NVIDIA GeForce RTX 4080 SUPER
+[worker] serve: blend scale 0.7397 (block70.layer0.blend_scale)
+[worker] serve: graph fused (DLSS5VK_UNFUSED not set)
+[worker] serve: warming up (the PTX modules are JIT-compiled on first use)
+[worker] serve: warm-up 2994 ms
+[worker] serve: frame 0 carries reset: no history for this frame, and this frame primes the next
+[worker] serve: head -10.5703..2.1426 mean -0.54321; residual mean 0.1111 0.0057 0.1539 (rgb, head/4), logit mean -3.2555; non-finite 0 of 14745600; first 8 0.4094 0.6533 -0.3296 -0.3892 0.4255 0.6670 -0.3159 -0.2235
+[worker] serve frame 0: 109.1 ms (proxy 2.9 [copy 2.1, submit 0.9], network+composite 32.3, readback 68.8, reply 5.1)
+[worker] serve frame 1: 21.0 ms (proxy 2.4 [copy 1.5, submit 1.0], network+composite 12.4, readback 4.4, reply 1.7)
+[worker] serve frame 2: 19.5 ms (proxy 2.3 [copy 1.4, submit 0.9], network+composite 12.4, readback 3.1, reply 1.7)
+[worker] serve frame 29: 20.3 ms (proxy 2.7 [copy 1.7, submit 0.9], network+composite 12.3, readback 3.4, reply 1.9)
+[worker] serve frame 59: 22.0 ms (proxy 3.2 [copy 2.0, submit 1.2], network+composite 13.8, readback 3.0, reply 1.9)
+[worker] serve frame 89: 26.1 ms (proxy 5.5 [copy 3.7, submit 1.9], network+composite 13.3, readback 4.8, reply 2.5)
+[worker] serve frame 119: 20.9 ms (proxy 2.7 [copy 1.7, submit 1.1], network+composite 12.5, readback 3.6, reply 2.0)
+[worker] serve frame 149: 20.2 ms (proxy 2.9 [copy 2.0, submit 0.9], network+composite 12.5, readback 3.2, reply 1.7)
+[worker] serve frame 179: 20.2 ms (proxy 2.3 [copy 1.5, submit 0.8], network+composite 12.7, readback 3.5, reply 1.7)
+[worker] serve frame 209: 22.9 ms (proxy 4.2 [copy 2.7, submit 1.5], network+composite 12.6, readback 4.1, reply 2.1)
+[worker] serve frame 239: 21.1 ms (proxy 3.3 [copy 2.3, submit 1.1], network+composite 12.4, readback 3.4, reply 1.8)
+[worker] serve frame 269: 23.4 ms (proxy 4.1 [copy 2.6, submit 1.5], network+composite 13.0, readback 4.4, reply 2.0)
+[worker] serve frame 299: 20.1 ms (proxy 2.8 [copy 1.9, submit 1.0], network+composite 12.4, readback 3.2, reply 1.7)
+[worker] serve frame 329: 20.3 ms (proxy 3.2 [copy 2.1, submit 1.1], network+composite 11.9, readback 3.4, reply 1.8)
+[worker] serve frame 359: 19.6 ms (proxy 2.8 [copy 1.8, submit 0.9], network+composite 11.6, readback 3.5, reply 1.7)
+[worker] serve frame 389: 20.4 ms (proxy 3.3 [copy 2.3, submit 1.0], network+composite 11.9, readback 3.4, reply 1.8)
+[worker] serve frame 419: 19.8 ms (proxy 2.5 [copy 1.6, submit 0.9], network+composite 11.8, readback 3.6, reply 1.8)
+[worker] serve frame 449: 21.9 ms (proxy 4.4 [copy 3.3, submit 1.1], network+composite 12.4, readback 3.4, reply 1.7)
+[worker] serve frame 479: 19.7 ms (proxy 2.5 [copy 1.6, submit 0.9], network+composite 12.5, readback 3.0, reply 1.7)
+[worker] serve frame 509: 21.8 ms (proxy 2.7 [copy 1.8, submit 0.9], network+composite 13.0, readback 4.1, reply 2.0)
+[worker] serve frame 539: 22.8 ms (proxy 2.8 [copy 1.9, submit 0.9], network+composite 12.5, readback 4.9, reply 2.6)
+[worker] serve frame 569: 19.9 ms (proxy 2.8 [copy 1.7, submit 1.0], network+composite 11.8, readback 3.5, reply 1.8)
+[worker] serve frame 599: 19.6 ms (proxy 2.4 [copy 1.5, submit 0.9], network+composite 12.2, readback 3.2, reply 1.8)

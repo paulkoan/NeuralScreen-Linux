@@ -269,6 +269,19 @@ HEADER_FMT = "<10I4f2I"   # magic, w, h, warmup, frame_count, profile, preset,
 FRAME_FMT = "<4Iq"        # magic, index, reset, reserved, pts
 OUT_FMT = "<5Iq"          # magic, index, ok, bytes, ngx_result, pts
 
+# A bit in the OUT reply's ngx_result field: this reply is a *generated* frame - the
+# interpolated mid-frame between the previous frame and this index's own - and not the
+# enhanced frame itself. The field carries no NGX result on the happy path (it is 0), so
+# a bit there costs nothing and needs no new header. Set by the worker; a client that
+# does not ask for the mid-frame simply never receives one.
+OUT_FLAG_INTERPOLATED = 0x40000000
+_NGX_RESULT_MASK = 0xFFF00000      # the 0xBAD00000 family, which is the only real failure
+
+# Pending mid-frames a client may leave unclaimed. One entry per index would grow a
+# 14.7MB frame per frame of the run for a client that never presents them, so the map is
+# bounded and the oldest is dropped - the newest is the one worth showing anyway.
+_MAX_PENDING_INTERP = 4
+
 # SHMI: the frame travels through shared memory and only the FRM1 header with
 # the FRAME_FLAG_SHM flag goes down the pipe. The worker loads the pixels into
 # a texture straight from the mapping - two 33 MB copies disappear (the write
@@ -327,6 +340,15 @@ DDA_ACK_FMT = "<4Iq"    # magic, ok, reserved0, reserved1, pts
 FRAME_FLAG_NO_COLOR = 0x8  # in DDA mode: we send no colour (the worker takes it)
 FRAME_FLAG_BYPASS = 0x10  # NR OFF: skip NGX, show the raw capture
 FRAME_FLAG_NO_MOTION = 0x40  # no motion field follows: this worker does not read it
+# Ask for a generated mid-frame: the worker replies TWICE for this index, the interpolated
+# frame first and then the enhanced one, both carrying this index. A worker that does not know
+# the flag ignores it and replies once, so the client must treat a missing mid-frame as normal
+# rather than as a stall.
+#
+# The order is load-bearing. The client reads its mid-frame immediately after `recv` returns
+# the frame it belongs to - a mid sent after that frame can still be in the pipe at that moment
+# and would be missed, which is a race whose outcome depends on the frame size.
+FRAME_FLAG_WANT_INTERP = 0x100
 #
 # NO_MOTION exists because the motion field is expensive and often waste: at 2560x1440
 # it is 14.7MB of float16 - the same size as the colour - and the MVP sends a field of
@@ -418,7 +440,8 @@ def send_frame(worker: subprocess.Popen, index: int, rgba: np.ndarray,
                shm: "SharedFrameBuffer | None" = None,
                want_pixels: bool = False, motion_small: bool = False,
                no_color: bool = False, bypass: bool = False, no_motion: bool = False,
-               bgra: bool = False, split: float = 0.0, writev: bool = False) -> None:
+               bgra: bool = False, split: float = 0.0, writev: bool = False,
+               want_interp: bool = False) -> None:
     """Send a frame to the worker.
 
     With shared memory agreed, only the 24-byte header with the
@@ -438,6 +461,7 @@ def send_frame(worker: subprocess.Popen, index: int, rgba: np.ndarray,
             (FRAME_FLAG_NO_COLOR if no_color else 0) | \
             (FRAME_FLAG_BYPASS if bypass else 0) | \
             (FRAME_FLAG_NO_MOTION if no_motion else 0) | \
+            (FRAME_FLAG_WANT_INTERP if want_interp else 0) | \
             (FRAME_FLAG_COLOR_BGRA if bgra else 0)
     if split > 0.0:
         # The wipe position rides in the high 16 bits of the same flags field:
@@ -599,6 +623,11 @@ class WorkerReader:
         # spin when the worker was still writing). Seconds, one per frame with
         # pixels; a frame the worker published nothing for adds nothing.
         self.copy_ms: list = []
+        # Mid-frames the worker generated, keyed by the index they belong after. They are
+        # held apart from the reply queue so a client that never asks for one is unaffected;
+        # bounded, because an unclaimed 14.7MB frame per index would grow without limit.
+        self.interp: dict = {}
+        self.interp_frames = 0
         self._queue: queue.Queue = queue.Queue()
         self._thread = threading.Thread(target=self._run, daemon=True,
                                         name="worker-reader")
@@ -665,15 +694,20 @@ class WorkerReader:
                     # (NVSDK_NGX_FAILED masks the top nibble). Treating
                     # 0x00000000 as a crash restarted the worker three
                     # times and then turned NR off (issue #11, kortul).
-                    if (ngx_result & 0xFFF00000) == 0xBAD00000:
+                    if (ngx_result & _NGX_RESULT_MASK) == 0xBAD00000:
                         raise RuntimeError(
                             f"NGX evaluation failed on frame {out_index}: 0x{ngx_result:08X}")
+                    # A generated mid-frame travels as a second reply for the same index, told
+                    # apart by this bit. It is delivered to its own map, not the reply queue, so
+                    # a client that never asks for one cannot have it mistaken for the frame it
+                    # sent - and cannot be desynchronised by it either.
+                    interp = bool(ngx_result & OUT_FLAG_INTERPOLATED)
                     if byte_count == 0:
                         # No pixels through the pipe: WNDO mode (the worker
                         # showed the frame in its own window) or a skipped
                         # frame (0x00000000). Either way there is nothing
                         # to show - the pipeline waits for the next one.
-                        self._queue.put((out_index, None))
+                        self._deliver(out_index, None, interp)
                         continue
                     if byte_count == OUT_BYTES_IN_SHM:
                         # The pixels are in the OUTS section. The copy is made
@@ -691,16 +725,16 @@ class WorkerReader:
                             # A torn frame (seqlock retries exhausted): skip
                             # it, but keep the protocol paired - main treats
                             # None as "frame not ready" and moves on.
-                            self._queue.put((out_index, None))
+                            self._deliver(out_index, None, interp)
                             continue
-                        self._queue.put((out_index, frame))
+                        self._deliver(out_index, frame, interp)
                         continue
                     if byte_count != self._width * self._height * 4:
                         raise RuntimeError(
                             f"worker returned {byte_count} bytes instead of {self._width * self._height * 4}")
                     data = _read_exact(self._worker.stdout, byte_count)
                     frame = np.frombuffer(data, dtype=np.uint8).reshape(self._height, self._width, 4)
-                    self._queue.put((out_index, frame))
+                    self._deliver(out_index, frame, interp)
                 else:
                     raise RuntimeError(f"invalid magic in the worker reply: 0x{magic:08X}")
         except Exception as exc:
@@ -860,6 +894,26 @@ class WorkerReader:
                     raise RuntimeError(f"RNSZ rejected by the worker: ngx=0x{ngx_result:08X}")
                 return
             # (index, frame) - a frame from before RACK - skip it
+
+    def _deliver(self, index: int, payload, interp: bool) -> None:
+        """Route one OUT reply: the enhanced frame to the queue, a mid-frame to the map."""
+        if not interp:
+            self._queue.put((index, payload))
+            return
+        if payload is None:
+            return
+        self.interp[index] = payload
+        self.interp_frames += 1
+        while len(self.interp) > _MAX_PENDING_INTERP:
+            self.interp.pop(next(iter(self.interp)))
+
+    def take_interp(self, index: int | None = None):
+        """The generated mid-frame for `index` (default: the newest), once. None if none."""
+        if index is None:
+            if not self.interp:
+                return None
+            index = next(reversed(self.interp))
+        return self.interp.pop(index, None)
 
     def recv_any(self, timeout: float):
         """The next frame reply, whatever index it carries. Returns (index, pixels).

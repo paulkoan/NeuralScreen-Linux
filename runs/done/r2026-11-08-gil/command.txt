@@ -1,0 +1,1 @@
+uv run python -m minimal --source video --input-video fixtures/stream-1440p-2s.mp4 --size 2560x1440 --headless --frames 600 --shm --worker-log --gil-switch-ms 1 --save-after gil.png
