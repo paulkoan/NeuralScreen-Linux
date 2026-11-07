@@ -54,18 +54,19 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   (b) still needs `DLSS5VK_SERVE_SPLIT` on that run, which is a policy entry = the box = not ours
   to add.
 
-* Next: the client throws the worker's exit away, and the counters cannot be read until it stops
-  (see the learned line above). `minimal/worker.py`'s `_drain_stderr` breaks the moment
-  `_log_stop` is set, and `stop()` sets it *before* it closes stdin and waits - so the worker's
-  closing lines, which are printed on the very EOF `stop()` causes, are dropped before they reach
-  `worker.logs` (read from the code, not measured: it is the only explanation consistent with
-  `worker exit 0` and a stderr block that ends at the last per-frame line). Files this item may
-  edit: minimal/worker.py, tests/. Fix the ordering so the drain thread keeps reading until the
-  process exits (join it after `wait`, or end the loop on EOF rather than on the stop flag), and
-  add a test that runs a command which prints on EOF, stops it, and requires that line to be in
-  `logs` - it must fail against today's code. Then queue a repeat of `r2026-11-08-midcount-run`'s
-  argv: with both halves in, that run's stderr is where the mid-frame's own device cost (X ms mean
-  per mid) is read from for the first time.
+* learned: the client's closing line was being *dropped*, not misprinted, and the drain now reads
+  past the EOF that causes it (2026-11-08 tick). `minimal/worker.py`'s `stop()` set `_log_stop`
+  before closing stdin, so the worker's last line - printed on the very EOF that close causes - was
+  read and discarded by `_drain_stderr` before it reached `worker.logs`. Fix: the drain thread reads
+  to EOF, `stop()` closes stdin, waits, then joins the thread, and only then sets `_log_stop` as a
+  fallback for a child that keeps the pipe open. Two tests in `tests/test_worker_stderr_eof.py`
+  drive the mock worker, which prints "EOF after N frames" on that same EOF: both pass on the new
+  code; the first was also run against the HEAD-before `worker.py` and fails there - `logs` ends at
+  the stream-header line, no closing line. Suite 553 passed / 9 failed / 37 skipped, the same 9
+  libGL/SDL2 failures this box always has. NOT verified: no device here, so no real port run and no
+  mid-frame counter line has been seen yet; `r2026-11-08-midcount-run` is already in the queue with
+  its argv unchanged, so no new queue file was needed. The test proves the line reaches the client;
+  whether `serve` actually prints the counters on a closed stream is still the build's question.
 
 * The client side is CLOSED as a source of waste - and the 8 ms that looked like waste was our own
   arithmetic error. Comparing like with like, `r2026-11-08-recsplit` reads client recv **mean 29.6 /
