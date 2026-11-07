@@ -1,0 +1,1 @@
+uv run python -m minimal --source video --input-video fixtures/stream-1440p-2s.mp4 --size 1920x1080 --headless --frames 300 --shm --worker-log --save-after 1080p-video.png

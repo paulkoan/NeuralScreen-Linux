@@ -1,0 +1,16 @@
+source video  capture 1920x1080  ->  work 1920x1080 (work scale 1.00, NGX ceiling 2560x1440)
+params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+worker: /opt/neuralscreen/port/build/dlss5vk serve --model /opt/neuralscreen/model
+version: repo 57a1d43 (+48 uncommitted) · worker built from patch f2cd1f272c4c at port 9d08f41 · in sync
+[main] shared memory agreed: 16.6 MB, the frame does not go through the pipe
+frame 0 is the worker's warm-up: the window stays black until its first answer lands
+pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+frames: 300 done, 0 skipped, 12.522s (23.96 fps headline, 36.54 fps steady), worker exit 0
+timing: capture 8.7ms  send 1.6ms  recv 29.4ms  display 1.2ms   (mean 40.9ms/frame, 24.4 fps; median 27.4ms/frame, 36.5 fps steady)
+recv split (means): copy 1.1ms (min 0.8, max 3.2) + waiting 28.3ms   <- the copy is ours; the wait is the worker and the handoff
+source: replayed fixtures/stream-1440p-2s.mp4 — 301 frames decoded, 6 loops
+send spread: min 1.2  median 1.5  max 4.3 ms at frame 0 of 300   (one-off at frame 0 — sent before the worker's first reply lands, so the warm-up, not a per-frame cost)
+recv spread: min 15.0  median 16.7  max 3743.7 ms at frame 0 of 300   (one-off at frame 0 — sent before the worker's first reply lands, so the warm-up, not a per-frame cost)
+capture spread: min 6.2  median 7.5  max 32.9 ms at frame 175 of 300   (a one-off at frame 175 — not the warm-up, so worth looking at)
+  after  -> 1080p-video.png
