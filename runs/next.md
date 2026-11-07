@@ -118,48 +118,44 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 2. Ask first - do not start these alone
 
-* Decided (2026-10-11): the fixture keeps the whole frame. No crop.
-* Anything touching /etc, system packages or the box's configuration. Every time.
-* **Frame generation / alternate frames** — AUTHORISED 2026-11-07 ("do both"). Was: if the pipeline computes 30 fps and
-  presents 60, each processed frame gets 33.3 ms and 1440p-with-pixels (39.7 ms) needs only 6.4 ms
-  off - a plausible target, where 60 processed fps needs 23 ms and is not. The port already has the
-  machinery: `serve.cpp` keeps the last frame and its composite "samples that history where the
-  client's motion field says this pixel was", i.e. temporal reprojection against a motion field.
-  What is missing is the field: the client sends zeros (protocol.py `put(rgba, motion=None)` skips
-  it), because a Wayland portal capture cannot supply per-pixel motion. So frame generation needs
-  motion estimated client-side - optical flow or block match on downscaled frames - or vectors from
-  the game/portal if it can expose them. Cost: new code in the capture/loop layer, one extra frame
-  of latency, and ghosting risk on denoised content where the denoiser's output is not temporally
-  consistent. Not a flag. Needs a user decision on whether to spend there.
-* **DECIDED 2026-11-02 by the user: stay at 1440p and aim for max FPS**, accepting that 60 fps may
-  not be reached. So "drop to 1080p" is off the table and the pixel channel / overhead work is the
-  programme. Frame generation and alternate-frame interpolation were raised in the same message and
-  are open questions below.
-* **Resolution for the 1440p target** (raised 2026-11-01 tick, pair measured 2026-11-02): keep
-  2560x1440 and pay for the pixel channel, or drop the stream to 1920x1080. The same-build 1080p pair
-  is now in: az *with pixels* 31.6 ms / 31.6 fps vs ba *no pixels* 14.9 ms / 67.3 fps - so the pixel
-  channel costs ~16.7 ms at 1080p and 1080p itself is not the slow part (the older 13.6 ms figure
-  reproduced, at 14.9). Resolution costs ~11 ms (1440p no-pixel ~26 ms vs 1080p no-pixel ~15 ms).
-  60 fps needs 16.7 ms: 1080p no-pixel clears it; 1080p with pixels and 1440p without pixels do not.
-  So the next build targets the pixel channel either way, and "keep 1440p" is no longer obviously
-  the expensive option. Still a product choice, not measurable here; nothing gets built until it
-  is made.
-* **Reply format / pixel channel** (raised 2026-11-02 tick, measured by bb): the client handoff is
-  flat (~0.3 ms/MB), so the pixel channel's cost is the worker's readback+reply (~8.3 ms at 1440p)
-  and the neural pass's area scaling. FP8 halves payload but buys only ~4-6 ms; changed-tiles would
-  buy less on a full-screen stream. 1440p-with-pixels measures 39.7 ms, so 60 fps needs the neural
-  pass cut as well. Product choice: accept FP8's quality loss, ship changed-tiles, or accept <60 fps
-  at 1440p. Nothing gets built until this call is made. **Re-priced on the shm numbers (bg/be,
-  2026-11-02): the part of the reply path that motivated FP8 was the pipe's ~13 ms, not the
-  channel. Under shm the worker's readback+reply is 2.3 + 1.7 ms at 1440p (be) and 2.2 + 0.7 at
-  1080p (bg), i.e. FP8's ~4-6 ms would now be the whole channel and more - so the reply format may
-  not be worth any quality trade at all. Decide on the shm figures, not bb's pipe ones.**
-* **`--shm` as the default for pixel runs** (raised 2026-11-02 tick): every pixel measurement
-  before bd/be/bf/bg used the slower pipe path, so the port's numbers on the record under-report
-  it by ~7.5-13 ms on the shapes measured (bh: 18.5 ms shm vs ax/ay 25.8/26.4 pipe at 1440p
-  no-pixel). Making shared memory the default is a one-line change to the client's argv in
-  `minimal/__main__.py`, but it changes the shape of every future run and the client is not this
-  tick's to edit - a user call, not a measurement.
+This section used to be seven bullets, and a reader could count seven things waiting on a person.
+Four of them were closed when they were written or soon after; the section was never pruned, so it
+kept asking for decisions that had been made. What actually waits on the user is **two** calls,
+both one-line, and one standing rule that is not a pending decision at all.
+
+**Waiting on you (2):**
+
+* **Reply format / pixel channel** — open, but only if 60 *computed* fps at 1440p is still the goal.
+  The original trade was FP8's quality loss against ~4-6 ms of payload. Re-priced under shm (be/bg,
+  2026-11-02) the worker's readback+reply is **2.3 + 1.7 ms at 1440p** and 2.2 + 0.7 at 1080p, so
+  FP8's 4-6 ms would be the whole channel and more: the quality trade buys less than the arithmetic
+  it costs. And the route to 60 presented fps is now 30 computed + 60 presented, which does not
+  need 60 computed at 1440p at all. So this is closed as moot unless you want 60 computed, in which
+  case the answer is "cut the neural pass", not "change the format".
+  Decide on the shm figures; bb's ~8.3 ms was the pipe.
+* **`--shm` as the default for pixel runs** — a one-line change to the client's argv, and every run
+  request already passes `--shm` explicitly. It changes the shape of every future run (the port's
+  pre-bd numbers under-report by 7.5-13 ms on the shapes measured), so it stays your call. Under
+  "do whatever you think will progress us" I would take it; it is reversible and no run in the
+  queue depends on the pipe path.
+
+**Standing rule, not a pending decision (1):**
+
+* Anything touching /etc, system packages or the box's configuration. Every time. This is asked
+  when it comes up, not queued for an answer.
+
+**Closed, kept so the record is not rewritten (4):**
+
+* CLOSED 2026-10-11: the fixture keeps the whole frame. No crop.
+* CLOSED 2026-11-02: stay at 1440p and aim for max FPS, accepting 60 fps may not be reached. "Drop to
+  1080p" is off the table. This **supersedes** the resolution bullet that follows it in the older
+  text, which still says "nothing gets built until this is made" - it was made.
+* CLOSED 2026-11-07: frame generation / alternate frames, authorised ("do both"). The port half is
+  written and the build plus its measurement are queued; this is work in progress, not a decision.
+  The original argument still explains why the route was chosen: at 30 computed each frame gets
+  33.3 ms and 1440p-with-pixels (39.7 ms) needs 6.4 ms off, where 60 computed needs 23 ms and is not
+  reachable. The field the port needs is now estimated client-side by `guides.py`, which is what
+  made the mid-frame possible.
 
 ## Learned
 
