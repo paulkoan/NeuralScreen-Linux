@@ -354,9 +354,14 @@ class Worker:
         saying so. That is the Wine worker's answer today.
         """
         assert self.shm is not None and self.reader is not None
+        protocol._negotiate_shm(self.proc, self.reader, self.shm)
+        if not self.shm.negotiated:
+            # _negotiate_shm has already said why. OUTS is the second half of the same
+            # handshake, so it is not sent: a worker that refused SHMI has no output channel to
+            # open, and sending it anyway makes the worker read a channel name as the next
+            # frame's header. Nothing else changes - every frame stays on the pipe.
+            return
         try:
-            protocol._negotiate_shm(self.proc, self.reader, self.shm)
-            self.shm.negotiated = True
             self.shm.open_out(self.width, self.height)
             protocol.send_out(self.proc, self.width, self.height, self.shm.out_name)
             self.reader.wait_oak(10.0)

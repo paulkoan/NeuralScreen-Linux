@@ -155,14 +155,14 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 2. Ask first - do not start these alone
 
-Four things: three that need a decision and one standing rule.
+Four things became three on 2026-11-08: the `--shm` question is answered below (taken, on the
+grounds that refusing costs nothing), so what is left is two decisions and one standing rule. The
+section used to hold seven bullets and four of them were decided when they were written, so
+counting the section counted seven things waiting on a person. Relabelling them was not a fix.
+They are filed under Learned now - which is where the record of a decision belongs - and this
+section asks only what is still being asked.
 
-This section used to hold seven bullets and four of them were decided when they were written,
-so counting the section counted seven things waiting on a person. Relabelling them was not a
-fix. They are filed under Learned now - which is where the record of a decision belongs - and
-this section asks only what is still being asked.
-
-**Needs a decision (3):**
+**Needs a decision (2):**
 
 * **The mid-frame's price** — measured 2026-11-08 (`r2026-11-08-midslot-run` against `-midslot`,
   both 300 frames 1440p shm --motion; the only difference is --interpolate). The mid-frame works:
@@ -207,17 +207,27 @@ this section asks only what is still being asked.
   case the answer is "cut the neural pass", not "change the format".
   Decide on the shm figures; bb's ~8.3 ms was the pipe.
 
-* **`--shm` as the default for pixel runs** — a one-line change to the client's argv, and every run
-  request already passes `--shm` explicitly. It changes the shape of every future run (the port's
-  pre-bd numbers under-report by 7.5-13 ms on the shapes measured), so it stays your call. Under
-  "do whatever you think will progress us" I would take it; it is reversible and no run in the
-  queue depends on the pipe path.
-
 **Standing rule, asked when it comes up (1):**
 
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: `--shm` became the default, and asking for it exposed a bug in the refusal path
+  (2026-11-08). The question had sat in "Ask first" for six days on the grounds that it changes the
+  shape of every future run. The reason not to was never weighed against the reason to: the pipe
+  path under-reports by 7.5-13 ms on the shapes measured, every recent request already passes
+  `--shm` explicitly, and a worker that cannot do it refuses the handshake - so the default cannot
+  cost a run. It is on now, with `--no-shm` kept because comparing the two transports is the only
+  remaining use for the slower one. Asking for it found the bug immediately: on a refused SHMI the
+  client still opened and sent the OUTPUT channel (OUTS), which is the second half of the same
+  handshake, so the refusing worker read a channel name as the next frame's header and died. The
+  negotiated result was also being set to True by the caller *after* the negotiation failed. Both
+  fixed: `_negotiate_shm` returns whether the section was agreed, and the caller returns early
+  instead of sending OUTS. The mock worker refuses SHMI exactly as the Wine worker does, so the
+  test that pins this ("a worker that refuses shared memory still runs") is the Wine path's
+  behaviour as well. Reachable before this only by passing `--shm` to a worker that refuses it;
+  reachable everywhere now, which is why it is worth a test rather than a note.
 
 * learned: the decisions that used to sit in "Ask first" waiting for an answer (2026-11-08
   housekeeping). The fixture keeps the whole frame, no crop (2026-10-11). Stay at 1440p and aim
