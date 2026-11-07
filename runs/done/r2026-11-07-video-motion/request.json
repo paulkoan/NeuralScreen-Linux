@@ -1,0 +1,10 @@
+{
+  "id": "r2026-11-07-video-motion",
+  "entry": "minimal",
+  "args": ["--source", "video", "--input-video", "fixtures/stream-1440p-2s.mp4",
+           "--size", "2560x1440", "--headless", "--frames", "600", "--shm",
+           "--motion-guides", "--worker-log", "--save-after", "video-motion.png"],
+  "timeout_s": 900,
+  "artifacts": ["video-motion.png"],
+  "note": "video-a's base plus the motion field at full size, so the field's cost is measured on real content rather than the synthetic card. Two things hung on this. First, the estimate of what the field costs is currently 7.1ms from the synthetic pair (r2026-11-07-motionfull 49.8ms against motionsmall 42.7ms) - but the field is ESTIMATED per frame by DIS optical flow on the client, and that cost depends entirely on what is moving in the picture, so a test card with one bar is the worst possible place to have measured it. Second, the guide generator applies a 0.5px noise floor and resets history on scene cuts; this clip loops every 60 frames, so over 600 frames it crosses ten hard cuts and the reset path gets exercised ten times, which the synthetic card never did. Compare the PNG against video-workerlog.png: they should differ (the field changes the picture) and the size of that difference is what the field buys."
+}
