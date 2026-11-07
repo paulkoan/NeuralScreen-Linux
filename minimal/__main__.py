@@ -61,13 +61,16 @@ def build_parser() -> argparse.ArgumentParser:
                         "card does, so the handoff can be timed without a screen")
     p.add_argument("--source",
                    choices=("auto", "screen", "wayland", "window", "synthetic",
-                            "image"),
+                            "image", "video"),
                    default="auto",
                    help="where frames come from: auto (portal on Wayland, X11 "
                         "grab otherwise), screen, wayland, window (the portal "
                         "asks for ONE window instead of a screen — cheaper, and "
-                        "what a game stream wants), a generated test card, or a "
-                        "still image")
+                        "what a game stream wants), a generated test card, a "
+                        "still image, or a video file replayed frame by frame "
+                        "(the stream without the compositor, the browser or the "
+                        "portal dialog — the only source that gives two runs the "
+                        "same frames)")
     p.add_argument("--capture-no-scale", action="store_true",
                    help="drop videoscale from the capture pipeline. The chain "
                         "measures 33%% of a core at 2560x1440 — about 42ms of CPU "
@@ -84,6 +87,9 @@ def build_parser() -> argparse.ArgumentParser:
                         "size, and frames are scaled to this")
     p.add_argument("--input-image", metavar="PATH",
                    help="the frame to replay with --source image")
+    p.add_argument("--input-video", metavar="PATH",
+                   help="the file to replay with --source video; frames come out in order as "
+                        "fast as they are asked for and the file loops at the end")
     p.add_argument("--param", action="append", metavar="NAME=VALUE",
                    help="override an NR parameter; repeatable. Known: "
                         + ", ".join(sorted(DEFAULT_PARAMS))
@@ -255,6 +261,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         source = open_capture(args.source, monitor=args.monitor,
                               input_image=args.input_image,
+                              input_video=args.input_video,
                               width=force_w, height=force_h,
                               video_scale=not args.capture_no_scale,
                               bgra=args.bgra)

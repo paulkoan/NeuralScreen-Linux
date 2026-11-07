@@ -198,7 +198,108 @@ class ImageCapture:
         pass
 
 
-def open_capture(source: str, *, monitor: int = 0, input_image=None,
+class VideoCapture:
+    """Replay a video file as the frame source — the stream, without the stream.
+
+    The live path needs a compositor, a browser, a portal dialog and somebody to click it, and no
+    two runs of it are the same session: the recent runs of one unchanged pipeline read 15.8, 17.1,
+    17.3 and 20.9 fps, differing by their content and their contention as much as by anything under
+    test. A file gives the same frames in the same order every time, so two runs differ only by
+    what was changed. That is what makes a regression run worth quoting.
+
+    Frames come out as fast as they are asked for, not at the file's frame rate: this is a source,
+    not a player, and the loop is the thing being measured. A 60 fps clip is therefore replayed at
+    whatever the pipeline manages.
+
+    Decoding is PyAV, already a dependency of the app, and the conversion to RGBA at the target
+    size is PyAV's own reformat - so this needs neither cv2 nor a numpy resize. The decoded frame
+    is copied out of the decoder's buffer on purpose: `to_ndarray` can hand back a view into memory
+    the decoder reuses, which is how a frame turns into garbage a few frames later, and the copy
+    is ~1 ms at 1440p and lands inside the capture timing where it can be seen.
+
+    The file loops. A loop is a hard cut, and the guide generator's scene detector resets history
+    on a scene change, so the seam is declared rather than smeared across.
+    """
+
+    def __init__(self, path, width: int | None = None, height: int | None = None):
+        import av
+        self.path = str(path)
+        try:
+            self._container = av.open(self.path)
+        except Exception as exc:      # av raises several types for a bad file
+            raise CaptureError(f"cannot open video: {path} ({exc})") from exc
+        if not self._container.streams.video:
+            raise CaptureError(f"no video stream in {path}")
+        self._stream = self._container.streams.video[0]
+        self._stream.thread_type = "AUTO"
+        codec = self._stream.codec_context
+        self.width = int(width or codec.width)
+        self.height = int(height or codec.height)
+        self.frames_decoded = 0
+        self.loops = 0
+        self._empty_passes = 0
+        # Decode one now: a file that decodes nothing should fail here, where the message says so,
+        # and not on the first frame of a run.
+        self._pending = self._decode_one()
+        if self._pending is None:
+            raise CaptureError(f"no decodable frames in {path}")
+
+    @property
+    def resolution(self) -> tuple[int, int]:
+        return self.width, self.height
+
+    def _as_rgba(self, frame) -> np.ndarray:
+        if (frame.width, frame.height) != (self.width, self.height):
+            frame = frame.reformat(self.width, self.height, "rgba")
+        else:
+            frame = frame.reformat(format="rgba")
+        return frame.to_ndarray().copy()
+
+    def _decode_one(self):
+        """The next frame as RGBA, rewinding at the end of the file.
+
+        PyAV ends a stream by *raising* EOFError out of `decode()` rather than by returning an
+        empty iterator, so the end of the file arrives as an exception and has to be caught to be
+        seen as an end at all. Two consecutive empty passes means no frame can be decoded, which is
+        a broken file rather than a loop point - and a loop that keeps seeking forever is a hang, so
+        it stops.
+        """
+        import av
+        while True:
+            try:
+                for frame in self._container.decode(self._stream):
+                    self.frames_decoded += 1
+                    self._empty_passes = 0
+                    return self._as_rgba(frame)
+            except av.error.EOFError:
+                pass
+            self._empty_passes += 1
+            if self._empty_passes > 2:
+                return None
+            self.loops += 1
+            self._container.seek(0, backward=True)
+
+    def grab(self) -> np.ndarray:
+        frame = self._pending
+        self._pending = self._decode_one()
+        if self._pending is None:
+            # The file has run out for good; keep showing the last frame rather than crash.
+            self._pending = frame
+        return frame
+
+    def close(self) -> None:
+        try:
+            self._container.close()
+        except Exception:
+            pass
+
+    def stats(self) -> dict:
+        """What the replay did, for the run summary: loops made and frames decoded."""
+        return {"source": "video", "path": self.path, "loops": self.loops,
+                "frames_decoded": self.frames_decoded}
+
+
+def open_capture(source: str, *, monitor: int = 0, input_image=None, input_video=None,
                  width: int | None = None, height: int | None = None,
                  video_scale: bool = True, bgra: bool = False):
     """Build the frame source named by --source.
@@ -248,6 +349,10 @@ def open_capture(source: str, *, monitor: int = 0, input_image=None,
         if not input_image:
             raise CaptureError("--source image needs --input-image PATH")
         return ImageCapture(input_image)
+    if source == "video":
+        if not input_video:
+            raise CaptureError("--source video needs --input-video PATH")
+        return VideoCapture(input_video, width=width, height=height)
     raise CaptureError(f"unknown source: {source}")
 
 

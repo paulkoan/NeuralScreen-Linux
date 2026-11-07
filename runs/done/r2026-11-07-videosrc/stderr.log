@@ -1,0 +1,30 @@
+warning: The `native-tls` setting is deprecated and will be removed in a future release. Use `system-certs` instead.
+[worker] serve: 2560x1440, model /opt/neuralscreen/model, shaders /opt/neuralscreen/port/build/shaders, seed 0
+[worker] serve: built from port 9d08f41 (17 modified) patch 088280e62d5047a684d65df2a3fb2dcf84d5f9d1
+[worker] serve: frame channel open (29.5 MB, NeuralScreen_2637869_99a351dc)
+[main] shared memory: frames in and pixels out through /dev/shm (frame 29.5MB, pixels 14.7MB)
+[worker] serve: pixel channel open (2560x1440, 14.7 MB, NeuralScreenOut_2637869_1a1f8f)
+[worker] serve: device NVIDIA GeForce RTX 4080 SUPER
+[worker] serve: blend scale 0.7397 (block70.layer0.blend_scale)
+[worker] serve: graph fused (DLSS5VK_UNFUSED not set)
+[worker] serve: warming up (the PTX modules are JIT-compiled on first use)
+[worker] serve: warm-up 3287 ms
+[worker] serve: frame 0 carries reset: no history for this frame, and this frame primes the next
+[worker] serve: head -10.5703..2.1426 mean -0.54321; residual mean 0.1111 0.0057 0.1539 (rgb, head/4), logit mean -3.2555; non-finite 0 of 14745600; first 8 0.4094 0.6533 -0.3296 -0.3892 0.4255 0.6670 -0.3159 -0.2235
+[worker] serve frame 0: 147.8 ms (proxy 7.7 [copy 5.4, submit 2.3], network+composite 52.7, readback 80.6, reply 6.8)
+[worker] serve frame 1: 42.3 ms (proxy 7.1 [copy 3.1, submit 3.9], network+composite 26.6, readback 6.7, reply 1.9)
+[worker] serve frame 2: 42.7 ms (proxy 7.9 [copy 4.7, submit 3.1], network+composite 28.5, readback 3.8, reply 2.5)
+[worker] serve frame 29: 29.5 ms (proxy 6.9 [copy 4.0, submit 2.9], network+composite 16.8, readback 3.5, reply 2.3)
+[worker] serve frame 59: 27.8 ms (proxy 6.1 [copy 4.2, submit 1.9], network+composite 15.9, readback 3.2, reply 2.6)
+[worker] serve frame 89: 31.1 ms (proxy 5.6 [copy 3.3, submit 2.3], network+composite 18.1, readback 5.1, reply 2.2)
+[worker] serve frame 119: 36.4 ms (proxy 7.9 [copy 5.1, submit 2.7], network+composite 19.8, readback 5.8, reply 3.0)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/opt/neuralscreen/state/repo/minimal/__main__.py", line 489, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/opt/neuralscreen/state/repo/minimal/__main__.py", line 457, in main
+    print(f"prefetch: drained {pf['drained']} frames on its own thread, "
+                               ~~^^^^^^^^^^^
+KeyError: 'drained'
