@@ -34,9 +34,30 @@ DEFAULT_PARAMS = {
 
 
 def _prefetch_stats(capture):
-    """`stats()` from a prefetching source, or None for a plain one."""
-    fn = getattr(capture, "stats", None)
-    return fn() if fn is not None else None
+    """`stats()` from the prefetch wrapper, or None for a plain source.
+
+    Duck-typing on a `stats` method was wrong, and it cost a queue run its exit status. The video
+    source has stats of its own - frames decoded, loops made - so the summary read them as a drain
+    report and died on the missing key at the last line of a run that had already done all 120
+    frames and shut its worker down cleanly. Only the wrapper has a drain to report.
+    """
+    from minimal.prefetch import Prefetch
+    if isinstance(capture, Prefetch):
+        return capture.stats()
+    return None
+
+
+def _source_stats(capture):
+    """The frame source's own report, if it has one: which clip, decoded how many times.
+
+    This is what makes a run's record self-describing. A timing from a file source means nothing
+    without knowing which file and how far into it the run got, and a run that looped twice is not
+    comparable to one that did not loop at all.
+    """
+    from minimal.prefetch import Prefetch
+    inner = getattr(capture, "source", None) if isinstance(capture, Prefetch) else capture
+    fn = getattr(inner, "stats", None)
+    return fn() if callable(fn) else None
 
 
 def _capture_cpu_summary(before: float | None, after: float | None,
@@ -559,6 +580,8 @@ class Pipeline:
             "worker_clock": worker_timeline(self.worker.logs),
             # Only a prefetching source has anything to say here.
             "prefetch": _prefetch_stats(self.capture),
+            # What the frame source replayed, when it is a source that can say (the video file).
+            "source": _source_stats(self.capture),
             # The capture chain's own CPU over the run. Not part of the frame
             # time — it is work that happens while the worker waits, and at
             # 2560x1440 that is where the portal's extra ~47ms of `send` went.

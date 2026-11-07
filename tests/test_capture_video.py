@@ -157,3 +157,27 @@ def test_the_source_drives_the_whole_loop(clip, fake_display, mock_worker_cmd):
     assert summary["frames_done"] == 6, summary
     assert summary["frames_skipped"] == 0
     assert summary["timing"]["capture"] > 0, "the capture leg must have been timed"
+
+
+def test_the_video_source_is_not_read_as_a_prefetch_wrapper(clip, fake_display, mock_worker_cmd):
+    """A source with `stats` was read as a drain report, and the run died on its last line.
+
+    The queue run r2026-11-07-videosrc did all 120 frames, shut its worker down cleanly, and then
+    exited 1 with KeyError: 'drained' - the summary printed the video's stats as though they were
+    the prefetch wrapper's. Only the wrapper reports a drain.
+    """
+    from minimal.loop import Pipeline
+
+    cap = VideoCapture(clip)
+    pipe = Pipeline(capture=cap, display=fake_display, headless=True,
+                    worker_cmd=mock_worker_cmd, worker_cwd=REPO, want_pixels=False)
+    summary = pipe.run(frames=4)
+    assert summary["prefetch"] is None, "the video source is not a prefetch wrapper"
+    assert summary["source"]["path"] == str(clip)
+    assert summary["source"]["frames_decoded"] >= 4
+
+
+def test_the_summary_reports_which_file_was_replayed():
+    """A timing from a file says nothing without the file, so the run has to name it."""
+    source = (REPO / "minimal" / "__main__.py").read_text(encoding="utf-8")
+    assert "source: replayed" in source
