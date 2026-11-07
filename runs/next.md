@@ -21,16 +21,17 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   second output slot or an ack. `port-build` is a policy entry, so the runner can compile and test
   it on the box; this does NOT need a person.
 
-* The client-side handoff is the current programme, because it is the only pure waste left.
-  `r2026-11-08-recsplit` (1440p, file source, 600 frames) put recv at 29.6 ms of a 32.6 ms median
-  frame and split it: **copy 1.7 ms (the host memory rate - our plumbing is already right) + 27.9 ms
-  waiting**, against a worker total of 19.7 ms. So ~8 ms of every frame is neither the worker nor
-  the copy, and CPython's 5 ms thread switch interval is the same order as the gap: the reader
-  thread cannot unpack a reply or copy pixels until it holds the GIL. `r2026-11-08-gil` is queued,
-  identical but for `--gil-switch-ms 1`. Prediction: "waiting" falls by several ms with the copy
-  unmoved. If it does not move, the GIL is not the cause and the next suspect is the worker's own
-  write of the pixels rather than the client's read, since that is all that is left between the two
-  clocks.
+* The client side is CLOSED as a source of waste - and the 8 ms that looked like waste was our own
+  arithmetic error. Comparing like with like, `r2026-11-08-recsplit` reads client recv **mean 29.6 /
+  median 22.7 ms** against the worker's own **mean 25.5 / median 21.0 ms**: the gap is 1.7 ms and
+  the client's copy of the frame is 1.7-2.0 ms of it, so the handoff is ~0. The "8 ms is neither
+  the worker nor our copy" came from subtracting the worker's *median* (19.7) from the client's
+  *mean* (28.6) - and the mean is inflated by the warm-up frame (recv max 3828 ms over 600 frames,
+  +6.4 ms on the mean). Two statistics, one subtraction, no stage. `r2026-11-08-gil` (GIL switch
+  interval 5 -> 1 ms) was the probe for it and moved the split 0.2 ms, inside noise; the flag now
+  defaults to 0 (CPython's) so runs stay comparable, and `tests/test_cli_defaults.py` holds that.
+  **The frame is now accounted for end to end**: worker 21 + copy 1.7 + capture 5.8 + send 2.4 +
+  display 2.7 ≈ 33.6 ms against a 32.6 ms median. Nothing client-side is removable.
 
 * v1 IS BUILT (2026-11-04): `./neuralscreen.sh` starts the app with the native port as its
   worker. `pipeline_linux.start_worker` honours `NS_WORKER_CMD` (it hard-coded
@@ -310,7 +311,7 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   `r2026-11-03-live-1440p`). Real portal capture of a live window at 2560x1440, `--shm`, pixels
   saved, 120/120 frames, exit 0, 28.0 s. Steady **46.6 ms / 21.5 fps**, headline 11.09 fps.
   Stage medians: capture 12.8 (split: wait 0.3, **read 13.1** - the portal pipe was stocked, so
-  this is the honest portal cost, not a dribble), send 2.3, recv 26.7 (worker's own frame 21.2-24.7
+  this is the portal cost itself, not a dribble), send 2.3, recv 26.7 (worker's own frame 21.2-24.7
   on frames 29/59/89/119), display 4.2. The stages are serial, so 12.8+2.3+26.7+4.2 ~= 46.0 against
   the reported 46.6. Two consequences. First, **every fps figure this plan has quoted for 1440p was
   measured on a synthetic card** whose capture+send+display cost 6.2 ms; live capture+send+display
@@ -388,7 +389,7 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   already noted means the box is chronically busy. But WARN is the bar the gate releases on - it
   means "resident, not contending" - so a WARN "before" IS an acceptable sample and only a BUSY
   "before" is not. ay released at WARN after its 150s timeout, so ay and ax are usable numbers;
-  the pessimistic "nothing is honest" reading was wrong. The real finding is that the ~26 ms 1440p
+  the pessimistic "nothing here is trustworthy" reading was wrong. The real finding is that the ~26 ms 1440p
   no-pixel figure is stable across both (25.8 / 26.4), and that the pixel channel costs ~18 ms at
   1080p (az 31.6 ms with pixels vs ao's 13.6 without) - which needs a same-build pair to trust.
 
@@ -498,7 +499,7 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   which is itself 9.4 ms over budget. So 60 fps at 1440p is not reachable by the reply path alone,
   or by the neural pass alone (12.7 ms), or by resolution (8.1 ms). It needs the pixel channel AND
   the model AND the client's own 10.5 ms of capture+send+display. That is three levers, and the
-  honest statement is that this port is not going to hit 60 fps at 1440p with the current design.**
+  plain statement is that this port is not going to hit 60 fps at 1440p with the current design.**
 
 * learned: `r2026-11-01-aw` establishes the GPU baseline but the card was BUSY (exit 0). `Dying Light The Beast` holds 5.6 GiB, plus browsers and desktop apps; the card idles at 210/3105 MHz. Timing runs are not evidence until a probe reads idle.
 * learned: `r2026-11-02-ay` proves the idle gate works and also proves the card never reads idle
@@ -539,7 +540,7 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   itself is slower on this build and the older 13.6 was a different code path. Either way the
   next build targets the pixel channel, not the neural pass, and "keep 1440p" stops being the
   expensive option. az's gate held 285s (4.75 min) waiting out the game's BUSY - the policy is
-  doing its job and the wait is the cost of honest numbers.
+  doing its job and the wait is the cost of numbers you can trust.
 
 * learned: the gate works (r2026-11-02-ay, 2026-11-01 21:15Z, exit 0, 8.0s). With
   `require_idle = true` in the policy, `idle_waited_s` is **150.0** and `gpu_before` is WARN
