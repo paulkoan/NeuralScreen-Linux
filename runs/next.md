@@ -42,6 +42,17 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
      configured size, and the port refuses `fullWidth != workWidth` outright
      (`serve.cpp` "No NGX upscaling"). Neither is fundamental. Quality cost: real, and exactly what
      the settings instruction covers.
+     **Both client-side halves are in now** (2026-11-08 tick): the present states the stretch
+     (`SDL_RenderSetLogicalSize` + the linear scale hint, which is what makes a 1080p frame
+     present correctly in a 1440p window), and the capture makes a named `--size` the run's
+     frame size instead of letting the compositor's reported size win - so
+     `NEURALSCREEN_SIZE=1920x1080 ./neuralscreen.sh` runs the pass at 1080p and presents it on
+     the 1440p desktop, with no port change (full and work are the same 1080p). What is left is
+     the port's refusal, which would let `--work-scale` do the same thing with no capture-side
+     resize at all - a port change, and a device to verify it on. **Not measured end to end**:
+     the resize is `videoscale` inside the gst chain and that cost is not in `bg`'s 19.5 ms,
+     which came off a synthetic 1080p card; the run that would price it is a live or window run
+     at `--size 1920x1080`.
   2. **Close the implementation gap against NGX - ~5 ms.** The port is 11.8-12.4 ms at 1440p where
      NGX is 7.1 ms for the same weights, and `r2026-11-03-profile`/`-profile2` exist to say why.
      This is the only lever that costs no picture quality at all, which makes it the right one to
@@ -59,6 +70,23 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   presented/s against 37.2/s. It was the route to 60 presented from 30 computed, and it is 11/s
   behind doing nothing. If it comes back, it comes back as a GPU-direct publish with no CPU
   readback for the mid.
+
+* learned: the fast path is now a configuration, not a build, and the piece that was missing was
+  a precedence rule rather than a scale stage (2026-11-08 tick, no run - no device here). The
+  launcher documented `NEURALSCREEN_SIZE=1920x1080 ./neuralscreen.sh` and `minimal`'s `--size`
+  already reached `PortalCapture`, but `PortalCapture.__init__` let the compositor's *reported*
+  size win whenever it reported one and only used the request when the portal said 0x0 (window
+  streams on KDE). On a screen stream - and on any compositor that reports a window's size - the
+  request was therefore a no-op: the pass ran at the screen's resolution and the run looked like
+  the lever not working. Fixed by making a named size the run's frame size, with the reported size
+  as the default when nobody names one; the pipeline already names the size in its caps and
+  already carries `videoscale`, so the resize costs a stage that was in the chain anyway. Both
+  directions are pinned in `tests/test_capture_wayland.py` (the named size wins and the pipeline
+  scales to it; the reported size is the default with no request). What this does NOT settle: the
+  resize's own cost - `videoscale` is already measured as "33% of a core" for the window source,
+  and `bg`'s 19.5 ms came off a synthetic 1080p card, so the 7 ms the lever promises is a
+  prediction until a run at `--size 1920x1080` comes back. Suite 558 passed / 9 failed / 37
+  skipped, the same nine libGL/SDL2 environment failures this box always has.
 
 * learned: the generated mid-frame works end to end, and its price is the number the plan was
   waiting for (2026-11-08 tick, read of `r2026-11-08-midslot` and `r2026-11-08-midslot-run`, both
