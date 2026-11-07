@@ -155,12 +155,14 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 2. Ask first - do not start these alone
 
-This section used to be seven bullets, and a reader could count seven things waiting on a person.
-Four of them were closed when they were written or soon after; the section was never pruned, so it
-kept asking for decisions that had been made. What actually waits on the user is **three** calls,
-two of them one-line, and one standing rule that is not a pending decision at all.
+Four things: three that need a decision and one standing rule.
 
-**Waiting on you (3):**
+This section used to hold seven bullets and four of them were decided when they were written,
+so counting the section counted seven things waiting on a person. Relabelling them was not a
+fix. They are filed under Learned now - which is where the record of a decision belongs - and
+this section asks only what is still being asked.
+
+**Needs a decision (3):**
 
 * **The mid-frame's price** — measured 2026-11-08 (`r2026-11-08-midslot-run` against -midslot):
   one generated mid costs **~+42 ms** per iteration at 1440p, so interpolation lowers the
@@ -175,31 +177,27 @@ two of them one-line, and one standing rule that is not a pending decision at al
   need 60 computed at 1440p at all. So this is closed as moot unless you want 60 computed, in which
   case the answer is "cut the neural pass", not "change the format".
   Decide on the shm figures; bb's ~8.3 ms was the pipe.
+
 * **`--shm` as the default for pixel runs** — a one-line change to the client's argv, and every run
   request already passes `--shm` explicitly. It changes the shape of every future run (the port's
   pre-bd numbers under-report by 7.5-13 ms on the shapes measured), so it stays your call. Under
   "do whatever you think will progress us" I would take it; it is reversible and no run in the
   queue depends on the pipe path.
 
-**Standing rule, not a pending decision (1):**
+**Standing rule, asked when it comes up (1):**
 
-* Anything touching /etc, system packages or the box's configuration. Every time. This is asked
-  when it comes up, not queued for an answer.
-
-**Closed, kept so the record is not rewritten (4):**
-
-* CLOSED 2026-10-11: the fixture keeps the whole frame. No crop.
-* CLOSED 2026-11-02: stay at 1440p and aim for max FPS, accepting 60 fps may not be reached. "Drop to
-  1080p" is off the table. This **supersedes** the resolution bullet that follows it in the older
-  text, which still says "nothing gets built until this is made" - it was made.
-* CLOSED 2026-11-07: frame generation / alternate frames, authorised ("do both"). The port half is
-  written and the build plus its measurement are queued; this is work in progress, not a decision.
-  The original argument still explains why the route was chosen: at 30 computed each frame gets
-  33.3 ms and 1440p-with-pixels (39.7 ms) needs 6.4 ms off, where 60 computed needs 23 ms and is not
-  reachable. The field the port needs is now estimated client-side by `guides.py`, which is what
-  made the mid-frame possible.
+* Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the decisions that used to sit in "Ask first" waiting for an answer (2026-11-08
+  housekeeping). The fixture keeps the whole frame, no crop (2026-10-11). Stay at 1440p and aim
+  for max FPS, accepting 60 fps may not be reached, so "drop to 1080p" is off the table
+  (2026-11-02) - which also supersedes the older resolution bullet that still claimed nothing
+  would be built until it was decided. Frame generation / alternate frames is authorised ("do
+  both", 2026-11-07) and is work in progress rather than a decision: the port half is written
+  and the mid-frame has been measured. The argument for the route still holds - at 30 computed a
+  frame gets 33.3 ms against 1440p-with-pixels at 39.7 ms, where 60 computed needs 23 ms.
 
 * learned: a queued run can be null for reasons that look like the feature failing (2026-11-08,
   reading r2026-11-08-midslot before it ran). Two defects found by reading it rather than by
