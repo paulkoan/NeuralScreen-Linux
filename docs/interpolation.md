@@ -104,3 +104,43 @@ motion is known exactly — a 320x180-or-whatever field with a known bar moving 
 makes a wrong warp obvious and a right one checkable, and none of it needs a live capture. If the
 warped mid-frame is correct on the card, the remaining questions are quality on real content
 (point 2) and latency (point 4), and both are answerable with one live run each.
+
+## The client half, built (and what the port still owes)
+
+The plumbing is in and tested against the mock worker (`tests/test_interpolation.py`), so what
+remains is the port generating the frame rather than the handshake carrying it.
+
+* `FRAME_FLAG_WANT_INTERP` (0x100) asks for a mid-frame per sent frame. A worker that has never
+  heard of it ignores the bit and replies once — the client treats a missing mid as normal, not
+  as a stall, because that is what it is.
+* The reply comes back as a **second OUT for the same index**, told apart by
+  `OUT_FLAG_INTERPOLATED` in the `ngx_result` field (which carries nothing on the happy path, so
+  the bit is free and no header changes). The reader routes it to its own map instead of the reply
+  queue: `recv` insists on one reply per send, so a second reply in the queue would be read as the
+  next frame's answer, and every frame after it would pair with the wrong picture.
+* **The mid-frame reply must arrive BEFORE the frame it belongs to, and that order is
+  load-bearing.** The client takes it immediately after `recv` returns that frame; a mid sent
+  after it can still be in the pipe at that moment and is simply missed. This was measured, not
+  reasoned: at 320x180 the mid was still in flight and the client saw none, at 8x8 both replies
+  were already parsed and it saw all of them — a race that depends on the frame size, which is the
+  worst kind to have left in.
+* The client presents mid-then-real, and holds the mid for `--interp-pace-ms` (default 8, one
+  refresh at 60Hz) before the real frame. Without the hold the compositor coalesces two presents
+  and the mid-frame is never seen at all — the work is paid for and the picture never shows it.
+
+**What the port owes, and the one structural problem left.** `OUTS` is a single slot with a
+seqlock, and the reader copies from it. Writing the mid-frame into that slot and then the real one
+means the worker can overwrite the mid before the client has copied it; the seqlock turns that into
+a *dropped* mid-frame rather than a corrupted one — the safe failure, but it means an unknown share
+of frames arrive without interpolation and the rate silently falls. Two ways out: a second output
+slot (the correct fix, and a protocol extension), or an ack that holds the worker until the client
+has copied the mid (a round trip inside the frame, which is the cost this whole exercise is
+trying to avoid).
+
+**The arithmetic, from stages that were measured** — not a measurement of interpolation itself:
+the extra frame costs one dispatch (~1 ms), one readback (3.8 ms measured), one client copy
+(~1.5 ms) and the hold (8 ms) ≈ 14 ms, so a 31.2 ms iteration becomes ~45 ms for two frames —
+about **44 presented fps** (22 computed) against **32 presented all-real** today. Presenting two
+frames cheaper than that needs the hold shorter than a 60Hz refresh (it is not visible then) or the
+readback removed; removing the readback means the client never sees those pixels, so it is not
+available at all. This is why the price belongs to the user rather than to the next commit.

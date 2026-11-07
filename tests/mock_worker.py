@@ -39,6 +39,14 @@ SHM_ACK_FMT = "<4Iq"           # 24 bytes
 
 FRAME_FLAG_SHM = 0x1
 FRAME_FLAG_MOTION_SMALL = 0x4
+FRAME_FLAG_WANT_INTERP = 0x100
+
+# A bit in the OUT reply's ngx_result field (protocol.OUT_FLAG_INTERPOLATED). The mock has
+# no history to warp and no warp to run, so it marks the mid-frame instead of synthesising
+# one: a test can then prove the mid arrived, that it was routed to the interpolation map
+# and not the reply queue, and that the frame it belongs to came back untouched.
+OUT_FLAG_INTERPOLATED = 0x40000000
+INTERP_MARKER = b"\xab\xcd\xef\x01"
 
 # The transform the mock applies, so tests can assert the round-trip happened.
 CHANNEL_REVERSED = True
@@ -140,6 +148,15 @@ def serve(fail_after: int = 0) -> int:
 
         processed = _transform(color)
 
+        # The mid-frame reply comes FIRST for an index, and that order is the contract: the
+        # client takes it immediately after `recv` returns this frame, so a mid sent after the
+        # frame it belongs to can still be in flight and would be missed. (Measured: at 320x180
+        # it was, at 8x8 it was not - a size-dependent race, which is the worst kind.)
+        if reserved & FRAME_FLAG_WANT_INTERP:
+            mid = INTERP_MARKER + processed[4:]
+            stdout.write(struct.pack(OUT_FMT, OUT_MAGIC, index, 1, len(mid),
+                                     OUT_FLAG_INTERPOLATED, pts))
+            stdout.write(mid)
         stdout.write(struct.pack(OUT_FMT, OUT_MAGIC, index, 1, len(processed), 0, pts))
         stdout.write(processed)
         stdout.flush()

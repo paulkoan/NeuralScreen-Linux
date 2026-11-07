@@ -90,6 +90,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--input-video", metavar="PATH",
                    help="the file to replay with --source video; frames come out in order as "
                         "fast as they are asked for and the file loops at the end")
+    p.add_argument("--interpolate", action="store_true",
+                   help="present a generated mid-frame between each pair of real frames, so a "
+                        "30-computed pipeline presents at ~60. Needs a worker that emits one "
+                        "(OUT_FLAG_INTERPOLATED); costs a hold of --interp-pace-ms inside the "
+                        "frame, without which the compositor coalesces the two presents")
+    p.add_argument("--interp-pace-ms", type=float, default=8.0, metavar="MS",
+                   help="how long to hold the mid-frame before the real one (default 8, one "
+                        "refresh at 60Hz). It is taken out of the frame's own time")
     p.add_argument("--param", action="append", metavar="NAME=VALUE",
                    help="override an NR parameter; repeatable. Known: "
                         + ", ".join(sorted(DEFAULT_PARAMS))
@@ -294,6 +302,8 @@ def main(argv: list[str] | None = None) -> int:
                         frame_timeout=args.frame_timeout,
                         writev=args.writev,
                         worker_log=args.worker_log,
+                        interpolate=args.interpolate,
+                        interp_pace=args.interp_pace_ms / 1000.0,
                         worker_env_extra=worker_extra,
                         indicator=args.indicator,
                         report_diff=args.report_diff,
@@ -370,6 +380,15 @@ def main(argv: list[str] | None = None) -> int:
                   f"(min {1000 * t['recv_copy_min']:.1f}, max {1000 * t['recv_copy_max']:.1f}) "
                   f"+ waiting {1000 * _left:.1f}ms   "
                   f"<- the copy is ours; the wait is the worker and the handoff")
+    # Presented frames, which is not the same thing as computed frames once mid-frames are
+    # generated: the eye sees the presentation rate, the pipeline pays for the computed one.
+    shown = summary.get("interp_shown")
+    if shown:
+        secs = summary.get("seconds") or 0.0
+        rate = (shown / secs) if secs > 0 else 0.0
+        print(f"interp: {shown} generated frames presented"
+              + (f" ({rate:.1f}/s) beside {summary['frames_done']} computed" if secs > 0 else "")
+              + " — presentation is the computed rate plus these")
     # An A/B run alternates, and a bypassed frame runs no network at all, so the frame time above
     # is a mixture of two different machines. Said loudly, because it reads as a rate the pipeline
     # can hold, and with the pass on it is roughly half of what the mixture suggests.

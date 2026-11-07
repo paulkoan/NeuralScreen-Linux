@@ -110,7 +110,8 @@ class Pipeline:
                  want_pixels: bool = True,
                  bypass: bool = False, send_ahead: int = 1,
                  frame_timeout: float = 60.0, writev: bool = False,
-                 worker_log: bool = False):
+                 worker_log: bool = False,
+                 interpolate: bool = False, interp_pace: float = 0.008):
         self.params = dict(params or DEFAULT_PARAMS)
         self.warmup = warmup
         self.headless = headless
@@ -183,6 +184,17 @@ class Pipeline:
         # the network at zero strength, this does not run it at all, so the
         # difference between the two is what the network actually costs.
         self.bypass = bool(bypass)
+        # Ask the worker for a generated mid-frame between the previous frame and this one, and
+        # present it. A 30-computed pipeline cannot present 60 without it; the mid-frame costs a
+        # dispatch and a readback in the worker, which is why it is opt-in and priced by the
+        # `interp` stage rather than assumed free.
+        self.interpolate = bool(interpolate)
+        # How long to hold the mid-frame before the real one, so it is actually scanned out.
+        # Two presents back to back are coalesced by the compositor and the mid-frame is never
+        # seen; ~8ms is one refresh at 60Hz. It comes out of the frame's own time, so it is
+        # reported as a stage.
+        self.interp_pace = max(0.0, float(interp_pace))
+        self.interp_shown = 0
         # Split by mode. A bypassed frame runs no network, so its frame time is a different
         # animal from an enhanced frame's; averaging them yields a rate that describes neither.
         # That is how a summary read "26.45 fps steady" off a pipeline that cannot do 26 fps with
@@ -221,6 +233,7 @@ class Pipeline:
             shm=self.shm,
             bypass=self.bypass,
             writev=self.writev,
+            want_interp=self.interpolate,
             extra_env=worker_env_extra,
             echo_logs=worker_log)
 
@@ -267,6 +280,9 @@ class Pipeline:
         # upload from one another. Any optimisation before that split is a guess.
         self.timings: dict[str, list[float]] = {
             "capture": [], "send": [], "recv": [], "display": [],
+            # Presenting a generated mid-frame and the pause that lets it be scanned out.
+            # Its own stage because it is time the frame would otherwise have had for work.
+            "interp": [],
         }
         #: The frame the last process_one fed the worker (for a matched pair).
         self.last_input: np.ndarray | None = None
@@ -393,6 +409,18 @@ class Pipeline:
             setter = getattr(self.display, "set_enhanced", None)
             if setter is not None:
                 setter(not self.bypass)
+            # The mid-frame belongs *before* this frame and *after* the previous one, and the
+            # previous one is what is on screen now - so it goes first. Held for interp_pace or
+            # the compositor coalesces the two presents and it is never seen at all.
+            if self.interpolate:
+                mid = self.worker.take_interpolated(index)
+                if mid is not None:
+                    def _present_mid():
+                        self.display.show(mid)
+                        if self.interp_pace > 0:
+                            time.sleep(self.interp_pace)
+                    self._timed("interp", _present_mid)
+                    self.interp_shown += 1
             self._timed("display", self.display.show, result)
         return result
 
@@ -574,6 +602,11 @@ class Pipeline:
             # An A/B run mixes two modes; these are that split, so a summary can report the rate
             # of each instead of an average of both.
             "modes": self.mode_split(),
+            # Generated mid-frames actually presented. Presented frames is what the eye sees, so
+            # it is reported next to the computed rate: 30 computed + 27 shown is a 57 fps
+            # presentation built from 30 frames of real work, and the two numbers must not be
+            # confused for each other.
+            "interp_shown": self.interp_shown,
             # How many frames were allowed in flight, so a summary says which
             # loop produced it, and how many times the worker went silent.
             "send_ahead": self.send_ahead,

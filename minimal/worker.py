@@ -246,6 +246,7 @@ class Worker:
                  nr_small: bool = False, motion_small: bool = False,
                  no_motion: bool = False, shm: bool = False,
                  bypass: bool = False, writev: bool = False,
+                 want_interp: bool = False,
                  echo_logs: bool = False, extra_env: dict | None = None):
         self.width, self.height = int(width), int(height)
         self.work_w, self.work_h = int(work_w), int(work_h)
@@ -277,6 +278,9 @@ class Worker:
         # fixed ~45ms a frame in `send` at every frame size — measured — while
         # the worker's own timestamps say it delivers a 64KB frame in 0.21ms.
         self.writev = bool(writev)
+        # Ask the worker for a generated mid-frame with every frame. Its own copy of the flag,
+        # like bypass, so the frame flag is built from one place that the loop keeps in step.
+        self.want_interp = bool(want_interp)
         # Echo the worker's stderr to ours as it arrives, instead of only keeping it
         # for the error path. The worker is where the pass reports itself — the native
         # one logs its warm-up and then a line per frame — and a run that buffers that
@@ -395,7 +399,7 @@ class Worker:
                        self.shm if (self.shm is not None and self.shm.negotiated) else None,
                        motion_small=self.motion_small, bypass=self.bypass,
                        no_motion=self.no_motion, want_pixels=want_pixels,
-                       bgra=bgra, writev=self.writev)
+                       bgra=bgra, writev=self.writev, want_interp=self.want_interp)
         except (BrokenPipeError, OSError) as exc:
             raise RuntimeError(
                 f"the worker died while sending frame {index} ({exc}). "
@@ -415,6 +419,17 @@ class Worker:
         """
         assert self.reader is not None
         return self.reader.recv_any(timeout)
+
+    def take_interpolated(self, index: int | None = None):
+        """The worker's generated mid-frame for `index`, once. None when it sent none.
+
+        A mid-frame is a second reply for the same index, so it never goes through
+        `recv` - which insists on one reply per send and drops what it is not waiting
+        for. Read it after `recv` has returned this frame; it is only there if the worker
+        was asked for one.
+        """
+        assert self.reader is not None
+        return self.reader.take_interp(index)
 
     # -- teardown ----------------------------------------------------------
 
