@@ -98,6 +98,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--interp-pace-ms", type=float, default=8.0, metavar="MS",
                    help="how long to hold the mid-frame before the real one (default 8, one "
                         "refresh at 60Hz). It is taken out of the frame's own time")
+    p.add_argument("--gil-switch-ms", type=float, default=1.0, metavar="MS",
+                   help="the interpreter's thread switch interval (default 1). The reader thread "
+                        "cannot hand a frame to the loop until it holds the GIL, and CPython's "
+                        "default is 5ms — the same order as the handoff it delays. 0 means the "
+                        "default. Measured as the 'waiting' part of the recv split")
     p.add_argument("--param", action="append", metavar="NAME=VALUE",
                    help="override an NR parameter; repeatable. Known: "
                         + ", ".join(sorted(DEFAULT_PARAMS))
@@ -224,6 +229,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+
+    # The reader thread decodes each reply and copies the pixels out of the shared section, and
+    # it cannot do any of that until it holds the GIL. CPython switches threads every 5ms by
+    # default, which is the same order as the client-side handoff a run measures: recv 29.6ms
+    # against a worker total of 19.7 leaves ~8ms, and the frame's own copy accounts for 1.7 of it.
+    # A shorter interval lets the reader run as soon as the worker's bytes land. It costs more
+    # context switches, which is why it is a knob and not a silent change.
+    if args.gil_switch_ms and args.gil_switch_ms > 0:
+        sys.setswitchinterval(args.gil_switch_ms / 1000.0)
 
     if args.list_monitors:
         try:
