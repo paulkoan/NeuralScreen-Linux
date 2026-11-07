@@ -120,7 +120,7 @@ actually doing.*
 ## What you need
 
 - **Windows 11**, or Windows 10 - reported working, see the limitations
-- **An NVIDIA RTX card.** What works, honestly:
+- **An NVIDIA RTX card.** What works:
 
   | Cards | Status |
   |---|---|

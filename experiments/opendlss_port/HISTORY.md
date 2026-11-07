@@ -2,8 +2,8 @@
 
 `serve`'s composite sampled the history at the pixel itself while the path was handed no motion,
 and the patch's own header said why: "this path is handed no motion, so the reprojection is the
-identity". The history half itself has since landed (commit `3f3d63b`, §5). What made the simpler
-version honest is that the demo's reprojection and filter **reduce to it** when the motion field
+identity". The history half itself has since landed (commit `3f3d63b`, §5). What justified the simpler
+version is that the demo's reprojection and filter **reduce to it** when the motion field
 is zero — and that reduction is what this file writes down, taken from the original rather than
 reinvented. `check_history_sample.py` is where its arithmetic is checked rather than asserted.
 

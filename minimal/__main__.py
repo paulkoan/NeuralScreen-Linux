@@ -98,11 +98,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--interp-pace-ms", type=float, default=8.0, metavar="MS",
                    help="how long to hold the mid-frame before the real one (default 8, one "
                         "refresh at 60Hz). It is taken out of the frame's own time")
-    p.add_argument("--gil-switch-ms", type=float, default=1.0, metavar="MS",
-                   help="the interpreter's thread switch interval (default 1). The reader thread "
-                        "cannot hand a frame to the loop until it holds the GIL, and CPython's "
-                        "default is 5ms — the same order as the handoff it delays. 0 means the "
-                        "default. Measured as the 'waiting' part of the recv split")
+    p.add_argument("--gil-switch-ms", type=float, default=0.0, metavar="MS",
+                   help="the interpreter's thread switch interval; 0 (the default) keeps "
+                        "CPython's 5ms. Added to test whether the client's wait for a reply was "
+                        "the reader thread failing to get the GIL — it was not: at 1ms the recv "
+                        "split moved 0.2ms, inside noise. Kept, off, as a knob for a future "
+                        "reader that does more work per reply")
     p.add_argument("--param", action="append", metavar="NAME=VALUE",
                    help="override an NR parameter; repeatable. Known: "
                         + ", ".join(sorted(DEFAULT_PARAMS))
@@ -390,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
         if "recv_copy" in t:
             _c = t["recv_copy"]
             _left = t["recv"] - _c
-            print(f"recv split: copy {1000 * _c:.1f}ms "
+            print(f"recv split (means): copy {1000 * _c:.1f}ms "
                   f"(min {1000 * t['recv_copy_min']:.1f}, max {1000 * t['recv_copy_max']:.1f}) "
                   f"+ waiting {1000 * _left:.1f}ms   "
                   f"<- the copy is ours; the wait is the worker and the handoff")

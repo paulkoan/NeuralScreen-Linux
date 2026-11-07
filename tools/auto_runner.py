@@ -405,7 +405,7 @@ def done_ids(worktree: Path, policy: dict) -> set[str]:
 
     Not the working tree, and not the local history: this checkout is reset to the request
     branch every pass, so anything it remembers from a previous run is gone. The results
-    branch is the only place a run's outcome survives, which makes it the only honest place
+    branch is the only place a run's outcome survives, which makes it the only place
     to ask "has this already happened?".
     """
     listing = git(worktree, "ls-tree", "-d", "--name-only",

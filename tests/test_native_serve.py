@@ -154,7 +154,7 @@ def test_the_mode_checks_the_model_it_loads():
     The model directory is the one input to the whole path that cannot be looked at: it is
     built by our own extractor from NVIDIA's DLL, and a stage file that is truncated or
     half-written produces a network that runs and returns something. `bench` passes false
-    to keep its timing loop honest; a mode that serves frames should not.
+    to keep its timing loop clean; a mode that serves frames should not.
     """
     assert "modelDir, true" in serve_source(), (
         "the mode no longer verifies the model's stage hashes")

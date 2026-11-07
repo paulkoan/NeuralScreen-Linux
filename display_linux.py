@@ -432,7 +432,7 @@ class Display:
         """Compose the HUD/menu into the frame.
 
         Not implemented on this backend: the overlay is drawn by the pygame layer on the
-        Windows path, and this window is pysdl2. Kept so the loop's call sites stay honest
+        Windows path, and this window is pysdl2. Kept so the loop's call sites stay accurate
         about where the drawing was expected; the menu will not appear until this is built.
         """
 

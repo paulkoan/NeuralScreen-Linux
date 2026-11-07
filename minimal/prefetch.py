@@ -19,7 +19,7 @@ time plus a producer round trip. The cost is the drain itself: copying 14.7MB at
 
 Staleness is reported rather than hidden. Because old frames are dropped, what
 the loop processes is the newest frame available at that moment — and the age of
-that frame is the honest latency the capture adds.
+that frame is the latency the capture adds.
 """
 
 from __future__ import annotations

@@ -293,8 +293,8 @@ static int __cdecl ArchInfoHook(void *gpu, NvArchInfo *info)
     const unsigned want = info->version;
     // Find the handle in the cache; an unknown handle gets the primary
     // card's answer - it is almost always the same GPU reached through
-    // another API path (NvAPI_GPU_GetHandleFromDXGI etc.), and an honest
-    // error here would kill CreateFeature for no reason.
+    // another API path (NvAPI_GPU_GetHandleFromDXGI etc.), and an error
+    // here would kill CreateFeature for no reason.
     int idx = -1;
     for (int i = 0; i < g_arch_count; ++i)
         if (g_arch_handles[i] == gpu) { idx = i; break; }
@@ -2742,7 +2742,7 @@ static void BindDdaDescriptors(ID3D12Resource *src)
 }
 
 // ---------------------------------------------------------------------------
-// Gray downsample (GRAY): an honest block average RGBA -> R8 luminance.
+// Gray downsample (GRAY): a plain block average RGBA -> R8 luminance.
 // The block is exactly ceil(src/dst) (12x12 at 3840x2160 -> 320x180) - what
 // cv2.resize(INTER_AREA) does. Bilinear sampling will NOT do: aliasing on text
 // breaks the optical flow (verified).
