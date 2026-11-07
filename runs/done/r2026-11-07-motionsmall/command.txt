@@ -1,0 +1,1 @@
+uv run python -m minimal --source synthetic --size 2560x1440 --headless --frames 120 --shm --motion-guides --motion-small --worker-log --save-after motionsmall-after.png
