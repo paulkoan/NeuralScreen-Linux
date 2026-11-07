@@ -1,0 +1,81 @@
+  CreateSession
+  session /org/freedesktop/portal/desktop/session/1_1051403/nsl_port
+  SelectSources
+  Start  (the compositor will ask you to choose a screen)
+  stream node=149 serial=3234 0x0
+  OpenPipeWireRemote
+  window stream reports no size; using the requested 2560x1440
+  pipe buffer 64 -> 1024 KiB
+  pipeline pid 2506788: gst-launch-1.0 -q pipewiresrc fd=5 target-object=3234 ! videoconvert ! videoscale ! video/x-raw,format=RGBA,width=2560,height=1440,pixel-aspect-ratio=1/1 ! queue max-size-buffers=1 leaky=downstream ! fdsink fd=1
+hotkeys: reading 13 keyboard(s) via evdev: ENIAC Flexbar Keyboard, Yubico YubiKey OTP+FIDO+CCID, JosefAdamcik Sofle, JosefAdamcik Sofle Keyboard, keyd virtual keyboard, ydotoold virtual device, Logitech MX Master 2S, Logitech MX Ergo, Logitech G604 , Keychron  Keychron Link-KM Keyboard, Keychron  Keychron Link-KM Keyboard, Swiftpoint Z3 Receiver Keyboard, ENIAC Flexbar Keyboard
+hotkeys: Ctrl+Alt+1, Ctrl+Alt+Q via evdev (Wayland session)
+source window  capture 2560x1440  ->  work 2560x1440 (work scale 1.00, NGX ceiling 2560x1440)
+params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+worker: /opt/neuralscreen/port/build/dlss5vk serve --model /opt/neuralscreen/model
+version: repo 36217da (+34 uncommitted) · worker built from patch 088280e62d50 at port 9d08f41 · in sync
+[worker] serve: 2560x1440, model /opt/neuralscreen/model, shaders /opt/neuralscreen/port/build/shaders, seed 0
+[worker] serve: built from port 9d08f41 (17 modified) patch 088280e62d5047a684d65df2a3fb2dcf84d5f9d1
+[worker] serve: frame channel open (29.5 MB, NeuralScreen_2506373_55a2c9ca)
+[main] shared memory agreed: 29.5 MB, the frame does not go through the pipe
+[worker] serve: pixel channel open (2560x1440, 14.7 MB, NeuralScreenOut_2506373_3c5e38)
+[main] shared memory: frames in and pixels out through /dev/shm (frame 29.5MB, pixels 14.7MB)
+frame 0 is the worker's warm-up: the window stays black until its first answer lands
+[worker] serve: device NVIDIA GeForce RTX 4080 SUPER
+[worker] serve: blend scale 0.7397 (block70.layer0.blend_scale)
+[worker] serve: graph fused (DLSS5VK_UNFUSED not set)
+[worker] serve: warming up (the PTX modules are JIT-compiled on first use)
+[worker] serve: warm-up 593 ms
+[worker] serve: frame 0 carries reset: no history for this frame, and this frame primes the next
+[worker] serve: head -8.4062..0.6357 mean -1.17398; residual mean -0.0217 -0.0194 -0.0192 (rgb, head/4), logit mean -4.4548; non-finite 0 of 14745600; first 8 0.0266 0.0402 0.0380 -3.9551 0.0207 0.0370 0.0307 -3.8379
+[worker] serve frame 0: 138.5 ms (proxy 18.2 [copy 14.5, submit 3.7], network+composite 15.1, readback 95.5, reply 9.6)
+[worker] serve frame 1: 36.6 ms (proxy 10.5 [copy 7.5, submit 2.9], network+composite 13.9, readback 8.2, reply 4.0)
+[worker] serve frame 2: 34.9 ms (proxy 11.1 [copy 6.3, submit 4.8], network+composite 15.6, readback 5.9, reply 2.3)
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[worker] serve frame 89: 24.7 ms (proxy 5.4 [copy 3.5, submit 1.9], network+composite 13.5, readback 3.7, reply 2.2)
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[worker] serve frame 179: 28.4 ms (proxy 6.3 [copy 4.1, submit 2.1], network+composite 13.6, readback 5.0, reply 3.6)
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[worker] serve frame 269: 31.0 ms (proxy 7.3 [copy 5.1, submit 2.2], network+composite 15.6, readback 5.5, reply 2.6)
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[worker] serve frame 359: 25.2 ms (proxy 5.9 [copy 3.7, submit 2.2], network+composite 14.1, readback 3.4, reply 1.8)
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[worker] serve frame 449: 29.8 ms (proxy 5.7 [copy 4.2, submit 1.5], network+composite 15.9, readback 4.3, reply 3.9)
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[worker] serve frame 539: 29.6 ms (proxy 5.7 [copy 4.0, submit 1.7], network+composite 14.4, readback 4.7, reply 4.7)
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[worker] serve frame 629: 31.9 ms (proxy 8.2 [copy 5.7, submit 2.5], network+composite 15.5, readback 4.8, reply 3.5)
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[worker] serve frame 719: 30.5 ms (proxy 7.8 [copy 5.1, submit 2.7], network+composite 16.2, readback 4.3, reply 2.1)
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[worker] serve frame 809: 35.0 ms (proxy 10.2 [copy 7.4, submit 2.8], network+composite 15.4, readback 4.3, reply 5.0)
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[worker] serve frame 899: 29.0 ms (proxy 5.3 [copy 3.2, submit 2.1], network+composite 15.8, readback 4.9, reply 2.9)
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[worker] serve frame 989: 35.5 ms (proxy 9.7 [copy 6.8, submit 3.0], network+composite 18.2, readback 4.6, reply 3.0)
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[worker] serve frame 1079: 29.7 ms (proxy 5.9 [copy 4.1, submit 1.8], network+composite 15.9, readback 3.9, reply 4.0)
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[worker] serve frame 1169: 28.6 ms (proxy 5.5 [copy 4.1, submit 1.5], network+composite 15.2, readback 4.4, reply 3.5)
+[nr] A/B: enhancement off
+diff: skipped - the last frame was the bypass half of the A/B; quit while the badge reads ON, or run with --ab-alternate 0
+frames: 1200 done, 0 skipped, 82.626s (14.52 fps headline, 26.45 fps steady), worker exit 0
+timing: capture 10.5ms  send 6.3ms  recv 22.7ms  display 4.8ms   (mean 44.3ms/frame, 22.6 fps; median 37.8ms/frame, 26.5 fps steady)
+send spread: min 3.0  median 5.9  max 23.3 ms at frame 0 of 1200   (one-off at frame 0 — sent before the worker's first reply lands, so the warm-up, not a per-frame cost)
+recv spread: min 5.3  median 12.9  max 1584.2 ms at frame 0 of 1200   (one-off at frame 0 — sent before the worker's first reply lands, so the warm-up, not a per-frame cost)
+capture spread: min 5.2  median 10.1  max 25.4 ms at frame 193 of 1200   (a one-off at frame 193 — not the warm-up, so worth looking at)
+capture split: wait 0.5ms  read 10.0ms   (read near 9ms at 2560x1440 with a 1024 KiB pipe means we are draining a stocked pipe; far above that means the compositor was dribbling)
+capture cpu: the pipeline used 34.59s over 82.63s = 42% of one core
+gpu: util mean 31% (min 18.0, max 56.0); vram 4.8/16.0 GiB (peak 4.9); sm clock max 2760 MHz; 77 samples over 82s
