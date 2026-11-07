@@ -246,6 +246,10 @@ class _SizedSession:
 
     def __init__(self, width: int, height: int):
         self.width, self.height = width, height
+        # _pipeline_args() reads both; the pipeline itself is never started in these tests
+        # (_start_pipeline is stubbed), so the fd only has to exist.
+        self.fd = -1
+        self.pipewire_target = ["path=/x"]
         self.closed = False
 
     def close(self) -> None:
@@ -290,9 +294,35 @@ def test_a_stream_reporting_no_size_and_no_request_names_the_flag(monkeypatch):
     assert session.closed, "a session it cannot use should be closed, not left open"
 
 
-def test_the_reported_size_wins_over_a_requested_one(monkeypatch):
-    """A screen reports its own size; --size must not override what the compositor said."""
+def test_a_named_size_wins_over_the_reported_one(monkeypatch):
+    """--size is the run's frame size, not a hint: the pipeline scales to it.
+
+    This is the lever, so it is worth a test rather than a note. The pass costs the square of
+    the resolution, so running it internally at 1080p on a 1440p screen and letting the present
+    stretch the result back up is ~7 ms a frame (19.5 ms / 51 fps against 26.4 / 38, both with
+    the pixel channel over shared memory). It only works if the frame the pass sees is 1080p,
+    which means the portal's reported 2560x1440 has to lose to the request — videoscale is
+    already in the chain, so nothing new pays for the resize. The reverse was the old rule and
+    it made NEURALSCREEN_SIZE=1920x1080 a no-op on a screen source (and on any compositor that
+    reports a window's size), which read as the lever not working rather than as a precedence
+    bug.
+    """
+    session = _SizedSession(2560, 1440)
+    _stub_portal(monkeypatch, session)
+    logged: list[str] = []
+    cap = cw.PortalCapture(width=1920, height=1080, log=logged.append)
+    assert (cap.width, cap.height) == (1920, 1080), (
+        "the pass's resolution is what the run asked for")
+    caps = [a for a in cap._pipeline_args() if a.startswith("video/x-raw")]
+    assert "width=1920" in caps[0] and "height=1080" in caps[0], (
+        "the pipeline has to be told which size to scale to, or the frame arrives at 1440p")
+    assert any("scales to it" in line for line in logged), (
+        "a frame that is not the size the compositor reported is worth saying out loud")
+
+
+def test_the_reported_size_is_the_default_when_nothing_is_named(monkeypatch):
+    """A screen reports its own size; with no request there is nothing to prefer over it."""
     session = _SizedSession(1280, 720)
     _stub_portal(monkeypatch, session)
-    cap = cw.PortalCapture(width=640, height=480)
+    cap = cw.PortalCapture()
     assert (cap.width, cap.height) == (1280, 720)

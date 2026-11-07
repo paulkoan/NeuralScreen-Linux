@@ -72,10 +72,13 @@ class PortalCapture:
     the pixels — and it is what a game stream wants, since the desktop around
     the game is not being watched. Two consequences worth knowing:
 
-      * The size comes from the window when it is picked. Our pipeline forces
-        those exact dimensions, so a window resized afterwards is scaled back to
-        them rather than seen at its new size. Renegotiating needs the per-frame
-        size and a reader that can follow it; until then a resize stretches.
+      * The size is the one the run names (`--size`, or NEURALSCREEN_SIZE through the
+        launcher) when it names one, and the compositor's reported size otherwise. Our
+        pipeline forces the run's size in its caps, so a named size smaller than the screen
+        is how the pass is run internally at 1080p and presented up at 1440p; a window
+        resized afterwards is scaled back to the named size rather than seen at its new size.
+        Renegotiating needs the per-frame size and a reader that can follow it; until then a
+        resize stretches.
       * On a fractional-scaled display the portal may report logical dimensions
         while streaming pixels, and the frame's real size then differs from
         `width`/`height`. `grab` checks what arrives against what it expects and
@@ -110,18 +113,23 @@ class PortalCapture:
             raise CaptureError(str(exc)) from exc
 
         reported_w, reported_h = int(self._sc.width), int(self._sc.height)
-        if reported_w > 0 and reported_h > 0:
+        requested = (int(width), int(height)) if (width and height) else None
+        if requested:
+            # A named size is the run's frame size, whatever the compositor reported. The gst
+            # pipeline names it in its caps and videoscale produces it, so the request is
+            # enforceable and it is the only way the pass can run internally at 1080p on a
+            # 1440p screen and let the present scale the result back up - the largest lever
+            # measured towards 60 fps. It also makes --size mean what its help says. The
+            # reported size is the default when nobody names one; both are pinned by a test.
+            self.width, self.height = requested
+            if reported_w <= 0 or reported_h <= 0:
+                self._log(f"  window stream reports no size; using the requested "
+                          f"{self.width}x{self.height}")
+            elif (reported_w, reported_h) != requested:
+                self._log(f"  the portal reports {reported_w}x{reported_h}; this run asks for "
+                          f"{self.width}x{self.height} and the pipeline scales to it")
+        elif reported_w > 0 and reported_h > 0:
             self.width, self.height = reported_w, reported_h
-        elif width and height:
-            # A window stream arrives as 0x0: the compositor reports a size for a screen
-            # and not for a window, whose real size is negotiated later over PipeWire —
-            # measured on KDE, `stream node=259 serial=None 0x0`. Our pipeline has to name
-            # the dimensions it scales to, so take the requested ones instead of refusing
-            # the capture: the frames are scaled to them, which is what a window smaller
-            # or larger than the request needs anyway.
-            self.width, self.height = int(width), int(height)
-            self._log(f"  window stream reports no size; using the requested "
-                      f"{self.width}x{self.height}")
         else:
             self._sc.close()
             raise CaptureError(

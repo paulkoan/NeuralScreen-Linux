@@ -297,6 +297,7 @@ class Worker:
         self.cwd = cwd or NATIVE_DIR
         self.logs: list[str] = []
         self._log_stop = threading.Event()
+        self._log_thread: threading.Thread | None = None
         self.proc: subprocess.Popen | None = None
         self.reader: WorkerReader | None = None
 
@@ -323,8 +324,9 @@ class Worker:
             stderr=subprocess.PIPE,
             env=worker_env(nr_small=self.nr_small, extra=self.extra_env),
         )
-        threading.Thread(target=self._drain_stderr, daemon=True,
-                         name="worker-stderr").start()
+        self._log_thread = threading.Thread(target=self._drain_stderr, daemon=True,
+                                            name="worker-stderr")
+        self._log_thread.start()
 
         # The reader owns a thread reading the worker's stdout for the life of
         # the process. Its width/height are the *output* frame size.
@@ -352,9 +354,14 @@ class Worker:
         saying so. That is the Wine worker's answer today.
         """
         assert self.shm is not None and self.reader is not None
+        protocol._negotiate_shm(self.proc, self.reader, self.shm)
+        if not self.shm.negotiated:
+            # _negotiate_shm has already said why. OUTS is the second half of the same
+            # handshake, so it is not sent: a worker that refused SHMI has no output channel to
+            # open, and sending it anyway makes the worker read a channel name as the next
+            # frame's header. Nothing else changes - every frame stays on the pipe.
+            return
         try:
-            protocol._negotiate_shm(self.proc, self.reader, self.shm)
-            self.shm.negotiated = True
             self.shm.open_out(self.width, self.height)
             protocol.send_out(self.proc, self.width, self.height, self.shm.out_name)
             self.reader.wait_oak(10.0)
@@ -367,10 +374,20 @@ class Worker:
             self.shm.negotiated = False
 
     def _drain_stderr(self) -> None:
-        """Keep the worker's stderr pipe empty or it blocks on a full buffer."""
+        """Keep the worker's stderr pipe empty or it blocks on a full buffer.
+
+        Read until the pipe itself closes. The worker's closing line — the mid-frame
+        counters, "input stream closed after N frame(s)" — is printed on the very EOF
+        `stop()` causes, so ending this loop on `_log_stop` drops the one line a
+        measurement run is read for. `_log_stop` is set only after `stop()` has waited
+        and joined this thread, as a fallback for a child that keeps the pipe open.
+        """
         assert self.proc is not None and self.proc.stderr is not None
         try:
-            for raw in iter(self.proc.stderr.readline, b""):
+            while True:
+                raw = self.proc.stderr.readline()
+                if not raw:
+                    break
                 if self._log_stop.is_set():
                     break
                 line = raw.decode("utf-8", "replace").rstrip()
@@ -438,8 +455,12 @@ class Worker:
 
         The worker's own cleanup path on EOF releases the D3D12 device and NGX
         before returning, which is why closing the pipe is preferred to kill().
+
+        The worker prints its last lines on that EOF, so the stderr drain thread is
+        joined *after* the wait, not stopped before the close: stopping it first threw
+        away the closing line of every run (the mid-frame counters, "input stream
+        closed after N frame(s)").
         """
-        self._log_stop.set()
         if self.proc is None:
             return None
         try:
@@ -447,15 +468,23 @@ class Worker:
                 self.proc.stdin.close()
         except OSError:
             pass
+        code: int | None = None
         try:
-            return self.proc.wait(timeout=timeout)
+            code = self.proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             self.proc.terminate()
             try:
-                return self.proc.wait(timeout=5)
+                code = self.proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self.proc.kill()
-                return self.proc.wait(timeout=5)
+                code = self.proc.wait(timeout=5)
+        # Give the drain thread the moment the EOF needs to hand over the last lines.
+        thread = self._log_thread
+        if thread is not None:
+            thread.join(timeout=2.0)
+        # Now let it out if a child is still holding the pipe open and it never sees EOF.
+        self._log_stop.set()
+        return code
 
     def is_alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None

@@ -181,11 +181,18 @@ def build_parser() -> argparse.ArgumentParser:
                         "Sleep(8), and the loop pays a fixed ~45ms a frame in "
                         "send at every frame size — while the worker's own "
                         "timestamps say it delivers a 64KB frame in 0.21ms")
-    p.add_argument("--shm", action="store_true",
+    p.add_argument("--shm", dest="shm", action="store_true", default=True,
                    help="put the frame in a shared section for the worker to read, and take "
                         "the result pixels from another: 14.7MB each way at 2560x1440 that "
-                        "otherwise go down a pipe. The native worker implements both; the "
-                        "Wine worker refuses and frames stay on the pipe"),
+                        "otherwise go down a pipe (on by default). The native worker implements "
+                        "both; a worker that does not - the Wine worker, and the mock in the "
+                        "tests - refuses and every frame stays on the pipe, with a line saying "
+                        "so, so asking for it cannot cost a run"),
+    p.add_argument("--no-shm", dest="shm", action="store_false",
+                   help="measure the pipe path instead: every number on the record before "
+                        "2026-11-02 used it, and it under-reports by 7.5-13ms on the shapes "
+                        "measured. Kept because comparing the two transports is the only reason "
+                        "the pipe path still has a use"),
     # Off by default because the field is not a quality trade: the MVP builds
     # ONE all-zero field and reuses it, the native worker zero-fills its own
     # buffer when none arrives and calls that the identity reprojection, and the

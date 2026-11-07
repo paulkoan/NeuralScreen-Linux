@@ -284,11 +284,17 @@ class SharedFrameBuffer:
 
 
 def _negotiate_shm(worker: subprocess.Popen, reader: "WorkerReader",
-                   shm: SharedFrameBuffer, timeout: float = 10.0) -> None:
+                   shm: SharedFrameBuffer, timeout: float = 10.0) -> bool:
     """Hand the shared memory name to the worker (SHMI) and wait for SACK.
 
     A refusal is not fatal: if the worker could not open the mapping we stay
     on sending the frame down the pipe - that path is still there and works.
+
+    Returns whether the section was agreed, because a caller that opens the second channel
+    (OUTS) has to know: OUTS is part of the same handshake, and sending it to a worker that
+    refused SHMI makes that worker read a channel name as the next frame's header. That is
+    not a degradation, it is a dead worker - and it was reachable the moment shared memory
+    became the default.
     """
     shm.negotiated = False
     try:
@@ -303,6 +309,7 @@ def _negotiate_shm(worker: subprocess.Popen, reader: "WorkerReader",
     except Exception as exc:
         print(f"[main] shared memory unavailable ({exc}) - frames through the pipe",
               file=sys.stderr)
+    return shm.negotiated
 
 
 # --- Worker protocol (matches dlss5_converter/core.py) -------------------

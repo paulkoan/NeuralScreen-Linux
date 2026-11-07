@@ -158,3 +158,58 @@ def test_the_mode_checks_the_model_it_loads():
     """
     assert "modelDir, true" in serve_source(), (
         "the mode no longer verifies the model's stage hashes")
+
+
+def _mid_counters_reach_the_stream_closed_exit(source: str) -> bool:
+    """True when the mid-frame counters go out on the exit a served run takes.
+
+    That exit is the stream-closed one: a served run is passed no `--frames` (the client's
+    frame count is the client's), so it ends when the caller closes the pipe. Those two
+    counters are the only number that separates a worker that could not send a mid from one
+    that was never asked, so a print reachable only from the frame-limit branch is
+    unreadable for the one shape that asks for a mid-frame per frame.
+    """
+    if source.count("generated mid-frame(s) sent") != 1:
+        return False          # one print, in the helper both exits call: two would drift
+    start = source.find("if (!readExact(magicBytes, sizeof(magicBytes)))")
+    if start < 0:
+        return False
+    end = source.find("return 0;", start)
+    if end < 0:
+        return False
+    return "reportMidFrames();" in source[start:end]
+
+
+def test_the_mid_counters_print_on_the_exit_a_served_run_takes():
+    """A run whose stderr ends at its last per-frame line reports nothing about mid-frames.
+
+    `r2026-11-08-midslot-run` (300 frames, `--motion --interpolate`, client-driven) is the
+    case: the mid-frame's price is the whole open question, and its stderr stopped at frame
+    299 with no closing line, so the counters could not be read from the run or from the
+    worker. The print lived inside `frameLimit > 0 && frames >= frameLimit`, and this mode
+    is passed no frame limit when the client drives it - so the exit that matters is the
+    one on a closed stream, and it has to carry the counters.
+    """
+    source = serve_source()
+    assert "generated mid-frame(s) sent" in source, (
+        "the mid-frame counters are gone from src/serve.cpp: a run that generated them now "
+        "reports nothing at all")
+    assert _mid_counters_reach_the_stream_closed_exit(source), (
+        "the mid-frame counters are not printed on the stream-closed exit: a client-driven "
+        "run ends there, so how many mids were sent and how many requests went without one "
+        "never reaches the log")
+
+
+def test_that_check_notices_a_print_only_the_frame_limit_branch_makes():
+    """The check has to fail on the shape the run actually had.
+
+    The counters used to be printed only inside `frameLimit > 0 && frames >= frameLimit`,
+    which a client-driven serve never reaches. Take the call off the stream-closed exit and
+    the check has to say so, or it is a check that cannot fail.
+    """
+    source = serve_source()
+    assert _mid_counters_reach_the_stream_closed_exit(source)
+    start = source.index("if (!readExact(magicBytes, sizeof(magicBytes)))")
+    end = source.index("return 0;", start)
+    mutated = source[:start] + source[start:end].replace("reportMidFrames();", "") + source[end:]
+    assert not _mid_counters_reach_the_stream_closed_exit(mutated)

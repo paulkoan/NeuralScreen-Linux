@@ -1,0 +1,14 @@
+{
+  "exit_code": 0,
+  "seconds": 8.851,
+  "argv": [
+    "bash",
+    "experiments/opendlss_port/rebuild.sh"
+  ],
+  "artifacts": [],
+  "runner": "005dd2c6ea9e",
+  "entry_env": [],
+  "gpu_before": "WARN (resident but not contending: signal-desktop (pid 18889, 173.0 MiB); resident but not contending: chromium (pid 18945, 115.0 MiB); resident but not contending: msedge (pid 54723, 336.0 MiB))",
+  "gpu_after": "WARN (resident but not contending: signal-desktop (pid 18889, 173.0 MiB); resident but not contending: chromium (pid 18945, 114.0 MiB); resident but not contending: msedge (pid 54723, 336.0 MiB))",
+  "idle_waited_s": 0.0
+}

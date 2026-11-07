@@ -1,4 +1,4 @@
-From 043fc129a2a7515a85c450c1e1c42c45aad4bbaa Mon Sep 17 00:00:00 2001
+From f2cd1f272c4c4aaa27628dc19e95ef0b3a7c0e28 Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -132,24 +132,24 @@ the vector, and the field carries no occlusion flag - so on real content small f
 smear and disoccluded pixels fall back to no interpolation (docs/interpolation.md prices
 both, and the hold the client pays to present the mid).
 ---
- scripts/build_linux.sh       | 161 ++++++
- shaders/composite_serve.comp | 196 +++++++
- shaders/mid_warp.comp        | 146 ++++++
- shaders/preprocess.comp      |  26 +-
- shaders/proxy_expand.comp    |  35 ++
- src/kernels.cpp              |  79 ++-
- src/kernels.h                |  48 +-
- src/main.cpp                 |  69 ++-
- src/nr_graph.cpp             | 109 ++--
- src/nr_graph.h               |   6 +-
- src/nr_model.cpp             |  11 +
- src/nr_model.h               |   6 +
- src/nr_schedule.cpp          | 235 +++++++++
- src/nr_schedule.h            |  56 ++
- src/serve.cpp                | 989 +++++++++++++++++++++++++++++++++++
- src/vk_context.cpp           |  71 ++-
- src/vk_context.h             |  23 +
- 17 files changed, 2207 insertions(+), 59 deletions(-)
+ scripts/build_linux.sh       |  161 ++++++
+ shaders/composite_serve.comp |  196 +++++++
+ shaders/mid_warp.comp        |  146 +++++
+ shaders/preprocess.comp      |   26 +-
+ shaders/proxy_expand.comp    |   35 ++
+ src/kernels.cpp              |   79 ++-
+ src/kernels.h                |   48 +-
+ src/main.cpp                 |   69 ++-
+ src/nr_graph.cpp             |  109 ++--
+ src/nr_graph.h               |    6 +-
+ src/nr_model.cpp             |   11 +
+ src/nr_model.h               |    6 +
+ src/nr_schedule.cpp          |  235 ++++++++
+ src/nr_schedule.h            |   56 ++
+ src/serve.cpp                | 1004 ++++++++++++++++++++++++++++++++++
+ src/vk_context.cpp           |   71 ++-
+ src/vk_context.h             |   23 +
+ 17 files changed, 2222 insertions(+), 59 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/mid_warp.comp
@@ -1705,10 +1705,10 @@ index 0000000..8d64f1c
 +}  // namespace nr
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..b7d4062
+index 0000000..41d36b8
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,989 @@
+@@ -0,0 +1,1004 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -2299,11 +2299,30 @@ index 0000000..b7d4062
 +  // otherwise looks exactly like a worker that ignored the flag.
 +  uint32_t midFrames = 0, midSkipped = 0;
 +  double totalMidMs = 0;
++  // The mid-frame counters on the way out, wherever this mode stops. They used to be printed
++  // only inside the `--frames` branch below, which a served run never reaches: a client-driven
++  // serve is passed no frame limit and ends when the caller closes the pipe, so the run whose
++  // numbers matter most for the mid-frame (it is asked for per frame, by a caller that keeps
++  // sending) ended its stderr at the last per-frame line and reported the counters nowhere.
++  // "sent" against "asked for" is the only way to tell a worker that cannot send one (no
++  // history, no pixels, no second slot - or no second slot the client created) from one that
++  // never tried, so both exits have to print them.
++  auto reportMidFrames = [&]() {
++    if (!midFrames && !midSkipped) return;
++    fprintf(stderr, "serve: %u generated mid-frame(s) sent, %u request(s) answered without one, "
++                    "%.2f ms mean per mid (dispatch + readback + reply)\n",
++            midFrames, midSkipped, midFrames ? totalMidMs / (double)midFrames : 0.0);
++  };
 +  try {
 +    while (true) {
 +      uint8_t magicBytes[4];
 +      if (!readExact(magicBytes, sizeof(magicBytes))) {
-+        fprintf(stderr, "serve: input stream closed after %u frame(s)\n", frames);
++        // The exit a served run takes: the client closes the pipe instead of asking for a
++        // frame count. Both closing lines go here, because this is the only place a
++        // client-driven run can report anything at all.
++        reportMidFrames();
++        fprintf(stderr, "serve: input stream closed after %u frame(s), %.2f ms mean\\n",
++                frames, frames ? totalMs / (double)frames : 0.0);
 +        return 0;
 +      }
 +      const uint32_t magic = le32(magicBytes);
@@ -2315,7 +2334,7 @@ index 0000000..b7d4062
 +        const size_t restBytes =
 +            magic == kShmMagic || magic == kOutsMagic ? kShmBytes - 4 : kAckBytes - 4;
 +        std::vector<uint8_t> rest(restBytes);
-+        if (!readExact(rest.data(), rest.size())) return 0;
++        if (!readExact(rest.data(), rest.size())) { reportMidFrames(); return 0; }
 +        if (magic == kShmMagic || magic == kOutsMagic) {
 +          char name[65] = {0};
 +          memcpy(name, rest.data() + 20, 64);
@@ -2394,6 +2413,7 @@ index 0000000..b7d4062
 +      uint8_t frameHeader[kFrameHeaderBytes];
 +      memcpy(frameHeader, magicBytes, 4);
 +      if (!readExact(frameHeader + 4, sizeof(frameHeader) - 4)) {
++        reportMidFrames();
 +        fprintf(stderr, "serve: the stream ended inside a frame header\n");
 +        return 0;
 +      }
@@ -2681,14 +2701,9 @@ index 0000000..b7d4062
 +      }
 +
 +      if (frameLimit > 0 && (int)frames >= frameLimit) {
-+        // The mid-frames are reported as a rate, not a total: "sent" against "asked for" is
-+        // what says whether the client's presented rate rose or whether the flag was
-+        // ignored, and `asked for` is the only way to tell a worker that cannot (no history,
-+        // no second slot) from one that never tried.
-+        if (midFrames || midSkipped)
-+          fprintf(stderr, "serve: %u generated mid-frame(s) sent, %u request(s) answered without one, "
-+                          "%.2f ms mean per mid (dispatch + readback + reply)\n",
-+                  midFrames, midSkipped, midFrames ? totalMidMs / (double)midFrames : 0.0);
++        // The same two lines a client-driven run gets on its exit: this branch is the
++        // benchmark's exit, and the clients that ask for mid-frames are the served ones.
++        reportMidFrames();
 +        fprintf(stderr, "serve: %u frames, %.2f ms mean, stopping as asked\n", frames, totalMs / (double)frames);
 +        return 0;
 +      }
