@@ -1,4 +1,4 @@
-From 91c8a0c768c0900041c2b03e1317e9e3d0d82fa0 Mon Sep 17 00:00:00 2001
+From 043fc129a2a7515a85c450c1e1c42c45aad4bbaa Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -1705,7 +1705,7 @@ index 0000000..8d64f1c
 +}  // namespace nr
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..e1cba4a
+index 0000000..b7d4062
 --- /dev/null
 +++ b/src/serve.cpp
 @@ -0,0 +1,989 @@
@@ -2204,7 +2204,7 @@ index 0000000..e1cba4a
 +    if (splitTiming) splitPool = context->createTimestampPool(3);
 +    // verifyHashes = true: each stage file is checked against the manifest's sha256, which
 +    // is what upstream does on load and what our extractor writes. bench passes false to
-+    // keep its timing loop honest, but this mode serves frames — a stage file that is
++    // keep its timing loop clean, but this mode serves frames — a stage file that is
 +    // truncated or half-written is otherwise silent, and the model directory is the one
 +    // input to this whole path that nobody can look at. It costs a few seconds, once.
 +    model = std::make_unique<nr::Model>(*context, modelDir, true);

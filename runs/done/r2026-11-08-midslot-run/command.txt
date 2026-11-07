@@ -1,0 +1,1 @@
+uv run python -m minimal --source video --input-video fixtures/stream-1440p-2s.mp4 --size 2560x1440 --headless --frames 300 --shm --worker-log --motion --interpolate --save-mid midslot-mid.png --save-after midslot-after.png

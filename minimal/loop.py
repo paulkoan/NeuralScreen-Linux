@@ -195,6 +195,10 @@ class Pipeline:
         # reported as a stage.
         self.interp_pace = max(0.0, float(interp_pace))
         self.interp_shown = 0
+        # The last generated mid-frame, kept so --save-mid can write it. None means none arrived -
+        # which is a normal outcome (a worker that does not know the flag replies once), and is
+        # reported as such rather than as a failure.
+        self.last_mid = None
         # Split by mode. A bypassed frame runs no network, so its frame time is a different
         # animal from an enhanced frame's; averaging them yields a rate that describes neither.
         # That is how a summary read "26.45 fps steady" off a pipeline that cannot do 26 fps with
@@ -403,26 +407,48 @@ class Pipeline:
             self.frames_skipped += 1
             return None
         self.frames_done += 1
+        self._show_generated_mid(index)
         if present and self.display is not None:
             # The badge follows the same flag the frame was built with, so it cannot disagree
             # with the picture it is drawn on.
             setter = getattr(self.display, "set_enhanced", None)
             if setter is not None:
                 setter(not self.bypass)
-            # The mid-frame belongs *before* this frame and *after* the previous one, and the
-            # previous one is what is on screen now - so it goes first. Held for interp_pace or
-            # the compositor coalesces the two presents and it is never seen at all.
-            if self.interpolate:
-                mid = self.worker.take_interpolated(index)
-                if mid is not None:
-                    def _present_mid():
-                        self.display.show(mid)
-                        if self.interp_pace > 0:
-                            time.sleep(self.interp_pace)
-                    self._timed("interp", _present_mid)
-                    self.interp_shown += 1
             self._timed("display", self.display.show, result)
         return result
+
+    def _show_generated_mid(self, index: int) -> None:
+        """Present the generated mid-frame for `index`, if the worker sent one.
+
+        One implementation, because both loops need it and only the serial one had it. The window
+        path (`--send-ahead N`) had none at all: it collected every mid-frame into the map and
+        presented none of them, so `--send-ahead 2 --interpolate` asked for a mid-frame, paid for
+        it, and showed nothing - a run indistinguishable from the feature being off, except in the
+        timing.
+
+        The mid belongs *before* this frame and *after* the previous one, and the previous one is
+        what is on screen now, so it goes first. It is held for interp_pace because two presents
+        back to back are coalesced by the compositor and the mid is then never seen at all.
+
+        The frame is kept for --save-mid whether or not there is a window to draw it in: a headless
+        run still has a picture worth writing down, and that picture is the only way to check the
+        warp without sitting in front of the screen.
+        """
+        if not self.interpolate:
+            return
+        mid = self.worker.take_interpolated(index)
+        if mid is None:
+            return
+        self.last_mid = mid
+        if self.display is None:
+            return
+
+        def _present_mid():
+            self.display.show(mid)
+            if self.interp_pace > 0:
+                time.sleep(self.interp_pace)
+        self._timed("interp", _present_mid)
+        self.interp_shown += 1
 
     def timing_summary(self) -> dict:
         """Mean seconds per stage, plus the total and the implied frame rate.
@@ -513,7 +539,8 @@ class Pipeline:
         return getattr(self.capture, "pipeline_pid", None)
 
     def run(self, frames: int = 0, save_before: str | None = None,
-            save_after: str | None = None, on_frame=None) -> dict:
+            save_after: str | None = None, save_mid: str | None = None,
+            on_frame=None) -> dict:
         """Run the loop. frames=0 means until quit/EOF.
 
         Returns a summary dict — the caller (or a test) can assert on it.
@@ -593,6 +620,16 @@ class Pipeline:
         if save_after and last_after is not None:
             # The worker always answers in RGBA, whatever went in.
             _save_rgba(save_after, last_after, bgra=False)
+        if save_mid and self.last_mid is not None:
+            # The last generated mid-frame, same bytes on the wire as a real frame. Comparing it
+            # against --save-after is how a wrong warp is found without a person watching: a mid
+            # that equals the frame before it is not interpolating, and one that equals the frame
+            # after it is not warping either.
+            _save_rgba(save_mid, self.last_mid, bgra=False)
+        elif save_mid:
+            print(f"  mid    -> not saved: no generated mid-frame arrived in this run "
+                  f"(--interpolate asks for one, but the worker sends none unless it was built "
+                  f"with the mid path and the client asked for pixels)", flush=True)
 
         timing = self.timing_summary()
         return {
@@ -720,6 +757,10 @@ class Pipeline:
                 f"measurement")
         if after is None:
             return sent_index, input_frame, None
+        # Before the frame it belongs to, exactly as the serial path does it - the mid is the
+        # frame between the previous one and this one, so presenting it after would put it in
+        # the wrong position and read as lag.
+        self._show_generated_mid(sent_index)
         if self.display is not None:
             setter = getattr(self.display, "set_enhanced", None)
             if setter is not None:
@@ -865,7 +906,8 @@ def _save_rgba(path: str, frame: np.ndarray, *, bgra: bool = False) -> None:
 
 def run(frames: int = 0, monitor: int = 0, fullscreen: bool = True,
         headless: bool = False, save_before: str | None = None,
-        save_after: str | None = None) -> dict:
+        save_after: str | None = None, save_mid: str | None = None) -> dict:
     """Convenience wrapper used by __main__ and the integration tests."""
     pipe = Pipeline(monitor=monitor, fullscreen=fullscreen, headless=headless)
-    return pipe.run(frames=frames, save_before=save_before, save_after=save_after)
+    return pipe.run(frames=frames, save_before=save_before, save_after=save_after,
+                    save_mid=save_mid)
