@@ -10,6 +10,28 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
+* Frame generation is AUTHORISED (2026-11-07, user: "do both") - it was an "ask first" item in
+  section 2 because it needs a decision on the price. It has one now. State of it: the CLIENT half
+  is built and tested (`FRAME_FLAG_WANT_INTERP`, `OUT_FLAG_INTERPOLATED`, the mid-frame routed to
+  its own map rather than the reply queue, presented mid-then-real with a hold, an `interp` stage
+  and a presented-count line; 5 tests, docs/interpolation.md carries the contract and the
+  arithmetic). The PORT half is not written: `serve.cpp` must generate the frame, and `OUTS` is one
+  slot with a seqlock, so a mid written before the real frame can be overwritten before the client
+  copies it - a dropped mid rather than a corrupt one, but the rate would fall silently. Needs a
+  second output slot or an ack. `port-build` is a policy entry, so the runner can compile and test
+  it on the box; this does NOT need a person.
+
+* The client-side handoff is the current programme, because it is the only pure waste left.
+  `r2026-11-08-recsplit` (1440p, file source, 600 frames) put recv at 29.6 ms of a 32.6 ms median
+  frame and split it: **copy 1.7 ms (the host memory rate - our plumbing is already right) + 27.9 ms
+  waiting**, against a worker total of 19.7 ms. So ~8 ms of every frame is neither the worker nor
+  the copy, and CPython's 5 ms thread switch interval is the same order as the gap: the reader
+  thread cannot unpack a reply or copy pixels until it holds the GIL. `r2026-11-08-gil` is queued,
+  identical but for `--gil-switch-ms 1`. Prediction: "waiting" falls by several ms with the copy
+  unmoved. If it does not move, the GIL is not the cause and the next suspect is the worker's own
+  write of the pixels rather than the client's read, since that is all that is left between the two
+  clocks.
+
 * v1 IS BUILT (2026-11-04): `./neuralscreen.sh` starts the app with the native port as its
   worker. `pipeline_linux.start_worker` honours `NS_WORKER_CMD` (it hard-coded
   `native/run_worker.sh`, so the port could not be started from the app at all), `config.v1.json`
@@ -18,14 +40,12 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   or without a display. 9 tests cover the switch, the header, the config and the refusals; suite
   397 passed / 9 known environment failures.
 
-* Next: the v1 acceptance run, and it needs the developer at the box. `./neuralscreen.sh` in the
-  graphical session, then Num5 to capture the GeForce Now window rather than the desktop. What to
-  watch, in order: the worker line prints the port's own banner (`serve: 2560x1440, model ...`)
-  rather than Wine's; the first frame is black for the warm-up (~3.3 s) and then the picture
-  appears; Num1 toggles NR and the difference should be visible on stream compression artefacts;
-  Ctrl+Alt+Q exits cleanly. If the worker never answers, the header is the first suspect - the app
-  sends the same HEADER_FMT the port's serve reads, but that pairing has never been exercised
-  outside `minimal/`. Nothing else in v1 is unbuilt; this run is the gate.
+* The v1 acceptance item is CLOSED (2026-11-07): it described the GUI path (`main_linux.py`, Num1/
+  Num5/Num5-picker), and `f6dbf8b` made v1 the MVP instead - `./neuralscreen.sh` plus the native
+  port. That has now run many times and its own logs are the evidence: `runs/local/*.log` are
+  launcher runs from the graphical session, each printing worker banner, capture, per-stage
+  timings and a clean summary. Nothing in v1 is waiting on a person to sit at the box; the item
+  was true when it was written and stopped being true two commits later.
 
 * The shm table is complete at both resolutions, and it says the transport was the pipe:
   `r2026-11-02-bh` (1440p, no pixels, `--shm`, 120 frames, same build) reads **18.5 ms / 54.1
@@ -89,7 +109,7 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 * Decided (2026-10-11): the fixture keeps the whole frame. No crop.
 * Anything touching /etc, system packages or the box's configuration. Every time.
-* **Frame generation / alternate frames** (raised 2026-11-02): if the pipeline computes 30 fps and
+* **Frame generation / alternate frames** — AUTHORISED 2026-11-07 ("do both"). Was: if the pipeline computes 30 fps and
   presents 60, each processed frame gets 33.3 ms and 1440p-with-pixels (39.7 ms) needs only 6.4 ms
   off - a plausible target, where 60 processed fps needs 23 ms and is not. The port already has the
   machinery: `serve.cpp` keeps the last frame and its composite "samples that history where the
