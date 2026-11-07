@@ -103,6 +103,13 @@ class Display:
 
         # Frames arrive as RGBA; on a little-endian machine that is
         # SDL_PIXELFORMAT_ABGR8888.
+        # The present scales the frame into the window, and says so: the window is the desktop in
+        # fullscreen, so a pipeline running at 1920x1080 on a 2560x1440 screen was stretched only
+        # because SDL_RenderCopy fills its target by default. The logical size makes the frame's
+        # resolution the contract and the window the scaler - see display_linux.py, where the same
+        # line is what makes an internal 1080p pipeline present correctly at 1440p.
+        sdl2.SDL_SetHint(sdl2.SDL_HINT_RENDER_SCALE_QUALITY, b"linear")
+        sdl2.SDL_RenderSetLogicalSize(self.renderer, self.width, self.height)
         self.texture = sdl2.SDL_CreateTexture(
             self.renderer, sdl2.SDL_PIXELFORMAT_ABGR8888,
             sdl2.SDL_TEXTUREACCESS_STREAMING, self.width, self.height)

@@ -10,6 +10,56 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
+* **60 fps is the goal, stated 2026-11-08, and it re-ranks everything.** "60 is the goal, so the
+  investment priorities are optimising towards that." The earlier position in this plan was "aim
+  for max FPS, accepting that 60 may not be reached" - that is now superseded, and the two
+  decisions still open in section 2 have to be read in that light rather than as quality questions.
+
+  Two further instructions came with it, and both change what is buildable:
+
+  * **A quality cost is acceptable when it is a setting.** "Some decisions might result in a human
+    negative perceived output, so they can be switched in settings." So the choices that trade
+    picture for speed are no longer blocked on a call: they get built behind a switch, defaulted
+    deliberately, and the user turns them off if the picture offends. That covers upscaling, a
+    reduced internal resolution, a coarser motion field, and a downscaled mid-frame. It does not
+    cover anything irreversible: a setting that silently costs picture quality with no switch is
+    still the thing to avoid.
+  * **A periodic survey of what is out there is wanted.** "It is also acceptable to review what is
+    out there on the internet periodically, there are lots of dlss5 projects out there." The
+    Skynizz/optiscaler-dlss5 review (cards t_abbb86af, t_0a3913f0) was a one-off; this asks for it
+    to recur. Set up as its own schedule rather than a ticker item, because a survey is not a
+    measurement and does not belong in a queue that runs every two minutes.
+
+  **The ranked levers toward 16.7 ms, from measured numbers only:**
+
+  1. **Run the pass internally at 1080p and let the present scale it up - ~51 fps against ~38.**
+     `bg` (1080p, pixels, `--shm`) is **19.5 ms** against `be`'s (1440p, pixels, `--shm`) **26.4 ms**.
+     That is the largest single lever measured on the product path, it needs no change to the
+     worker's arithmetic, and the upscale is free: the client's present is
+     `SDL_RenderCopy(renderer, texture, None, None)`, which stretches the texture to the window -
+     so a 1080p frame in a 1440p window costs nothing to scale. What blocks it today is one assert
+     and one refusal: the client raises "the screen changed size" when the frame is not its
+     configured size, and the port refuses `fullWidth != workWidth` outright
+     (`serve.cpp` "No NGX upscaling"). Neither is fundamental. Quality cost: real, and exactly what
+     the settings instruction covers.
+  2. **Close the implementation gap against NGX - ~5 ms.** The port is 11.8-12.4 ms at 1440p where
+     NGX is 7.1 ms for the same weights, and `r2026-11-03-profile`/`-profile2` exist to say why.
+     This is the only lever that costs no picture quality at all, which makes it the right one to
+     take second.
+  3. **The 31-block small network - 1.78x claimed at 1440p.** `model-small` is extracted and the
+     claim is measured on NVIDIA's own runtime, but the port cannot use it as a swap: `kBlockCount`
+     is compile-time and `nr_graph.cpp` hardcodes the layer layout, so it needs a second graph.
+     Real work, biggest multiplier, and the extraction is already done.
+  4. **Foveated or partial processing** - the user asked how the foveated DLSS5 mods do this
+     (docs/interpolation.md records the caveats). A settings-shaped quality trade.
+  5. **The reply format (FP8, changed-tiles).** Re-priced under shm the whole channel is 4.0 ms at
+     1440p, so this now buys less than it costs in complexity. Lowest of the five.
+
+  The interpolation route is **not** on this list: measured, it costs +42.4 ms and lands at ~26
+  presented/s against 37.2/s. It was the route to 60 presented from 30 computed, and it is 11/s
+  behind doing nothing. If it comes back, it comes back as a GPU-direct publish with no CPU
+  readback for the mid.
+
 * learned: the generated mid-frame works end to end, and its price is the number the plan was
   waiting for (2026-11-08 tick, read of `r2026-11-08-midslot` and `r2026-11-08-midslot-run`, both
   exit 0, 300 frames, 1440p, shm, `--motion --interpolate`). The port's warp runs and the client

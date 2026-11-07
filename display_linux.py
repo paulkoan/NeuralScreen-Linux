@@ -331,6 +331,19 @@ class Display:
         # Disable vsync so we can target 60 FPS via timing instead
         sdl2.SDL_GL_SetSwapInterval(0)
 
+        # The present scales the frame into whatever the window is, and now says so. The window
+        # is the desktop when fullscreen, so a pipeline running internally at 1920x1080 on a
+        # 2560x1440 screen was being stretched only because SDL_RenderCopy fills its target by
+        # default - correct by accident, and not a contract anybody could rely on. Setting the
+        # logical size makes the frame's resolution the contract and the window the scaler, which
+        # is what turns "run the pass at 1080p and present at 1440p" - the largest lever measured
+        # towards 60 fps - into a run configuration rather than a code change. Both are 16:9, so
+        # nothing is letterboxed; at another aspect this letterboxes rather than distorts, which
+        # is the right way round. Linear because a streaming texture's default is nearest, and
+        # nearest at 1.33x is visibly worse on text.
+        sdl2.SDL_SetHint(sdl2.SDL_HINT_RENDER_SCALE_QUALITY, b"linear")
+        sdl2.SDL_RenderSetLogicalSize(self.renderer, width, height)
+
         # Streaming texture in the order the worker actually returns: RGBA. The port's composite
         # writes RGBA8 (the same bytes minimal/ saves as a PNG), so a BGRA texture here would show
         # every frame with red and blue swapped. The Wine path returned BGRA; v1 ships the port.

@@ -25,6 +25,18 @@
 #   ./neuralscreen.sh                    # 2560x1440, one window
 #   ./neuralscreen.sh --frames 300       # extra flags go straight to minimal
 #
+# THE FAST PATH (the largest lever measured towards 60 fps)
+#
+#   NEURALSCREEN_SIZE=1920x1080 ./neuralscreen.sh
+#
+#   The pass costs the square of the resolution, so running it internally at 1080p and letting
+#   the present scale the result up to the 1440p desktop is worth ~7 ms a frame: 19.5 ms (51 fps)
+#   at 1080p with the pixel channel against 26.4 ms (38 fps) at 1440p, both over shared memory.
+#   The window is fullscreen-desktop, so the scaling is free - the renderer stretches the frame
+#   to the screen with a linear filter. What you pay is the picture: a 1080p image upscaled to
+#   1440p is softer than a native 1440p one, which is the trade the settings instruction allows.
+#   Everything else about the run is unchanged.
+#
 # The portal asks which window to share. Pick the game stream window.
 #
 # HOTKEYS (global - they work while the game window has focus)

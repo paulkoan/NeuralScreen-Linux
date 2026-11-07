@@ -81,3 +81,25 @@ def test_every_xlib_call_declares_argtypes():
     assert not missing, (
         "these are called without argtypes, so their pointer arguments are truncated: "
         + ", ".join(missing))
+
+
+def test_the_present_scales_the_frame_into_the_window():
+    """Both backends must set the logical size, because the window is not the frame.
+
+    Fullscreen means SDL_WINDOW_FULLSCREEN_DESKTOP, whose window is the desktop - 2560x1440 on
+    the box - while the pipeline may be running internally at 1920x1080, which is the largest
+    measured lever towards 60 fps. That combination was correct only by accident:
+    SDL_RenderCopy fills its target, so the frame was stretched to the window with nobody
+    having said it should be. The logical size states it, and the scale-quality hint decides
+    how: a streaming texture's default is nearest, and nearest at 1.33x is visibly worse on
+    text than linear. Neither symbol is checked at runtime anywhere else, so a refactor could
+    drop them and the only symptom would be a picture that looks subtly wrong.
+    """
+    for name in ("minimal/display.py", "display_linux.py"):
+        source = (REPO / name).read_text()
+        assert "SDL_RenderSetLogicalSize" in source, (
+            f"{name} no longer sets the renderer's logical size, so a frame smaller than the "
+            f"window is presented only by RenderCopy's default behaviour")
+        assert "SDL_HINT_RENDER_SCALE_QUALITY" in source, (
+            f"{name} does not choose a scale quality, so the upscale is nearest-neighbour")
+
