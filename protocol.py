@@ -593,6 +593,12 @@ class WorkerReader:
         self._height = height
         # The pixels arrive through it once the OUTS channel is agreed.
         self._shm = shm
+        # How long each frame's copy out of the OUTS section took. The client's
+        # `recv` includes this, so without it a run cannot say how much of the
+        # wait was the worker and how much was our own memcpy (plus the seqlock
+        # spin when the worker was still writing). Seconds, one per frame with
+        # pixels; a frame the worker published nothing for adds nothing.
+        self.copy_ms: list = []
         self._queue: queue.Queue = queue.Queue()
         self._thread = threading.Thread(target=self._run, daemon=True,
                                         name="worker-reader")
@@ -678,7 +684,9 @@ class WorkerReader:
                             raise RuntimeError(
                                 "the worker said the pixels are in shared "
                                 "memory, but the section is not open")
+                        _t0 = time.monotonic()
                         frame = self._shm.read_out()
+                        self.copy_ms.append(time.monotonic() - _t0)
                         if frame is None:
                             # A torn frame (seqlock retries exhausted): skip
                             # it, but keep the protocol paired - main treats

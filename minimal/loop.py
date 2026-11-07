@@ -424,6 +424,21 @@ class Pipeline:
                "total_median": total_median,
                "steady_fps": (1.0 / total_median) if total_median > 0 else 0.0,
                "count": len(self.timings["recv"])}
+        # The reader thread copies each frame out of the shared section, so `recv`
+        # includes that copy: recv = the worker's own time + the handoff + our memcpy
+        # (+ the seqlock spin while the worker is still writing). Reported apart from
+        # recv, because the three need opposite fixes. A copy of 14.7MB at host memory
+        # rate is ~1.5ms, so a copy near that says the remainder is the worker and the
+        # IPC; a copy several times that says the reader is spinning on the seqlock and
+        # the fix is the handoff, not the worker.
+        _reader = getattr(getattr(self, "worker", None), "reader", None)
+        _copies = list(getattr(_reader, "copy_ms", None) or [])
+        if len(_copies) >= 5:
+            _ordered = sorted(_copies)
+            _n = len(_ordered)
+            out["recv_copy"] = _ordered[_n // 2]
+            out["recv_copy_min"] = _ordered[0]
+            out["recv_copy_max"] = _ordered[-1]
         # The spread, which the mean hides. A stage that costs the same on every
         # frame is structural — something is pacing at a fixed interval. A stage
         # that is small most frames and huge occasionally is our process being
