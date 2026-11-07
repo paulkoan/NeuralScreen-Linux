@@ -34,14 +34,38 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   269/299 of the same run. Stamp: OUT OF SYNC (box built patch `91c8a0c768c0`, checkout has
   `043fc129a2a7`, three prose lines apart), so the code measured is the mid code as written.
 
-* Next: the worker's mid counters have to reach the log, or the next interp run repeats this
-  blindness. Print them - and a closing line - on the exit path a client-driven run actually takes
-  (see (a) above; the `--frames` branch is not it, and the "input stream closed" return at
-  `serve.cpp:595` did not fire either, so find the exit first). Files this item may edit:
-  /opt/data/tmp/odl-src/src/serve.cpp, experiments/opendlss_port/linux-port.patch, tests/. Then
-  amend that commit, re-cut the patch, add the test that reads the print out of the patch, and
-  queue `port-build` followed by a repeat of r2026-11-08-midslot-run's argv. Separating (b) needs
-  `DLSS5VK_SERVE_SPLIT` on that run, which is a policy entry = the box = not ours to add.
+* learned: the counters' exit was the one the item guessed, and printing them there is not enough
+  to read them (2026-11-08 tick). A client-driven serve does end at `serve.cpp`'s "input stream
+  closed" return: `r2026-11-08-midslot-run`'s report says `worker exit 0`, so the mode returned 0
+  through one of its return-0 exits, and that line is absent from the run's stderr block only
+  because the client discards it (inferred from the two, not observed at the pipe). So the two
+  counters now go out through one helper called at every exit a caller can end the mode with - the
+  stream-closed one, the two truncated-header returns and the `--frames` branch - and the closing
+  line on a closed stream carries the frame count and the mean as well. The commit in
+  /opt/data/tmp/odl-src is amended (not the patch), the patch re-cut: id moves 043fc12 ->
+  f2cd1f27, so every port run stamps OUT OF SYNC until the box rebuilds, which is what
+  `r2026-11-08-midcount-build` is for. Two tests in tests/test_native_serve.py read serve.cpp out
+  of the patch: one requires the counters on the stream-closed exit, the other strips the call
+  from a copy and requires the check to fail - the helper reads False on the pre-change patch and
+  True on this one. `r2026-11-08-midcount-run` (a repeat of midslot-run's argv) is queued behind
+  the build. Verified here: g++ -fsyntax-only with the repo's volk/Vulkan-Headers passes; the
+  suite is 551 passed / 37 skipped with the same 9 libGL/SDL2 failures this box always has. NOT
+  verified: no device, so no mid-frame and no counter line has actually been printed. Separating
+  (b) still needs `DLSS5VK_SERVE_SPLIT` on that run, which is a policy entry = the box = not ours
+  to add.
+
+* Next: the client throws the worker's exit away, and the counters cannot be read until it stops
+  (see the learned line above). `minimal/worker.py`'s `_drain_stderr` breaks the moment
+  `_log_stop` is set, and `stop()` sets it *before* it closes stdin and waits - so the worker's
+  closing lines, which are printed on the very EOF `stop()` causes, are dropped before they reach
+  `worker.logs` (read from the code, not measured: it is the only explanation consistent with
+  `worker exit 0` and a stderr block that ends at the last per-frame line). Files this item may
+  edit: minimal/worker.py, tests/. Fix the ordering so the drain thread keeps reading until the
+  process exits (join it after `wait`, or end the loop on EOF rather than on the stop flag), and
+  add a test that runs a command which prints on EOF, stops it, and requires that line to be in
+  `logs` - it must fail against today's code. Then queue a repeat of `r2026-11-08-midcount-run`'s
+  argv: with both halves in, that run's stderr is where the mid-frame's own device cost (X ms mean
+  per mid) is read from for the first time.
 
 * The client side is CLOSED as a source of waste - and the 8 ms that looked like waste was our own
   arithmetic error. Comparing like with like, `r2026-11-08-recsplit` reads client recv **mean 29.6 /
