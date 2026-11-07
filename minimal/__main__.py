@@ -360,6 +360,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"timing: {'  '.join(parts)}   "
               f"(mean {1000 * t['total']:.1f}ms/frame, {t['fps']:.1f} fps; "
               f"median {1000 * med:.1f}ms/frame, {steady:.1f} fps steady)")
+        # recv is the largest stage and it is opaque: it holds the worker's own time, the
+        # handoff and our copy of the frame out of the shared section. The copy is timed
+        # on the reader thread, so it can be taken out of recv - what remains is waiting.
+        if "recv_copy" in t:
+            _c = t["recv_copy"]
+            _left = t["recv"] - _c
+            print(f"recv split: copy {1000 * _c:.1f}ms "
+                  f"(min {1000 * t['recv_copy_min']:.1f}, max {1000 * t['recv_copy_max']:.1f}) "
+                  f"+ waiting {1000 * _left:.1f}ms   "
+                  f"<- the copy is ours; the wait is the worker and the handoff")
     # An A/B run alternates, and a bypassed frame runs no network at all, so the frame time above
     # is a mixture of two different machines. Said loudly, because it reads as a rate the pipeline
     # can hold, and with the pass on it is roughly half of what the mixture suggests.

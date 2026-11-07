@@ -1,0 +1,10 @@
+{
+  "id": "r2026-11-08-recsplit",
+  "entry": "minimal",
+  "args": ["--source", "video", "--input-video", "fixtures/stream-1440p-2s.mp4",
+           "--size", "2560x1440", "--headless", "--frames", "600", "--shm",
+           "--worker-log", "--save-after", "recsplit.png"],
+  "timeout_s": 900,
+  "artifacts": ["recsplit.png"],
+  "note": "The base that measured 32.0 fps steady (video-workerlog) plus the new recv split. The question is one number: of the 28.6ms recv, how much is our own 14.7MB copy out of the shared section and how much is waiting for the worker? The worker's own total is 19.7ms and the client's recv is 28.6, so 8.9ms sits between them and nothing on record says what it is. If the copy reads ~1.5ms the remainder is handoff and scheduling; if it reads 5-7ms the reader is spinning on the seqlock waiting for the worker to finish writing, which is a plumbing fix and not the worker's cost. Same clip as video-workerlog, A/B off, so the frame time should land within the 4ms noise floor of 31.2ms - if it does not, the instrumentation itself changed something and that is the finding."
+}
