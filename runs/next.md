@@ -10,26 +10,38 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* learned: the port half of frame generation is WRITTEN, and the second slot with it (2026-11-08
-  tick). `serve.cpp` + `shaders/mid_warp.comp` now generate the mid-frame the client half was
-  waiting for: `mid(pixel) = historySample(pixel + 0.5 + 0.5 * motion)` - the history the composite
-  already reads, at half the offset, through the same five-tap reconstruction and the same byte
-  rounding - and where the half-motion position leaves the valid rectangle it publishes the pixel
-  itself, which is "no interpolation here" rather than a smear along the border. The single-slot
-  hazard is gone by construction: the client creates `<pixel channel name>m` beside the pixel
-  channel and reads whichever slot the reply's `OUT_FLAG_INTERPOLATED` bit points at, and the
-  worker opens that name when it gets `OUTS` and sends no mid-frames at all if the section is
-  absent - so an old client and an old worker each keep exactly the behaviour they had. Two runs
-  are queued, build then measure: `r2026-11-08-midslot-build` (the stamp must name the current
-  patch, not `088280e62d50`, and must read 16 shader modules / 78 PTX kernels - there is no glslang
-  on the tick's box, so that build is the new shader's first compile) and `r2026-11-08-midslot`
-  (300 frames, 1440p, shm, `--motion --interpolate`). Read the worker's "N generated mid-frame(s)
-  sent, M request(s) answered without one, X ms mean per mid" against the ~299 that ask, and the
-  client's presented count against N. NOT verified: the shader has never been compiled and no
-  mid-frame's picture has been seen - a wrong warp is a picture, not a number, so a live session
-  is where that gets looked at, and it needs the developer at the box. Open after it: the field's
-  320x180 resolution, occlusion, latency and the price (docs/interpolation.md, points 2-4). Nothing
-  else queues this tick.
+* learned: the generated mid-frame works end to end, and its price is the number the plan was
+  waiting for (2026-11-08 tick, read of `r2026-11-08-midslot` and `r2026-11-08-midslot-run`, both
+  exit 0, 300 frames, 1440p, shm, `--motion --interpolate`). The port's warp runs and the client
+  receives it: **299 generated frames presented for 300 computed, 0 skipped**, and the picture half
+  is now an artifact this tick could check - `midslot-mid.png` against `midslot-after.png`, both
+  2560x1440 RGBA, MAD **3.17** per channel, 45.8% of pixels moved >2, 6.25% >8, max 221: a real
+  different frame, not a copy of its neighbour and not a stale one. What it cannot say is whether
+  it is the RIGHT in-between (occlusion/disocclusion, the 320x180 field) - that stays a human
+  judgement. The price, same shape with the mids off the same day (`r2026-11-08-midslot`): the
+  iteration reads **median 69.3 ms / 14.4 fps steady** against 26.9 ms / 37.2 fps, and the worker's
+  own frames 31.6-49.5 ms against 17.0-19.9 ms - so **one generated mid costs ~+42 ms per
+  iteration, about three times the ~13 ms the request predicted** (one dispatch + one 14.7 MB
+  readback + the 8 ms hold). Presented rate with mids on is 14.4 computed + 11.9 generated = **~26/s
+  against 37.2/s computed-only, i.e. interpolation currently LOWERS the presented rate at 1440p.**
+  That is the price item and it is the user's call (docs/interpolation.md, points 2-4), not a run.
+  Two things this run could not answer. (a) The worker's own counters - `N generated mid-frame(s)
+  sent, M request(s) answered without one, X ms mean per mid` - **never printed**: `serve.cpp`
+  prints them only inside the `frameLimit > 0 && frames >= frameLimit` branch (line 972), a
+  client-driven serve is passed no `--frames`, and this run's stderr ends at the last per-frame
+  line with no closing line at all, so the mid's device cost cannot be separated from the hold.
+  (b) Unexplained: the mid frames read `network+composite` **~24 ms** against 12.3 ms at frames
+  269/299 of the same run. Stamp: OUT OF SYNC (box built patch `91c8a0c768c0`, checkout has
+  `043fc129a2a7`, three prose lines apart), so the code measured is the mid code as written.
+
+* Next: the worker's mid counters have to reach the log, or the next interp run repeats this
+  blindness. Print them - and a closing line - on the exit path a client-driven run actually takes
+  (see (a) above; the `--frames` branch is not it, and the "input stream closed" return at
+  `serve.cpp:595` did not fire either, so find the exit first). Files this item may edit:
+  /opt/data/tmp/odl-src/src/serve.cpp, experiments/opendlss_port/linux-port.patch, tests/. Then
+  amend that commit, re-cut the patch, add the test that reads the print out of the patch, and
+  queue `port-build` followed by a repeat of r2026-11-08-midslot-run's argv. Separating (b) needs
+  `DLSS5VK_SERVE_SPLIT` on that run, which is a policy entry = the box = not ours to add.
 
 * The client side is CLOSED as a source of waste - and the 8 ms that looked like waste was our own
   arithmetic error. Comparing like with like, `r2026-11-08-recsplit` reads client recv **mean 29.6 /
@@ -120,10 +132,15 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 This section used to be seven bullets, and a reader could count seven things waiting on a person.
 Four of them were closed when they were written or soon after; the section was never pruned, so it
-kept asking for decisions that had been made. What actually waits on the user is **two** calls,
-both one-line, and one standing rule that is not a pending decision at all.
+kept asking for decisions that had been made. What actually waits on the user is **three** calls,
+two of them one-line, and one standing rule that is not a pending decision at all.
 
-**Waiting on you (2):**
+**Waiting on you (3):**
+
+* **The mid-frame's price** — measured 2026-11-08 (`r2026-11-08-midslot-run` against -midslot):
+  one generated mid costs **~+42 ms** per iteration at 1440p, so interpolation lowers the
+  presented rate to **~26/s** (14.4 computed + 11.9 generated) from **37.2/s** computed-only. Keep
+  paying it, park the route, or spend on the mid's own 14.7 MB readback first - say which.
 
 * **Reply format / pixel channel** — open, but only if 60 *computed* fps at 1440p is still the goal.
   The original trade was FP8's quality loss against ~4-6 ms of payload. Re-priced under shm (be/bg,
