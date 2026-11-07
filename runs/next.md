@@ -295,6 +295,19 @@ section asks only what is still being asked.
 
 ## Learned
 
+* learned: the 1080p lever is real on real video, and the capture resize is what eats part of it
+  (2026-11-08, `r2026-11-08-1080p-video`, exit 0, 300 frames, video source, shm). Against the same
+  fixture at 1440p (`r2026-11-07-video-b`, 600 frames, 35.2 ms median / 28.4 fps steady) the
+  1080p run reads **27.4 ms median / 36.5 fps steady** - a **7.8 ms gain, +8.1 fps**, close to the
+  7 ms the synthetic pair predicted. The cost split moved as guessed and as feared: the worker's
+  own pass got cheaper (15.90 ms mean at 1080p, network+composite 9.9-12.9) but **capture rose
+  6.4 -> 8.7 ms**, because the gst chain now resizes the 1440p fixture down with `videoscale`
+  (the synthetic `bg` never had a capture chain, so its 19.5 ms never paid this). So the lever's
+  end-to-end price is ~2.3 ms of resize against ~10 ms of pass saved, not 7. The obvious next
+  step is the port's own refusal: `--work-scale` would do the resize on the GPU inside the pass
+  instead of in gst, which would remove the 2.3 ms - a port change and a build, not a run. Also
+  read: the 1080p frame really is 1080p end to end (PNG dimensions), so the capture precedence fix
+  holds outside its tests. Suite unchanged.
 * learned: the mid-frame's cost is inside the frame's own timers, not beside them - and the fence
   story in "Ask first" was wrong (2026-11-08 tick, reading /opt/data/tmp/odl-src at `f2cd1f2`; no
   device, no run). Two facts from `src/serve.cpp`, and they decide how `r2026-11-08-midcount-run`'s
