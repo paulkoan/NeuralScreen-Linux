@@ -108,6 +108,17 @@ class SharedFrameBuffer:
         self.out_name = ""
         self._out_mm: mmap.mmap | None = None
         self._out_buf: np.ndarray | None = None  # (h, w, 4) uint8
+        # --- and the generated mid-frame's own slot, when the worker can generate one ---
+        # The pixel channel's name with an `m` on the end, created in open_out: the worker
+        # opens it (or does not, and then sends no mid-frames), and read_out(mid=True) reads
+        # it. Two slots rather than one because the worker publishes a mid and then the real
+        # frame into the same channel in the same iteration: with one slot the second write
+        # can land before this side has copied the first, which loses a mid-frame rather than
+        # corrupting one - but the presented rate would fall with nothing in either log to say
+        # why (docs/interpolation.md, "the one structural problem left").
+        self.out_mid_name = ""
+        self._out_mid_mm: mmap.mmap | None = None
+        self._out_mid_buf: np.ndarray | None = None  # (h, w, 4) uint8
 
     def open_gray(self, w: int, h: int) -> None:
         """Open a gray section of w*h bytes (create it if there was none).
@@ -128,12 +139,17 @@ class SharedFrameBuffer:
         self._gray_buf = np.ndarray((self.gray_bytes,), dtype=np.uint8, buffer=self._gray_mm)
 
     def open_out(self, w: int, h: int) -> None:
-        """Open the section for the returned pixels (RGBA8 w*h).
+        """Open the sections for the returned pixels (RGBA8 w*h).
 
         The name changes on every open - just like gray: the worker holds the
         old handle and CreateFileMapping with the same name would return the
         old section, at its old size. The first 8 bytes are a seqlock written
         by the worker (odd while writing, even when done).
+
+        A second section is created beside it, `<name>m`, for generated mid-frames (see the
+        attribute comment in __init__). It is best-effort: a machine that cannot map another
+        14.7MB loses mid-frames and keeps the pixel channel, which is the right way round for
+        a run that never asked for one.
         """
         if self._out_mm is not None and self.out_w == w and self.out_h == h:
             return
@@ -143,38 +159,72 @@ class SharedFrameBuffer:
         self.out_name = f"NeuralScreenOut_{os.getpid()}_{uuid.uuid4().hex[:6]}"
         self._out_mm = _open_section(self.out_name, self.out_bytes)
         self._out_buf = np.ndarray((h, w, 4), dtype=np.uint8, buffer=self._out_mm, offset=8)
+        try:
+            self.out_mid_name = self.out_name + "m"
+            self._out_mid_mm = _open_section(self.out_mid_name, self.out_bytes)
+            self._out_mid_buf = np.ndarray((h, w, 4), dtype=np.uint8,
+                                           buffer=self._out_mid_mm, offset=8)
+        except Exception as exc:
+            self._out_mid_mm = None
+            self._out_mid_buf = None
+            self.out_mid_name = ""
+            print(f"[main] no mid-frame slot ({exc}) - the worker will send no generated "
+                  f"mid-frames", file=sys.stderr)
 
-    def read_out(self) -> np.ndarray | None:
+    def read_out(self, mid: bool = False) -> np.ndarray | None:
         """A copy of the frame from the section, guarded by the seqlock.
 
-        The copy is mandatory: there is one slot, the worker overwrites it
-        with the next frame, and the frame outlives that - it goes into the
-        encoder queue. The seqlock (first 8 bytes) detects a torn frame: if
+        `mid=True` reads the generated mid-frame's slot rather than the pixel channel's. The
+        reply's OUT_FLAG_INTERPOLATED bit says which of the two the worker just wrote, so the
+        caller never has to guess: the two slots hold different frames by construction.
+
+        The copy is mandatory: there is one slot per kind, the worker overwrites it
+        with the next frame of that kind, and the frame outlives that - it goes into
+        the encoder queue. The seqlock (first 8 bytes) detects a torn frame: if
         the worker is mid-write (odd) or the sequence changed while we
         copied, we retry a few times and then fall back to None (the caller
         skips the frame).
         """
-        if self._out_buf is None:
+        buf = self._out_mid_buf if mid else self._out_buf
+        mapping = self._out_mid_mm if mid else self._out_mm
+        if buf is None or mapping is None:
             return None
         for _ in range(4):
-            seq1 = int.from_bytes(self._out_mm[0:8], "little")
+            seq1 = int.from_bytes(mapping[0:8], "little")
             if seq1 & 1:
                 continue  # worker is writing - not ready yet
-            buf = self._out_buf.copy()
-            seq2 = int.from_bytes(self._out_mm[0:8], "little")
+            copy = buf.copy()
+            seq2 = int.from_bytes(mapping[0:8], "little")
             if seq1 == seq2:
-                return buf
+                return copy
         return None  # torn after retries - caller skips the frame
+
+    def has_out(self, mid: bool = False) -> bool:
+        """Whether that slot is open. The reader checks it before copying a reply."""
+        return (self._out_mid_buf if mid else self._out_buf) is not None
 
     def close_out(self) -> None:
         if self._out_buf is not None:
             self._out_buf = None
+        if self._out_mid_buf is not None:
+            self._out_mid_buf = None
         if self._out_mm is not None:
             try:
                 self._out_mm.close()
             except Exception:
                 pass
             self._out_mm = None
+        if self._out_mid_mm is not None:
+            try:
+                self._out_mid_mm.close()
+            except Exception:
+                pass
+            self._out_mid_mm = None
+        # The mid-frame's name is dropped here; the pixel channel's is left behind, as it
+        # always was. A run that never asks for a mid-frame would otherwise litter a second
+        # 14.7MB /dev/shm object per worker start for a channel nothing uses.
+        _unlink_section(self.out_mid_name)
+        self.out_mid_name = ""
         self.out_bytes = 0
         self.out_w = self.out_h = 0
 
@@ -714,12 +764,16 @@ class WorkerReader:
                         # here, in the reader thread: main is waiting for the
                         # frame anyway, and this way the copy does not pile
                         # onto its thread along with everything else.
-                        if self._shm is None or self._shm._out_buf is None:
+                        # A mid-frame has a slot of its own, and this reply's flag says which
+                        # one this is: reading the pixel channel for a mid would hand the loop
+                        # a duplicated picture, which is a frame-rate lie rather than a crash.
+                        if self._shm is None or not self._shm.has_out(mid=interp):
                             raise RuntimeError(
                                 "the worker said the pixels are in shared "
-                                "memory, but the section is not open")
+                                f"memory, but the {'mid-frame' if interp else 'pixel'} "
+                                "section is not open")
                         _t0 = time.monotonic()
-                        frame = self._shm.read_out()
+                        frame = self._shm.read_out(mid=interp)
                         self.copy_ms.append(time.monotonic() - _t0)
                         if frame is None:
                             # A torn frame (seqlock retries exhausted): skip

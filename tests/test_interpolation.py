@@ -92,3 +92,76 @@ def test_the_flag_reaches_the_wire():
         assert not (protocol.FRAME_FLAG_WANT_INTERP & getattr(protocol, name)), name
     # And the reply bit must not collide with the NGX failure family it shares a field with.
     assert not (protocol.OUT_FLAG_INTERPOLATED & 0xB0000000)
+
+
+def test_the_mid_frame_has_a_slot_of_its_own():
+    """Two pixel slots, not one.
+
+    The worker generates a mid-frame and then the real one, in that order, in one iteration.
+    With a single slot the second write can land before this side has copied the first: the
+    seqlock makes that a lost mid-frame rather than a corrupt one, but the presented rate
+    would fall with nothing in either log to say why - so the mid-frame gets its own section,
+    named after the pixel channel's with an `m` on the end, and the reply's flag says which
+    of the two the worker just wrote.
+    """
+    import os
+    import protocol
+
+    shm = protocol.SharedFrameBuffer(16, 16, 16, 16)
+    shm.open_out(16, 16)
+    mid_name = shm.out_mid_name
+    assert mid_name == shm.out_name + "m", "the worker finds the second slot by that name"
+    assert shm.has_out() and shm.has_out(mid=True)
+
+    real = np.full((16, 16, 4), 11, np.uint8)
+    mid = np.full((16, 16, 4), 222, np.uint8)
+    shm._out_buf[:] = real          # the worker's publication, seqlock left even
+    shm._out_mid_buf[:] = mid
+    assert shm.read_out().tolist() == real.tolist()
+    assert shm.read_out(mid=True).tolist() == mid.tolist(), (
+        "the mid-frame slot must hold its own frame, not the pixel channel's")
+
+    shm.close_out()
+    assert not shm.has_out() and not shm.has_out(mid=True)
+    if os.name != "nt":
+        assert not os.path.exists(f"/dev/shm/{mid_name}"), "the mid-frame's name is dropped"
+    shm.close()
+
+
+def test_a_mid_reply_copies_from_the_mid_slot():
+    """The reply's flag decides which section is copied.
+
+    Reading the pixel channel for a mid reply would present the previous frame twice, which
+    looks like interpolation and is not - so this pins the routing at the reader, where the
+    two replies for one index are told apart.
+    """
+    import os
+    import struct
+    import types
+    import protocol
+
+    shm = protocol.SharedFrameBuffer(8, 8, 8, 8)
+    shm.open_out(8, 8)
+    real = np.full((8, 8, 4), 11, np.uint8)
+    mid = np.full((8, 8, 4), 222, np.uint8)
+    shm._out_buf[:] = real
+    shm._out_mid_buf[:] = mid
+
+    read_fd, write_fd = os.pipe()
+    worker = types.SimpleNamespace(stdout=os.fdopen(read_fd, "rb"))
+    reader = protocol.WorkerReader(worker, 8, 8, shm)
+    head = struct.pack(protocol.OUT_FMT, protocol.OUT_MAGIC, 7, 1,
+                       protocol.OUT_BYTES_IN_SHM, protocol.OUT_FLAG_INTERPOLATED, 0)
+    body = struct.pack(protocol.OUT_FMT, protocol.OUT_MAGIC, 7, 1,
+                       protocol.OUT_BYTES_IN_SHM, 0, 0)
+    os.write(write_fd, head + body)     # mid first, then the frame it belongs to
+    os.close(write_fd)
+
+    index, payload = reader._queue.get(timeout=5)
+    assert index == 7 and payload.tolist() == real.tolist()
+    assert reader.take_interp(7).tolist() == mid.tolist()
+    assert reader.interp_frames == 1
+    assert reader.take_interp(7) is None, "a mid-frame is shown once"
+    worker.stdout.close()
+    shm.close_out()
+    shm.close()

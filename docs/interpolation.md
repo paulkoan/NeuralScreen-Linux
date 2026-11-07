@@ -137,6 +137,27 @@ slot (the correct fix, and a protocol extension), or an ack that holds the worke
 has copied the mid (a round trip inside the frame, which is the cost this whole exercise is
 trying to avoid).
 
+**Landed 2026-11-08: the second slot, and the port generating the frame.** The port half is in
+`serve.cpp` + `shaders/mid_warp.comp` (the linux-port patch): a frame carrying
+`FRAME_FLAG_WANT_INTERP` is answered twice, the mid first, and the mid is
+`historySample(pixel + 0.5 + 0.5 * motion)` — the history the composite already reads, at half
+the offset, through the same five-tap reconstruction and the same byte rounding. Where the
+half-motion position leaves the valid rectangle the shader publishes the pixel itself, i.e. no
+interpolation there, which is the cheap half of the occlusion point below.
+
+The slot: the client creates `<pixel channel name>m` beside the pixel channel
+(`SharedFrameBuffer.open_out`) and `read_out(mid=True)` reads it; the worker opens that name when
+it receives `OUTS` and sends no mid-frames at all if the section is absent. The reply's
+`OUT_FLAG_INTERPOLATED` bit says which slot a reply belongs to, so neither side has to guess and
+the two frames cannot overwrite each other. Both directions stay compatible: a worker that has
+never heard of the flag replies once (normal, not a stall) and a client with no second slot never
+receives a mid. The run's worker log reports mid-frames sent against requests answered without
+one, because a rate that fell has to be visible rather than inferred.
+
+What is still open is everything the field cannot do — points 2 to 4 of "What is missing" above —
+and the price, which is now measurable on the box rather than argued: the mid costs one dispatch,
+one 14.7MB readback and one more reply per frame.
+
 **The arithmetic, from stages that were measured** — not a measurement of interpolation itself:
 the extra frame costs one dispatch (~1 ms), one readback (3.8 ms measured), one client copy
 (~1.5 ms) and the hold (8 ms) ≈ 14 ms, so a 31.2 ms iteration becomes ~45 ms for two frames —
