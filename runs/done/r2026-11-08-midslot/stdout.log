@@ -1,0 +1,12 @@
+source video  capture 2560x1440  ->  work 2560x1440 (work scale 1.00, NGX ceiling 2560x1440)
+params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+worker: /opt/neuralscreen/port/build/dlss5vk serve --model /opt/neuralscreen/model
+version: repo 8880bfa (+2826 uncommitted) · worker built from patch 91c8a0c768c0 at port 9d08f41 · in sync
+[main] shared memory agreed: 29.5 MB, the frame does not go through the pipe
+frame 0 is the worker's warm-up: the window stays black until its first answer lands
+frames: 300 done, 0 skipped, 12.356s (24.28 fps headline, 37.23 fps steady), worker exit 0
+timing: capture 5.9ms  send 3.7ms  recv 30.9ms  display 0.0ms   (mean 40.5ms/frame, 24.7 fps; median 26.9ms/frame, 37.2 fps steady)
+source: replayed fixtures/stream-1440p-2s.mp4 — 301 frames decoded, 6 loops
+send spread: min 2.4  median 3.6  max 10.2 ms at frame 0 of 300   (one-off at frame 0 — sent before the worker's first reply lands, so the warm-up, not a per-frame cost)
+recv spread: min 16.8  median 18.3  max 3751.2 ms at frame 0 of 300   (one-off at frame 0 — sent before the worker's first reply lands, so the warm-up, not a per-frame cost)
+capture spread: min 3.3  median 4.7  max 46.4 ms at frame 219 of 300   (a one-off at frame 219 — not the warm-up, so worth looking at)
