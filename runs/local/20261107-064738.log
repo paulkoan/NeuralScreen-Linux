@@ -1,0 +1,97 @@
+  CreateSession
+  session /org/freedesktop/portal/desktop/session/1_1065250/nsl_port
+  SelectSources
+  Start  (the compositor will ask you to choose a screen)
+  stream node=84 serial=3320 0x0
+  OpenPipeWireRemote
+  window stream reports no size; using the requested 2560x1440
+  pipe buffer 64 -> 1024 KiB
+  pipeline pid 2535325: gst-launch-1.0 -q pipewiresrc fd=5 target-object=3320 ! videoconvert ! videoscale ! video/x-raw,format=RGBA,width=2560,height=1440,pixel-aspect-ratio=1/1 ! queue max-size-buffers=1 leaky=downstream ! fdsink fd=1
+hotkeys: reading 13 keyboard(s) via evdev: ENIAC Flexbar Keyboard, Yubico YubiKey OTP+FIDO+CCID, JosefAdamcik Sofle, JosefAdamcik Sofle Keyboard, keyd virtual keyboard, ydotoold virtual device, Logitech MX Master 2S, Logitech MX Ergo, Logitech G604 , Keychron  Keychron Link-KM Keyboard, Keychron  Keychron Link-KM Keyboard, Swiftpoint Z3 Receiver Keyboard, ENIAC Flexbar Keyboard
+hotkeys: Ctrl+Alt+1, Ctrl+Alt+Q via evdev (Wayland session)
+source window  capture 2560x1440  ->  work 2560x1440 (work scale 1.00, NGX ceiling 2560x1440)
+params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+worker: /opt/neuralscreen/port/build/dlss5vk serve --model /opt/neuralscreen/model
+version: repo 1b5bdc0 (+34 uncommitted) · worker built from patch 088280e62d50 at port 9d08f41 · in sync
+[worker] serve: 2560x1440, model /opt/neuralscreen/model, shaders /opt/neuralscreen/port/build/shaders, seed 0
+[worker] serve: built from port 9d08f41 (17 modified) patch 088280e62d5047a684d65df2a3fb2dcf84d5f9d1
+[worker] serve: frame channel open (29.5 MB, NeuralScreen_2535083_f31be11e)
+[main] shared memory agreed: 29.5 MB, the frame does not go through the pipe
+[worker] serve: pixel channel open (2560x1440, 14.7 MB, NeuralScreenOut_2535083_f17947)
+[main] shared memory: frames in and pixels out through /dev/shm (frame 29.5MB, pixels 14.7MB)
+frame 0 is the worker's warm-up: the window stays black until its first answer lands
+[worker] serve: device NVIDIA GeForce RTX 4080 SUPER
+[worker] serve: blend scale 0.7397 (block70.layer0.blend_scale)
+[worker] serve: graph fused (DLSS5VK_UNFUSED not set)
+[worker] serve: warming up (the PTX modules are JIT-compiled on first use)
+[worker] serve: warm-up 679 ms
+[worker] serve: frame 0 carries reset: no history for this frame, and this frame primes the next
+[worker] serve: head -8.5391..0.9580 mean -1.00326; residual mean -0.0158 -0.0160 -0.0166 (rgb, head/4), logit mean -3.8197; non-finite 0 of 14745600; first 8 0.0131 0.0285 0.0324 -4.1875 0.0124 0.0297 0.0314 -4.1055
+[worker] serve frame 0: 129.4 ms (proxy 7.6 [copy 5.2, submit 2.4], network+composite 15.5, readback 96.3, reply 10.0)
+[worker] serve frame 1: 35.6 ms (proxy 10.6 [copy 7.0, submit 3.6], network+composite 14.0, readback 7.0, reply 4.0)
+[worker] serve frame 2: 32.1 ms (proxy 11.0 [copy 8.0, submit 3.0], network+composite 12.4, readback 5.6, reply 3.1)
+[worker] serve: frame 27 carries reset: no history for this frame, and this frame primes the next
+[worker] serve frame 29: 30.4 ms (proxy 5.4 [copy 3.5, submit 1.8], network+composite 13.5, readback 5.9, reply 5.6)
+[worker] serve frame 59: 28.5 ms (proxy 6.7 [copy 4.8, submit 1.8], network+composite 12.5, readback 6.4, reply 2.9)
+[worker] serve frame 89: 28.0 ms (proxy 7.0 [copy 4.8, submit 2.2], network+composite 13.3, readback 4.9, reply 2.8)
+[worker] serve frame 119: 28.7 ms (proxy 9.3 [copy 6.4, submit 3.0], network+composite 12.6, readback 4.4, reply 2.3)
+[worker] serve frame 149: 38.0 ms (proxy 14.7 [copy 10.9, submit 3.8], network+composite 14.3, readback 5.3, reply 3.6)
+[worker] serve frame 179: 33.3 ms (proxy 9.9 [copy 6.8, submit 3.1], network+composite 13.2, readback 6.8, reply 3.4)
+[worker] serve frame 209: 28.5 ms (proxy 7.8 [copy 5.0, submit 2.8], network+composite 13.3, readback 4.2, reply 3.2)
+[worker] serve frame 239: 29.1 ms (proxy 7.2 [copy 5.3, submit 1.9], network+composite 13.8, readback 5.5, reply 2.6)
+[worker] serve frame 269: 35.6 ms (proxy 8.3 [copy 5.9, submit 2.4], network+composite 15.6, readback 7.1, reply 4.6)
+[worker] serve frame 299: 29.5 ms (proxy 9.4 [copy 6.4, submit 2.9], network+composite 13.2, readback 4.8, reply 2.1)
+[worker] serve: frame 329 carries reset: no history for this frame, and this frame primes the next
+[worker] serve frame 329: 30.3 ms (proxy 7.8 [copy 5.6, submit 2.2], network+composite 13.9, readback 5.4, reply 3.3)
+[worker] serve: frame 330 carries reset: no history for this frame, and this frame primes the next
+[worker] serve frame 359: 34.7 ms (proxy 10.0 [copy 6.9, submit 3.2], network+composite 15.5, readback 6.0, reply 3.1)
+[worker] serve frame 389: 31.4 ms (proxy 7.0 [copy 5.1, submit 1.9], network+composite 14.6, readback 5.4, reply 4.3)
+[worker] serve: frame 417 carries reset: no history for this frame, and this frame primes the next
+[worker] serve frame 419: 35.1 ms (proxy 9.2 [copy 6.5, submit 2.6], network+composite 15.4, readback 6.1, reply 4.4)
+[worker] serve: frame 421 carries reset: no history for this frame, and this frame primes the next
+[worker] serve: frame 422 carries reset: no history for this frame, and this frame primes the next
+[worker] serve frame 449: 38.5 ms (proxy 12.1 [copy 8.8, submit 3.2], network+composite 14.9, readback 7.7, reply 3.9)
+[worker] serve: frame 455 carries reset: no history for this frame, and this frame primes the next
+[worker] serve frame 479: 31.7 ms (proxy 10.6 [copy 7.3, submit 3.3], network+composite 14.0, readback 3.9, reply 3.1)
+[worker] serve frame 509: 37.2 ms (proxy 13.7 [copy 9.9, submit 3.9], network+composite 14.3, readback 6.3, reply 2.9)
+[worker] serve frame 539: 32.5 ms (proxy 9.5 [copy 6.9, submit 2.7], network+composite 14.0, readback 5.5, reply 3.4)
+[worker] serve frame 569: 32.0 ms (proxy 9.1 [copy 5.7, submit 3.4], network+composite 12.6, readback 6.8, reply 3.5)
+[worker] serve frame 599: 29.1 ms (proxy 8.0 [copy 4.9, submit 3.1], network+composite 13.3, readback 5.6, reply 2.3)
+[worker] serve: frame 602 carries reset: no history for this frame, and this frame primes the next
+[worker] serve frame 629: 45.0 ms (proxy 16.6 [copy 12.8, submit 3.8], network+composite 16.1, readback 8.1, reply 4.3)
+[worker] serve frame 659: 29.4 ms (proxy 6.5 [copy 4.7, submit 1.8], network+composite 13.5, readback 6.4, reply 3.1)
+[worker] serve frame 689: 33.0 ms (proxy 9.5 [copy 7.0, submit 2.5], network+composite 14.4, readback 6.4, reply 2.7)
+[worker] serve frame 719: 32.2 ms (proxy 11.9 [copy 8.9, submit 3.0], network+composite 13.4, readback 4.7, reply 2.2)
+[worker] serve frame 749: 31.6 ms (proxy 8.1 [copy 6.2, submit 2.0], network+composite 13.1, readback 6.8, reply 3.7)
+[worker] serve frame 779: 27.1 ms (proxy 7.6 [copy 5.7, submit 1.9], network+composite 14.0, readback 3.5, reply 1.9)
+[worker] serve frame 809: 32.0 ms (proxy 7.9 [copy 5.2, submit 2.7], network+composite 13.7, readback 5.4, reply 4.9)
+[worker] serve frame 839: 30.0 ms (proxy 8.6 [copy 5.8, submit 2.8], network+composite 13.3, readback 4.8, reply 3.2)
+[worker] serve frame 869: 39.0 ms (proxy 8.6 [copy 5.4, submit 3.3], network+composite 14.3, readback 11.1, reply 5.0)
+[worker] serve: frame 875 carries reset: no history for this frame, and this frame primes the next
+[worker] serve: frame 879 carries reset: no history for this frame, and this frame primes the next
+[worker] serve: frame 895 carries reset: no history for this frame, and this frame primes the next
+[worker] serve: frame 898 carries reset: no history for this frame, and this frame primes the next
+[worker] serve frame 899: 28.7 ms (proxy 8.2 [copy 6.4, submit 1.8], network+composite 13.6, readback 4.4, reply 2.5)
+[worker] serve frame 929: 29.4 ms (proxy 6.6 [copy 4.4, submit 2.1], network+composite 13.4, readback 5.7, reply 3.8)
+[worker] serve: frame 939 carries reset: no history for this frame, and this frame primes the next
+[worker] serve: frame 946 carries reset: no history for this frame, and this frame primes the next
+[worker] serve frame 959: 32.5 ms (proxy 9.4 [copy 5.2, submit 4.2], network+composite 14.0, readback 6.0, reply 3.1)
+[worker] serve frame 989: 32.0 ms (proxy 10.3 [copy 8.0, submit 2.3], network+composite 13.3, readback 5.6, reply 2.8)
+[worker] serve frame 1019: 42.8 ms (proxy 18.8 [copy 15.5, submit 3.3], network+composite 14.6, readback 5.3, reply 4.1)
+[worker] serve frame 1049: 34.3 ms (proxy 11.0 [copy 7.1, submit 3.9], network+composite 13.8, readback 6.1, reply 3.3)
+[worker] serve frame 1079: 29.7 ms (proxy 8.4 [copy 6.0, submit 2.4], network+composite 13.5, readback 4.3, reply 3.5)
+[worker] serve frame 1109: 29.3 ms (proxy 7.6 [copy 5.1, submit 2.5], network+composite 12.8, readback 5.1, reply 3.7)
+[worker] serve frame 1139: 33.1 ms (proxy 10.2 [copy 7.2, submit 2.9], network+composite 13.6, readback 5.4, reply 3.9)
+[worker] serve frame 1169: 31.1 ms (proxy 9.1 [copy 6.1, submit 3.0], network+composite 12.8, readback 6.0, reply 3.2)
+[worker] serve: frame 1174 carries reset: no history for this frame, and this frame primes the next
+[worker] serve frame 1199: 29.8 ms (proxy 7.7 [copy 5.0, submit 2.7], network+composite 13.3, readback 5.8, reply 3.0)
+diff: MAD 4.108 (R 3.865 G 4.073 B 4.387)  max 71  PSNR 32.69 dB  >2: 76.71%  >8: 13.08%
+frames: 1200 done, 0 skipped, 103.663s (11.58 fps headline, 17.25 fps steady), worker exit 0
+timing: capture 11.1ms  send 7.0ms  recv 37.9ms  display 5.2ms   (mean 61.2ms/frame, 16.3 fps; median 58.0ms/frame, 17.3 fps steady)
+send spread: min 2.9  median 6.5  max 20.6 ms at frame 0 of 1200   (one-off at frame 0 — sent before the worker's first reply lands, so the warm-up, not a per-frame cost)
+recv spread: min 25.9  median 35.5  max 1814.8 ms at frame 0 of 1200   (one-off at frame 0 — sent before the worker's first reply lands, so the warm-up, not a per-frame cost)
+capture spread: min 5.2  median 10.6  max 23.8 ms at frame 420 of 1200   (a one-off at frame 420 — not the warm-up, so worth looking at)
+display spread: min 2.7  median 4.9  max 31.3 ms at frame 0 of 1200   (one-off at frame 0 — sent before the worker's first reply lands, so the warm-up, not a per-frame cost)
+capture split: wait 0.6ms  read 10.5ms   (read near 9ms at 2560x1440 with a 1024 KiB pipe means we are draining a stocked pipe; far above that means the compositor was dribbling)
+capture cpu: the pipeline used 40.32s over 103.66s = 39% of one core
+gpu: util mean 39% (min 18.0, max 50.0); vram 4.8/16.0 GiB (peak 5.0); sm clock max 2760 MHz; 96 samples over 103s
