@@ -178,9 +178,13 @@ section asks only what is still being asked.
     3.8 without, for a second 14.7 MB transfer that should cost about what the first does. The
     cause is in `Context::download`: each call is its own command buffer, its own submit and its own
     **fence wait**, into one shared staging buffer - so two downloads in a frame are two full
-    round trips, serialised, and the mid's is issued first, so its fence absorbs the frame's GPU
-    completion and the real frame's then looks free. Combining the two into one submit and one
-    fence is a contained change and worth a few ms.
+    round trips, serialised. Two halves of that were read wrong and are corrected here (2026-11-08,
+    see Learned): the readback line spans both round trips because the mid's `download`,
+    `publishImage` and `sendFrame` all run before the real frame's `afterDownload`
+    (`serve.cpp:930-948`), and the mid's fence absorbs nothing because the frame's GPU completion
+    was already waited on at `serve.cpp:851` - `endAndSubmit(commands, true)` is `vkQueueWaitIdle`.
+    Combining the two into one submit and one fence is a contained change, worth about one round
+    trip rather than the few ms first guessed.
   * **+~28 ms in the client's `recv`** (median 18.3 -> 46.2 ms): the second reply, the second
     copy out of its slot (measured copy 1.4 -> 2.3 ms) and the handoff for a frame that is
     published on a second path.
@@ -212,6 +216,31 @@ section asks only what is still being asked.
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the mid-frame's cost is inside the frame's own timers, not beside them - and the fence
+  story in "Ask first" was wrong (2026-11-08 tick, reading /opt/data/tmp/odl-src at `f2cd1f2`; no
+  device, no run). Two facts from `src/serve.cpp`, and they decide how `r2026-11-08-midcount-run`'s
+  counters should be read. First: `midWarpToRgba8` is recorded into the same command buffer as the
+  graph and the composite (`serve.cpp:846-848`) and the frame ends with
+  `context->endAndSubmit(commands, true)` (`:851`), which is a `vkQueueWaitIdle`
+  (`vk_context.cpp:587-597`) - so a mid frame's "network+composite" is the CPU record **plus the
+  whole frame's GPU execution**, the mid warp included. Second: the mid's `context->download`,
+  `publishImage` and `sendFrame` all run before the real frame's `afterDownload` (`:930-948`) while
+  "readback" is `since(afterRecord, afterDownload)` - so a mid frame's readback line is the mid's
+  round trip **plus** the real frame's. The 11.7-13.7 ms against 3.8 ms is that label spanning two
+  14.7 MB round trips, not a download that slowed down. What this corrects: "the mid's fence
+  absorbs the frame's GPU completion and the real frame's then looks free" cannot hold - the queue
+  was already waited on at `:851`, before either download, so there is nothing left for the mid's
+  fence to absorb; the pair costs two independent copy round trips, each with its own command
+  buffer, submit and wait. One submit and one fence is still the right change, but for about one
+  round trip, not 5-8 ms. Still unexplained, and now with an instrument that would localise it: the
+  mid frames' `network+composite` ~24 ms against 12.3 ms at frames 269/299 of the same run. With
+  `DLSS5VK_SERVE_SPLIT` the second timestamp pair brackets the composite **and** the mid warp
+  (`:843-850`), so composite ~12 ms on mid frames against 0.3 ms without would name the mid warp as
+  the cost; that flag is a policy entry = the box. Nothing queues this tick: the next number is the
+  mid counters' own `X ms mean per mid`, and `r2026-11-08-midcount-build`/`-run` (queued 16:17Z)
+  have not come back - the box has published nothing since 13:19:41Z, where its turnaround all day
+  has been 1-12 minutes.
 
 * learned: `--shm` became the default, and asking for it exposed a bug in the refusal path
   (2026-11-08). The question had sat in "Ask first" for six days on the grounds that it changes the
