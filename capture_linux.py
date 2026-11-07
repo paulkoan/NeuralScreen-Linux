@@ -182,27 +182,49 @@ class ScreenCapture:
     Raises RuntimeError if no backend is available.
     """
 
-    def __init__(self, monitor_idx: int = 0):
+    def __init__(self, monitor_idx: int = 0, source: int | None = None,
+                 width: int | None = None, height: int | None = None):
         self._backend: _PipeWireCapture | _XScreencapture
         self._closed = False
 
         if _is_wayland() and _HAS_PIPEWIRE:
             self._backend = _PipeWireCapture(monitor_idx)
-        elif not _is_wayland() and _HAS_MSS:
+        elif _is_wayland():
+            # The portal path the MVP has been using all along: xdg-desktop-portal hands out a
+            # screen-cast, gst-launch drains it, and the frames arrive as RGBA. It needs no pip
+            # package beyond what the repo already depends on, and it is the only Wayland capture
+            # that has actually been measured on this box. `source` picks a whole screen or one
+            # window; the user answers the dialog either way.
+            from minimal.capture_wayland import PortalCapture
+            from minimal.portal import SOURCE_MONITOR, SOURCE_WINDOW
+            # width/height matter for a window: the portal reports 0x0 for one (the size is
+            # negotiated later over PipeWire), so the pipeline has to name the size it wants.
+            self._backend = PortalCapture(
+                monitor_idx, source=SOURCE_WINDOW if source == SOURCE_WINDOW else SOURCE_MONITOR,
+                width=width, height=height)
+        elif _HAS_MSS:
             self._backend = _XScreencapture(monitor_idx)
-        elif _is_wayland() and not _HAS_PIPEWIRE:
-            raise RuntimeError(
-                "Wayland detected but pipewire-capture not installed.\n"
-                "  pip install pipewire-capture\n"
-                "Alternatively switch to an X11 session and install mss:\n"
-                "  pip install mss"
-            )
         else:
             raise RuntimeError(
                 "No capture backend available.\n"
                 "  X11: pip install mss\n"
-                "  Wayland: pip install pipewire-capture"
+                "  Wayland: needs xdg-desktop-portal, pipewiresrc (gst-plugin-pipewire) and "
+                "gst-launch-1.0"
             )
+
+    @property
+    def resolution(self) -> tuple[int, int]:
+        """The frame size, before the first grab when the backend knows it.
+
+        switch_window reads this to size the new pipeline, so a backend that only reports its
+        size after a grab is asked for one frame rather than returning (0, 0) and building a
+        zero-sized worker.
+        """
+        res = getattr(self._backend, "resolution", None)
+        if res:
+            return (int(res[0]), int(res[1]))
+        frame = self.grab()
+        return (int(frame.shape[1]), int(frame.shape[0]))
 
     def grab(self) -> np.ndarray:
         """Capture one frame. Returns (H, W, 4) uint8 RGBA."""
@@ -214,25 +236,6 @@ class ScreenCapture:
         self._closed = True
         self._backend.close()
 
-
-def list_monitors() -> list[tuple[int, str]]:
-    """Return [(index, description), ...] for available monitors.
-
-    Uses MSS if available; returns a placeholder on Wayland since
-    monitor enumeration needs the portal to be active.
-    """
-    if _HAS_MSS:
-        try:
-            with mss.mss() as sct:
-                return list(enumerate(m["monitor"] for m in sct.monitors))
-        except Exception:
-            pass
-    return [(0, "Primary (PipeWire)")]
-
-
-# ---------------------------------------------------------------------------
-# Test mode
-# ---------------------------------------------------------------------------
 
 def devicename_for_output_idx(output_idx: int) -> str | None:
     """Return a monitor identifier string (Linux: just the index as string).

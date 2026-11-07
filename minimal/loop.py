@@ -12,6 +12,7 @@ to prove the pass runs. Real optical flow is a later milestone.
 
 from __future__ import annotations
 
+import queue
 import time
 from collections import deque
 from pathlib import Path
@@ -77,6 +78,10 @@ class Pipeline:
                  fullscreen: bool = False, headless: bool = False,
                  warmup: int = 2, worker_cmd: list[str] | None = None,
                  worker_env_extra: dict | None = None,
+                 indicator: bool | None = None,
+                 report_diff: bool = False, save_diff: str | None = None,
+                 diff_gain: float = 8.0, ab_alternate: float = 0.0,
+                 report_gpu: bool = False,
                  worker_cwd: Path | None = None, capture=None, display=None,
                  work_scale: float = 1.0, motion_small: bool = False,
                  no_motion: bool = False, shm: bool = False,
@@ -157,6 +162,32 @@ class Pipeline:
         # the network at zero strength, this does not run it at all, so the
         # difference between the two is what the network actually costs.
         self.bypass = bool(bypass)
+        # Split by mode. A bypassed frame runs no network, so its frame time is a different
+        # animal from an enhanced frame's; averaging them yields a rate that describes neither.
+        # That is how a summary read "26.45 fps steady" off a pipeline that cannot do 26 fps with
+        # the pass on - half the frames were skipping it.
+        self.enhanced_frames = 0
+        self.enhanced_seconds = 0.0
+        self.bypassed_frames = 0
+        self.bypassed_seconds = 0.0
+        # Commands from the global hotkeys (or anything else) are drained between frames. A
+        # command rather than a shared flag so a toggle cannot be missed or applied twice.
+        self.commands: queue.Queue = queue.Queue()
+        self.report_diff = bool(report_diff)
+        self.save_diff = save_diff
+        self.diff_gain = float(diff_gain)
+        # Flip the pass on and off every N seconds. The alternative is a keypress, and a global
+        # one does not reach a Wayland-native window; a timer needs nothing from the user and
+        # the badge says which half you are looking at.
+        self.ab_alternate = max(0.0, float(ab_alternate))
+        self._next_flip = 0.0
+        # Sampled for the life of the run: the worker's timings say how long a frame took, this
+        # says whether the GPU was busy while it took it.
+        self.report_gpu = bool(report_gpu)
+        self.gpu: "GpuSampler | None" = None
+        self.running = True
+        # Set by --hotkeys: polled between frames, so the window does not need focus.
+        self.hotkey_poll = None
 
         self.worker = Worker(
             self.width, self.height, self.work_w, self.work_h, self.params,
@@ -175,8 +206,11 @@ class Pipeline:
         if display is not None:
             self.display = display
         else:
-            self.display = Display(self.width, self.height,
-                                   fullscreen=fullscreen, headless=headless)
+            self.display = Display(
+                self.width, self.height, fullscreen=fullscreen, headless=headless,
+                # On unless asked off, and never in a headless run: there is no window to
+                # draw it in, and a badge would be a per-frame cost for nothing.
+                indicator=(not headless) if indicator is None else bool(indicator))
 
         # One zero motion field, reused for every frame.
         # (H, W, 2) float16 — two channels, the same layout the pipe expects.
@@ -239,8 +273,61 @@ class Pipeline:
         guide = self.guides.process(frame)
         return guide.motion, bool(index == 0 or guide.reset)
 
+    def _drain_commands(self) -> None:
+        """Apply whatever the hotkeys queued since the last frame."""
+        while True:
+            try:
+                command = self.commands.get_nowait()
+            except queue.Empty:
+                return
+            if command == "toggle":
+                self.bypass = not self.bypass
+                # The worker builds the frame flag from its own copy, so both move together.
+                self.worker.bypass = self.bypass
+                print(f"[nr] enhancement {'off' if self.bypass else 'on'}",
+                      flush=True)
+            elif command == "quit":
+                self.running = False
+                print("[main] quit from the hotkey", flush=True)
+
     def process_one(self, index: int, timeout: float = 60.0,
                     present: bool = True) -> np.ndarray | None:
+        """Time one frame and book it against the mode it ran in.
+
+        An A/B run alternates, and a bypassed frame does no neural work at all, so its frame time
+        is not comparable to an enhanced frame's. Reporting their average describes neither mode -
+        and it reads as though the pipeline can sustain a rate it cannot: with the pass on it is
+        ~40ms a frame, and a run that mixed in bypassed frames summarised as 26 fps.
+        """
+        started = time.monotonic()
+        try:
+            return self._one_frame(index, timeout=timeout, present=present)
+        finally:
+            took = time.monotonic() - started
+            if self.bypass:
+                self.bypassed_frames += 1
+                self.bypassed_seconds += took
+            else:
+                self.enhanced_frames += 1
+                self.enhanced_seconds += took
+
+    def mode_split(self) -> dict:
+        """The two modes separately: counts, seconds, and the rate of each."""
+        def rate(frames: int, seconds: float) -> float:
+            return round(frames / seconds, 2) if seconds > 0 else 0.0
+
+        return {
+            "alternate": self.ab_alternate,
+            "enhanced_frames": self.enhanced_frames,
+            "enhanced_seconds": round(self.enhanced_seconds, 3),
+            "enhanced_fps": rate(self.enhanced_frames, self.enhanced_seconds),
+            "bypassed_frames": self.bypassed_frames,
+            "bypassed_seconds": round(self.bypassed_seconds, 3),
+            "bypassed_fps": rate(self.bypassed_frames, self.bypassed_seconds),
+        }
+
+    def _one_frame(self, index: int, timeout: float = 60.0,
+                   present: bool = True) -> np.ndarray | None:
         """Grab, send, present, receive one frame.
 
         Returns the processed RGBA, or None if the worker returned no pixels
@@ -280,6 +367,11 @@ class Pipeline:
             return None
         self.frames_done += 1
         if present and self.display is not None:
+            # The badge follows the same flag the frame was built with, so it cannot disagree
+            # with the picture it is drawn on.
+            setter = getattr(self.display, "set_enhanced", None)
+            if setter is not None:
+                setter(not self.bypass)
             self._timed("display", self.display.show, result)
         return result
 
@@ -363,6 +455,9 @@ class Pipeline:
         Returns a summary dict — the caller (or a test) can assert on it.
         """
         self.worker.start()
+        if self.report_gpu:
+            from minimal.gpustat import GpuSampler
+            self.gpu = GpuSampler().start()
         started = time.monotonic()
         # The capture chain's own CPU, sampled around the loop. It is invisible
         # in the grab time — the pipeline's copies and conversions happen while
@@ -396,6 +491,8 @@ class Pipeline:
             else:
                 pair_before, last_after, index = self._serial_loop(frames, on_frame)
         finally:
+            if self.gpu is not None:
+                self.gpu.stop()
             # Sample the capture's CPU before close(): close() drops the
             # pipeline handle, and taking the end reading after it reported
             # "pid None" and a failed reading on every run — the measurement
@@ -409,6 +506,26 @@ class Pipeline:
 
         if save_before and pair_before is not None:
             _save_rgba(save_before, pair_before, bgra=self.bgra)
+        if (self.report_diff or self.save_diff) and self.bypass:
+            # The A/B timer leaves the pass off half the time. Reporting a diff from that half
+            # says "MAD 0.000" and reads as "the pass does nothing" when it says no such thing.
+            print("diff: skipped - the last frame was the bypass half of the A/B; quit while the "
+                  "badge reads ON, or run with --ab-alternate 0", flush=True)
+        if ((self.report_diff or self.save_diff) and pair_before is not None
+                and last_after is not None and not self.bypass):
+            # The matched pair: both from one iteration, so the number is the pass's effect and
+            # not whatever moved on screen between two frames.
+            metrics = diff_metrics(pair_before, last_after)
+            r, g, b = metrics["mad_rgb"]
+            print(f"diff: MAD {metrics['mad']:.3f} (R {r:.3f} G {g:.3f} B {b:.3f})  "
+                  f"max {metrics['max']}  PSNR {metrics['psnr']:.2f} dB  "
+                  f">{2}: {100 * metrics['over_2']:.2f}%  >8: {100 * metrics['over_8']:.2f}%",
+                  flush=True)
+            if self.save_diff:
+                _save_rgba(self.save_diff, amplified_diff(pair_before, last_after,
+                                                          self.diff_gain))
+                print(f"  diff   -> {self.save_diff} (amplified x{self.diff_gain:g})",
+                      flush=True)
         if save_after and last_after is not None:
             # The worker always answers in RGBA, whatever went in.
             _save_rgba(save_after, last_after, bgra=False)
@@ -418,6 +535,9 @@ class Pipeline:
             "frames_attempted": index,
             "frames_done": self.frames_done,
             "frames_skipped": self.frames_skipped,
+            # An A/B run mixes two modes; these are that split, so a summary can report the rate
+            # of each instead of an average of both.
+            "modes": self.mode_split(),
             # How many frames were allowed in flight, so a summary says which
             # loop produced it, and how many times the worker went silent.
             "send_ahead": self.send_ahead,
@@ -463,10 +583,32 @@ class Pipeline:
         """
         index = 0
         pair_before = last_after = None
-        while frames == 0 or index < frames:
+        while (frames == 0 or index < frames) and self.running:
             self._check_alive()
-            if "quit" in self.display.poll_events():
+            if self.hotkey_poll is not None:
+                try:
+                    self.hotkey_poll(block=False)
+                except Exception:
+                    pass
+            self._drain_commands()
+            if not self.running:
                 break
+            events = self.display.poll_events()
+            if "quit" in events:
+                break
+            if "toggle" in events:
+                self.commands.put("toggle")
+                self._drain_commands()
+            if self.ab_alternate:
+                now = time.monotonic()
+                if self._next_flip == 0.0:
+                    self._next_flip = now + self.ab_alternate
+                elif now >= self._next_flip:
+                    self._next_flip = now + self.ab_alternate
+                    self.bypass = not self.bypass
+                    self.worker.bypass = self.bypass
+                    print(f"[nr] A/B: enhancement {'off' if self.bypass else 'on'}",
+                          flush=True)
             after = self.process_one(index, present=True)
             if after is not None:
                 # process_one keeps the input it fed for this iteration, so the
@@ -508,6 +650,9 @@ class Pipeline:
         if after is None:
             return sent_index, input_frame, None
         if self.display is not None:
+            setter = getattr(self.display, "set_enhanced", None)
+            if setter is not None:
+                setter(not self.bypass)
             self._timed("display", self.display.show, after)
         return sent_index, input_frame, after
 
@@ -597,6 +742,45 @@ def _to_rgba(frame: np.ndarray, *, bgra: bool = False) -> np.ndarray:
     if not bgra:
         return frame
     return frame[:, :, [2, 1, 0, 3]]
+
+
+def diff_metrics(before: np.ndarray, after: np.ndarray) -> dict:
+    """How far the pass moved the picture, in the terms that decide whether it is visible.
+
+    MAD is the average absolute change per channel: a pass that changes nothing has 0. The
+    "over" counts say how much of the frame moved by more than a step or two, which is closer to
+    what an eye notices than a mean is - a small mean over a large area of subtle change and a
+    small mean over a few strongly changed pixels are very different pictures.
+    """
+    a = before[..., :3].astype(np.int16)
+    b = after[..., :3].astype(np.int16)
+    delta = np.abs(b - a)
+    per_channel = [float(delta[..., i].mean()) for i in range(3)]
+    total = delta.size
+    return {
+        "mad": float(delta.mean()),
+        "mad_rgb": per_channel,
+        "max": int(delta.max()),
+        "over_2": float((delta.max(axis=2) > 2).sum()) / (before.shape[0] * before.shape[1]),
+        "over_8": float((delta.max(axis=2) > 8).sum()) / (before.shape[0] * before.shape[1]),
+        "psnr": float("inf") if delta.max() == 0 else float(
+            20 * np.log10(255.0 / np.sqrt(float((delta.astype(np.float64) ** 2).mean())))),
+    }
+
+
+def amplified_diff(before: np.ndarray, after: np.ndarray, gain: float = 8.0) -> np.ndarray:
+    """A picture of the difference: mid-grey where nothing moved, brighter/darker where it did.
+
+    Useful precisely because the pass is subtle on real content - a 1-2 level change is invisible
+    in the frames themselves and unmissable here.
+    """
+    a = before[..., :3].astype(np.float32)
+    b = after[..., :3].astype(np.float32)
+    shifted = 128.0 + (b - a) * float(gain)
+    out = np.empty((*shifted.shape[:2], 4), dtype=np.uint8)
+    out[..., :3] = np.clip(shifted, 0, 255).astype(np.uint8)
+    out[..., 3] = 255
+    return out
 
 
 def _save_rgba(path: str, frame: np.ndarray, *, bgra: bool = False) -> None:

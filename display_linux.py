@@ -17,6 +17,7 @@ import argparse
 import ctypes
 import ctypes.util
 import sys
+import time
 from collections import deque
 
 import numpy as np
@@ -60,14 +61,37 @@ def _ensure_x11():
         return False, "libX11_not_found"
 
     _XLIB = ctypes.cdll.LoadLibrary(xlib_path)
+
+    # Declare the signatures BEFORE the first call. A Display* is a 64-bit pointer, and without
+    # restype ctypes assumes int - so XOpenDisplay returned a truncated pointer and the very next
+    # call, XDefaultRootWindow, dereferenced it and took the process down (v1's first segfault).
+    # Every Xlib entry point used below gets its types for the same reason.
+    _XLIB.XOpenDisplay.restype = ctypes.c_void_p
+    _XLIB.XOpenDisplay.argtypes = [ctypes.c_char_p]
+    _XLIB.XDefaultRootWindow.restype = ctypes.c_ulong
+    _XLIB.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+    _XLIB.XInternAtom.restype = ctypes.c_ulong
+    _XLIB.XInternAtom.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+    _XLIB.XChangeProperty.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong,
+                                      ctypes.c_ulong, ctypes.c_int, ctypes.c_int,
+                                      ctypes.c_void_p, ctypes.c_int]
+    _XLIB.XFlush.argtypes = [ctypes.c_void_p]
+    _XLIB.XCloseDisplay.argtypes = [ctypes.c_void_p]
+    _XLIB.XRaiseWindow.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+    _XLIB.XMapRaised.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+    _XLIB.XSendEvent.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int,
+                                 ctypes.c_long, ctypes.c_void_p]
+    _XLIB.XGetGeometry.argtypes = [ctypes.c_void_p, ctypes.c_ulong,
+                                   ctypes.POINTER(ctypes.c_ulong), ctypes.POINTER(ctypes.c_int),
+                                   ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_uint),
+                                   ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint),
+                                   ctypes.POINTER(ctypes.c_uint)]
+
     _DISPLAY_PTR = _XLIB.XOpenDisplay(None)
     if not _DISPLAY_PTR:
         return False, "cannot_open_display"
 
     _ROOT_WINDOW = _XLIB.XDefaultRootWindow(_DISPLAY_PTR)
-
-    # Intern atoms for window type hints
-    _XLIB.XInternAtom.restype = ctypes.c_ulong
     _ATOM_NET_WM_WINDOW_TYPE = _XLIB.XInternAtom(
         _DISPLAY_PTR, b"_NET_WM_WINDOW_TYPE", ctypes.c_int(False)
     )
@@ -79,6 +103,12 @@ def _ensure_x11():
         _XSHAPE = ctypes.cdll.LoadLibrary(xshape_path)
         # XShapeQueryVersion to verify shape extension is present
         _XSHAPE.XShapeQueryVersion.restype = ctypes.c_int
+        _XSHAPE.XShapeQueryExtension.restype = ctypes.c_int
+        _XSHAPE.XShapeQueryExtension.argtypes = [
+            ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
+        _XSHAPE.XShapeCombineRectangles.argtypes = [
+            ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
         error_base = ctypes.c_int()
         event_base = ctypes.c_int()
         if not _XSHAPE.XShapeQueryExtension(
@@ -97,10 +127,15 @@ def _set_click_through_x11(sdl_window):
     if not ok:
         return reason
 
-    # Get the X11 window ID from SDL
+    # Get the X11 window ID from SDL - but only if this window is an X11 one. On a Wayland
+    # session the union carries Wayland data, and reading info.info.x11.window would hand Xlib a
+    # window id that never existed. Click-through is an X11 trick; elsewhere it is simply skipped.
     info = sdl2.SDL_SysWMinfo()
     sdl2.SDL_VERSION(info.version)
-    sdl2.SDL_GetWindowWMInfo(sdl_window, ctypes.byref(info))
+    if not sdl2.SDL_GetWindowWMInfo(sdl_window, ctypes.byref(info)):
+        return "wm_info_failed"
+    if info.subsystem != sdl2.SDL_SYSWM_X11:
+        return "not_x11"
     x11_window = info.info.x11.window
 
     # 1. Set _NET_WM_WINDOW_TYPE to DESKTOP (some compositors respect this)
@@ -148,7 +183,10 @@ def _unset_click_through_x11(sdl_window):
 
     info = sdl2.SDL_SysWMinfo()
     sdl2.SDL_VERSION(info.version)
-    sdl2.SDL_GetWindowWMInfo(sdl_window, ctypes.byref(info))
+    if not sdl2.SDL_GetWindowWMInfo(sdl_window, ctypes.byref(info)):
+        return
+    if info.subsystem != sdl2.SDL_SYSWM_X11:
+        return
     x11_window = info.info.x11.window
 
     # Get window dimensions
@@ -206,13 +244,26 @@ _KEY_EVENT_MAP = {
 # Display class
 # ---------------------------------------------------------------------------
 
+class _ScreenInfo:
+    """What commands.py asks of ``display.screen``: the current frame size."""
+
+    def __init__(self, owner):
+        self._owner = owner
+
+    def get_width(self) -> int:
+        return int(self._owner.width)
+
+    def get_height(self) -> int:
+        return int(self._owner.height)
+
+
 class Display:
     """Borderless fullscreen overlay window using SDL2 on Linux.
 
     Interface expected by NeuralScreen's Python process:
 
         __init__(width, height, fullscreen, click_through)
-        show(frame: np.ndarray)        # (H, W, 4) uint8, BGRA
+        show(frame: np.ndarray)        # (H, W, 4) uint8, RGBA
         set_hud(hud: dict)
         poll_events() -> list[str]
         close()
@@ -280,10 +331,12 @@ class Display:
         # Disable vsync so we can target 60 FPS via timing instead
         sdl2.SDL_GL_SetSwapInterval(0)
 
-        # Streaming texture matching the expected BGRA pixel format
+        # Streaming texture in the order the worker actually returns: RGBA. The port's composite
+        # writes RGBA8 (the same bytes minimal/ saves as a PNG), so a BGRA texture here would show
+        # every frame with red and blue swapped. The Wine path returned BGRA; v1 ships the port.
         self.texture = sdl2.SDL_CreateTexture(
             self.renderer,
-            sdl2.SDL_PIXELFORMAT_BGRA32,
+            sdl2.SDL_PIXELFORMAT_RGBA32,
             sdl2.SDL_TEXTUREACCESS_STREAMING,
             width,
             height,
@@ -298,12 +351,32 @@ class Display:
         if click_through:
             _set_click_through_x11(self.window)
 
+        # --- The rest of the surface main_linux.py expects ------------------
+        # This class was written as a minimal pysdl2 window and the app asks for a good deal
+        # more: a menu object, alerts, HUD modes, switch-window state, a screenshot overlay.
+        # Everything below exists so the app runs against this backend; the pieces that are
+        # genuinely Windows-era (excluding the layer from capture, the native window handle)
+        # record their state and do nothing, and say so in the log rather than pretending.
+        self.lang = "en"
+        self._alert_text: str | None = None
+        self._alert_until = 0.0
+        self._hud_only = False
+        self._menu_opaque = True
+        self._menu_input = True
+        self._excluded = True
+        self._switch: tuple[int, int] | None = None
+        self.screen = _ScreenInfo(self)
+        import pygame
+        pygame.font.init()
+        from overlay_ui import OverlayMenu
+        self.menu = OverlayMenu(1.0, lambda size: pygame.font.Font(None, size))
+
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
 
     def show(self, frame: np.ndarray):
-        """Present a frame.  *frame* is (H, W, 4) uint8, BGRA byte order."""
+        """Present a frame.  *frame* is (H, W, 4) uint8, RGBA byte order."""
         if self._closed or not self._visible:
             return
 
@@ -327,6 +400,95 @@ class Display:
         # (e.g. via SDL2_ttf or SDL2_gfx — not included to keep deps minimal.)
 
         sdl2.SDL_RenderPresent(self.renderer)
+
+    # --- The app-facing surface -------------------------------------------
+    # See the note in __init__: these exist so main_linux.py can drive this backend.
+
+    def set_lang(self, lang: str) -> None:
+        """The UI language. Also sent to the menu, which has its own copy."""
+        self.lang = str(lang)
+        try:
+            self.menu.lang = self.lang
+        except Exception:
+            pass
+
+    def alert(self, text: str, seconds: float = 2.5) -> None:
+        """A transient message. Printed as well, so a headless run still shows it."""
+        self._alert_text = str(text)
+        self._alert_until = time.monotonic() + float(seconds)
+        print(f"[main] alert: {text}")
+
+    def set_menu_opaque(self, on: bool) -> None:
+        self._menu_opaque = bool(on)
+
+    def set_menu_input(self, on: bool) -> None:
+        self._menu_input = bool(on)
+
+    def set_hud_only(self, on: bool) -> None:
+        """HUD without the picture - the old DDA mode's shape. State only."""
+        self._hud_only = bool(on)
+
+    def draw_overlay(self, *_args) -> None:
+        """Compose the HUD/menu into the frame.
+
+        Not implemented on this backend: the overlay is drawn by the pygame layer on the
+        Windows path, and this window is pysdl2. Kept so the loop's call sites stay honest
+        about where the drawing was expected; the menu will not appear until this is built.
+        """
+
+    def draw_capture_overlay(self, _surface) -> None:
+        """Bake the overlay into a screenshot. Nothing to bake here yet."""
+
+    def enter_switch_mode(self, _frame, width: int, height: int) -> None:
+        self._switch = (int(width), int(height))
+
+    def exit_switch_mode(self) -> None:
+        self._switch = None
+
+    def is_switch_active(self) -> bool:
+        return self._switch is not None
+
+    def set_excluded_from_capture(self, on: bool) -> None:
+        """Keep the overlay out of our own capture. Wayland has no such concept."""
+        self._excluded = bool(on)
+
+    def set_fullscreen_layer(self, width: int, height: int) -> None:
+        self.resize(int(width), int(height))
+
+    def set_window_layer(self, _x: int, _y: int, width: int, height: int) -> None:
+        self.resize(int(width), int(height))
+
+    def raise_topmost(self) -> None:
+        """Put the overlay above the captured window, where the platform allows it.
+
+        Wayland has no "raise someone else's surface" call, so this is best-effort: SDL raises
+        our own window within our application, which is all the app can do here.
+        """
+        if self.window:
+            try:
+                sdl2.SDL_RaiseWindow(self.window)
+            except Exception:
+                pass
+
+    def get_hwnd(self) -> int:
+        """The native window handle. There is none on Linux; callers treat 0 as "no window"."""
+        return 0
+
+    def resize(self, width: int, height: int) -> None:
+        """Resize the window and its streaming texture to a new frame size."""
+        width, height = int(width), int(height)
+        if width <= 0 or height <= 0 or (width, height) == (self.width, self.height):
+            return
+        self.width, self.height = width, height
+        if self._closed:
+            return
+        if self.texture:
+            sdl2.SDL_DestroyTexture(self.texture)
+        if self.window:
+            sdl2.SDL_SetWindowSize(self.window, width, height)
+        self.texture = sdl2.SDL_CreateTexture(
+            self.renderer, sdl2.SDL_PIXELFORMAT_RGBA32,
+            sdl2.SDL_TEXTUREACCESS_STREAMING, width, height)
 
     def set_hud(self, hud: dict):
         """Store HUD state for optional on-screen rendering."""
@@ -380,8 +542,13 @@ class Display:
             sdl2.SDL_HideWindow(self.window)
 
     def reveal(self):
-        """Raise the window to the top of the stacking order and restore input
-        focus (useful after a compositor or another window stole focus)."""
+        """Show the window, raise it, and restore input focus.
+
+        SDL_ShowWindow is here as well as in set_visible: a window created without
+        SDL_WINDOW_SHOWN is not guaranteed to be mapped, and on Wayland a fullscreen-desktop
+        window that is never shown is simply invisible - which is what "no output window" was.
+        """
+        sdl2.SDL_ShowWindow(self.window)
         sdl2.SDL_RaiseWindow(self.window)
 
         # On X11 we also need to explicitly request focus
@@ -389,7 +556,12 @@ class Display:
         if ok and _XLIB is not None:
             info = sdl2.SDL_SysWMinfo()
             sdl2.SDL_VERSION(info.version)
-            sdl2.SDL_GetWindowWMInfo(self.window, ctypes.byref(info))
+            if not sdl2.SDL_GetWindowWMInfo(self.window, ctypes.byref(info)):
+                return
+            # Same guard as the click-through path: on a Wayland window the union holds Wayland
+            # data, and XRaiseWindow on a garbage id is a segfault, not an error.
+            if info.subsystem != sdl2.SDL_SYSWM_X11:
+                return
             x11_window = info.info.x11.window
 
             # Set _NET_ACTIVE_WINDOW message

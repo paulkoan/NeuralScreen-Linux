@@ -26,17 +26,55 @@ class DisplayError(RuntimeError):
     """Raised when an SDL2 window or renderer cannot be created."""
 
 
+# A 3x5 pixel font, scaled up at draw time. Three letters is all the badge needs ("ON" / "OFF"),
+# and a bitmap here avoids pulling SDL_ttf - or pygame, which minimal/ deliberately does not use -
+# into the one path that has to stay reliable.
+_GLYPHS = {
+    "O": ("111", "101", "101", "101", "111"),
+    "N": ("101", "111", "111", "111", "101"),
+    "F": ("111", "100", "110", "100", "100"),
+}
+_GLYPH_ADVANCE = 4          # 3 wide + 1 gap, in font pixels
+
+
+def indicator_layout(text: str, x: int, y: int, scale: int) -> tuple[int, int, int, int]:
+    """The badge rect for `text` at (x, y), in screen pixels. Pure, so it can be tested."""
+    return (x, y, len(text) * _GLYPH_ADVANCE * scale, 5 * scale)
+
+
+def glyph_pixels(text: str, x: int, y: int, scale: int):
+    """(rect, is_lit) for every cell of `text`, so a caller can draw without knowing the font."""
+    out = []
+    cursor = x
+    for char in text:
+        rows = _GLYPHS.get(char)
+        if rows is None:
+            cursor += _GLYPH_ADVANCE * scale
+            continue
+        for row, bits in enumerate(rows):
+            for col, bit in enumerate(bits):
+                out.append(((cursor + col * scale, y + row * scale, scale, scale), bit == "1"))
+        cursor += _GLYPH_ADVANCE * scale
+    return out
+
+
 class Display:
     """An SDL2 window that shows RGBA frames."""
 
     def __init__(self, width: int, height: int, *, fullscreen: bool = False,
-                 headless: bool = False, title: str = "NeuralScreen (MVP)"):
+                 headless: bool = False, title: str = "NeuralScreen (MVP)",
+                 indicator: bool = False):
         if not _HAS_SDL2:
             from minimal.deps import hint
             raise DisplayError(hint("pysdl2", "sdl2"))
 
         self.width, self.height = int(width), int(height)
         self.headless = headless
+        # The enhancement badge. Drawn by the renderer after the frame is copied, never into the
+        # frame itself: a saved PNG must be the pass's output, not the UI.
+        self.indicator = bool(indicator)
+        self.enhanced = True
+        self.badge_scale = max(3, int(height / 360))
 
         if sdl2.SDL_InitSubSystem(sdl2.SDL_INIT_VIDEO) != 0:
             raise DisplayError(f"SDL_InitSubSystem failed: {sdl2.SDL_GetError()}")
@@ -110,8 +148,45 @@ class Display:
 
         sdl2.SDL_RenderClear(self.renderer)
         sdl2.SDL_RenderCopy(self.renderer, self.texture, None, None)
+        if self.indicator:
+            self._draw_indicator()
         sdl2.SDL_RenderPresent(self.renderer)
         self.frames_shown += 1
+
+    def set_enhanced(self, on: bool) -> None:
+        """Tell the badge whether the pass is running. Called every frame by the loop."""
+        self.enhanced = bool(on)
+
+    def _draw_indicator(self) -> None:
+        """A badge in the top-left corner: green "ON" while the pass runs, grey "OFF" when not.
+
+        Colour AND text, because a colour alone is ambiguous on a busy picture and a colour-blind
+        viewer may not separate them. The badge sits on its own dark plate so it reads on any
+        content; the plate is what makes it legible over a bright sky as well as a dark one.
+        """
+        text = "ON" if self.enhanced else "OFF"
+        pad = 2 * self.badge_scale
+        x0, y0 = 4 * self.badge_scale, 4 * self.badge_scale
+        _, _, text_w, text_h = indicator_layout(text, x0 + pad, y0 + pad, self.badge_scale)
+        plate = sdl2.SDL_Rect(x0, y0, text_w + 2 * pad, text_h + 2 * pad)
+
+        sdl2.SDL_SetRenderDrawColor(self.renderer, 0, 0, 0, 170)
+        sdl2.SDL_RenderFillRect(self.renderer, ctypes.byref(plate))
+
+        lit = (40, 210, 90) if self.enhanced else (150, 150, 150)
+        sdl2.SDL_SetRenderDrawColor(self.renderer, 255, 255, 255, 190)
+        border = sdl2.SDL_Rect(plate.x, plate.y, plate.w, self.badge_scale)
+        sdl2.SDL_RenderFillRect(self.renderer, ctypes.byref(border))
+        border = sdl2.SDL_Rect(plate.x, plate.y + plate.h - self.badge_scale,
+                               plate.w, self.badge_scale)
+        sdl2.SDL_RenderFillRect(self.renderer, ctypes.byref(border))
+
+        for (rx, ry, rw, rh), is_on in glyph_pixels(text, x0 + pad, y0 + pad, self.badge_scale):
+            if not is_on:
+                continue
+            sdl2.SDL_SetRenderDrawColor(self.renderer, lit[0], lit[1], lit[2], 255)
+            rect = sdl2.SDL_Rect(rx, ry, rw, rh)
+            sdl2.SDL_RenderFillRect(self.renderer, ctypes.byref(rect))
 
     def poll_events(self) -> list[str]:
         """Drain the event queue; returns ['quit'] if the user closed the window."""
@@ -123,6 +198,11 @@ class Display:
             elif event.type == sdl2.SDL_KEYDOWN and event.key.keysym.sym in (
                     sdl2.SDLK_ESCAPE, sdl2.SDLK_q):
                 events.append("quit")
+            elif event.type == sdl2.SDL_KEYDOWN and event.key.keysym.sym in (
+                    sdl2.SDLK_F1, sdl2.SDLK_SPACE):
+                # Window-level A/B. The global X grab cannot see keys pressed in a Wayland-native
+                # window, so this is the one that works whenever this window has focus.
+                events.append("toggle")
         return events
 
     def close(self) -> None:

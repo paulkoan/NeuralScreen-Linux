@@ -87,13 +87,29 @@ def start_worker(
 
     Returns (worker, logs, reader, stop).
     """
-    if not _RUN_WORKER_SH.is_file():
-        raise FileNotFoundError(
-            f"worker launcher not found: {_RUN_WORKER_SH}\n"
-            "Ensure native/run_worker.sh exists and is executable."
-        )
-
-    cmd = ["bash", str(_RUN_WORKER_SH)]
+    # Which worker. The Wine/NGX launcher is the default and the only one this app had;
+    # NS_WORKER_CMD points it at the native port instead (`dlss5vk serve --model ...`), which is
+    # what v1 ships. Same protocol either way - the port's serve mode speaks this header - so the
+    # rest of the app does not know which one it is talking to.
+    override = os.environ.get("NS_WORKER_CMD")
+    if override:
+        import shlex
+        cmd = shlex.split(override)
+        if not cmd:
+            raise ValueError("NS_WORKER_CMD is set but empty")
+        # A relative script path would resolve against whatever cwd this process inherited, which
+        # under a desktop launcher is not the repository. Resolve it here, where the answer is known.
+        if len(cmd) >= 2 and not os.path.isabs(cmd[1]):
+            candidate = NATIVE_DIR.parent / cmd[1]
+            if candidate.exists():
+                cmd[1] = str(candidate)
+    else:
+        if not _RUN_WORKER_SH.is_file():
+            raise FileNotFoundError(
+                f"worker launcher not found: {_RUN_WORKER_SH}\n"
+                "Ensure native/run_worker.sh exists and is executable, or set NS_WORKER_CMD."
+            )
+        cmd = ["bash", str(_RUN_WORKER_SH)]
     env = os.environ.copy()
     env.setdefault("WINEPREFIX", os.path.expanduser("~/.neuralscreen/wine"))
 
@@ -246,6 +262,7 @@ def rebuild_pipeline(st, note: str) -> None:
             st.display.close()
         except Exception:
             pass
+        from display_linux import Display      # local: display_linux imports overlay_ui, which is heavy
         st.display = Display(st.width, st.height,
                              fullscreen=bool(st.cfg["fullscreen"]))
         recreated = True
@@ -302,6 +319,7 @@ def rebuild_pipeline(st, note: str) -> None:
 
 def switch_monitor(st, new_monitor: int | str) -> None:
     """Switch capture/output monitor - a full pipeline restart."""
+    from i18n import STRINGS as UI_STRINGS
     if isinstance(new_monitor, str):
         from capture_linux import list_monitors
         # Try to resolve by devicename; fall back to index 0
@@ -347,6 +365,31 @@ def switch_window(st, hwnd: int) -> None:
     from settings_io import _work_size
     from protocol import send_dda
 
+    # The portal picks the window, not us: there is no hwnd to hand the worker, so the capture is
+    # recreated with the window source and the compositor's dialog answers. This is the v1 path -
+    # the port has no desktop-duplication mode, so capture_in_worker is off and the old branch
+    # below would refuse window mode outright.
+    from minimal.capture_wayland import PortalCapture
+    if not st.want_dda and isinstance(getattr(st.capture, "_backend", None), PortalCapture):
+        from minimal.portal import SOURCE_MONITOR, SOURCE_WINDOW
+        from capture_linux import ScreenCapture
+        st.display.enter_switch_mode(st.output_rgba, *st.capture.resolution)
+        teardown_pipeline(st)
+        try:
+            st.capture.close()
+        except Exception:
+            pass
+        st.capture = ScreenCapture(st.monitor,
+                                   source=SOURCE_WINDOW if hwnd else SOURCE_MONITOR)
+        st.width, st.height = st.capture.resolution
+        st.window_hwnd = int(hwnd) if hwnd else None
+        st.work_w, st.work_h = _work_size(st.width, st.height, st.work_scale)
+        st.follow_pos = None
+        st.follow_resize = None
+        st.follow_size = None
+        rebuild_pipeline(st, UI_STRINGS[st.lang]["win_mode_on" if hwnd else "win_mode_off"])
+        return
+
     if hwnd and not st.want_dda:
         st.display.alert(UI_STRINGS[st.lang]["win_fail"])
         print("[main] window mode needs capture in the worker "
@@ -390,6 +433,83 @@ def switch_window(st, hwnd: int) -> None:
     rect = window_frame_rect(hwnd) if hwnd else None
     st.follow_size = rect[2:] if rect else None
     rebuild_pipeline(st, note)
+
+
+def request_apply(st, scale: float, profile: str, params: dict, new_small=None) -> None:
+    """Queue a settings change for the loop to apply after its cooldown.
+
+    A slider dragged across its range must not restart the worker per step, so the request is
+    stored and main's deferred-apply block calls do_restart once the cooldown has passed.
+    """
+    st.pending_apply = (float(scale), profile, params, new_small)
+    print(f"[main] settings queued: work_scale {float(scale):.2f}, profile {profile!r}")
+
+
+def apply_gpu(st, index: int) -> None:
+    """Run the worker on a different GPU: environment, then a restart."""
+    index = int(index)
+    os.environ["NS_GPU"] = str(index)
+    if isinstance(st.cfg, dict):
+        st.cfg["gpu"] = index
+    print(f"[main] GPU {index} selected - restarting the worker")
+    st.last_restart = time.monotonic()
+    teardown_pipeline(st)
+    rebuild_pipeline(st, "GPU")
+
+
+def do_restart(st, scale: float, profile: str, params: dict, new_small=None) -> None:
+    """Apply new settings by rebuilding the pipeline at the new work size.
+
+    The worker is built for one frame size and one set of parameters, so a settings change is a
+    restart rather than an update - the same reason switch_monitor and switch_window tear down.
+    """
+    st.work_scale = float(scale)
+    if isinstance(st.cfg, dict):
+        st.cfg["profile"] = profile
+    st.params = params
+    if new_small is not None:
+        st.nr_small = bool(new_small)
+        os.environ["NS_NR_SMALL"] = "1" if st.nr_small else "0"
+    st.work_w, st.work_h = _work_size(st.width, st.height, st.work_scale)
+    st.last_restart = time.monotonic()
+    print(f"[main] restarting at work_scale {st.work_scale:.2f} "
+          f"({st.work_w}x{st.work_h}), profile {profile!r}")
+    teardown_pipeline(st)
+    rebuild_pipeline(st, "settings")
+
+
+def _follow_size(st, label: str) -> None:
+    """Rebuild if the captured source's size changed under us.
+
+    A portal screen-cast is fixed at the size it was negotiated with, so in practice this only
+    fires if the source is recreated - but a monitor switch or a compositor scaling change would
+    otherwise leave the worker pushing one size and the display expecting another.
+    """
+    try:
+        size = st.capture.resolution
+    except Exception:
+        return
+    if not size or not size[0] or not size[1]:
+        return
+    width, height = int(size[0]), int(size[1])
+    if (width, height) == (st.width, st.height):
+        return
+    print(f"[main] {label} is now {width}x{height} "
+          f"(was {st.width}x{st.height}) - rebuilding")
+    st.width, st.height = width, height
+    st.work_w, st.work_h = _work_size(width, height, st.work_scale)
+    teardown_pipeline(st)
+    rebuild_pipeline(st, "resize")
+
+
+def follow_monitor(st) -> None:
+    """The captured screen changed size - rebuild if so."""
+    _follow_size(st, "capture")
+
+
+def follow_window(st) -> None:
+    """The captured window changed size - rebuild if so."""
+    _follow_size(st, "window")
 
 
 def apply_spout(st, enabled: bool) -> None:

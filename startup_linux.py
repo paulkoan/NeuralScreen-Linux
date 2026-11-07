@@ -103,9 +103,12 @@ def configure(st) -> None:
     if isinstance(monitor_cfg, str):
         # Resolve devicename to index
         resolved = None
-        for idx, name in list_monitors():
-            if name == monitor_cfg:
-                resolved = idx
+        for entry in list_monitors():
+            # list_monitors returns (index, width, height, devicename); the name is the last field
+            # and the index the first. This unpacked two values and would have raised ValueError
+            # on any config that named its monitor instead of numbering it.
+            if entry[-1] == monitor_cfg:
+                resolved = entry[0]
                 break
         if resolved is None:
             print(f"[main] monitor {monitor_cfg!r} not connected - using 0",
@@ -124,7 +127,16 @@ def configure(st) -> None:
     st.lang = str(st.cfg["lang"])
 
     # Real monitor resolution overrides config
-    st.capture = ScreenCapture(monitor_idx=st.monitor)
+    # Which thing the portal is asked for. "window" is what a game stream wants - the compositor
+    # only pays for the window's pixels, and the desktop around it is not being watched - and it
+    # is also the only way to get a window picker: a monitor request offers screen/workspace/region
+    # and no window at all.
+    from minimal.portal import SOURCE_MONITOR, SOURCE_WINDOW
+    capture_source = str(st.cfg.get("capture_source", "screen")).strip().lower()
+    st.capture = ScreenCapture(
+        monitor_idx=st.monitor,
+        source=SOURCE_WINDOW if capture_source == "window" else SOURCE_MONITOR,
+        width=st.width, height=st.height)
     st.mon_w, st.mon_h = st.capture.resolution if hasattr(st.capture, 'resolution') else (0, 0)
     # If the capture doesn't expose resolution directly, try grabbing once
     if st.mon_w == 0 or st.mon_h == 0:
@@ -153,6 +165,28 @@ def configure(st) -> None:
     st.display: Display | None = None
     st.hotkeys: list[tuple] | None = None
     st.recorder: VideoRecorder | None = None
+
+
+def _register_hotkeys(st, register) -> list[str]:
+    """Register every binding; returns the combos that took.
+
+    `hotkey_bindings` maps an id to (mods, keysym, command, name) - the name is the string the
+    registrar parses. Iterating `.items()` and passing the value straight through handed it a
+    tuple, which is what the first v1 run that got this far crashed on.
+    """
+    def _make_callback(command: str):
+        def _cb(_name):
+            st.tray_commands.put(command)
+        return _cb
+
+    registered: list[str] = []
+    for _id, (_mods, _keysym, command, combo) in st.hotkey_bindings.items():
+        try:
+            register(combo, _make_callback(command))
+            registered.append(combo)
+        except (ValueError, RuntimeError) as exc:
+            print(f"[main] hotkey {combo} failed: {exc}", file=sys.stderr)
+    return registered
 
 
 def bring_up(st) -> None:
@@ -189,6 +223,11 @@ def bring_up(st) -> None:
     # Display overlay
     st.display = Display(st.width, st.height,
                          fullscreen=bool(st.cfg["fullscreen"]))
+    print("[main] display ready")
+    # Show it now, before the first frame: the first grab can block until the compositor sends
+    # one, and a window that only appears after that looks like a program that never started.
+    st.display.reveal()
+    print("[main] output window shown - waiting for the first frame from the portal")
     st.display.set_lang(st.lang)
     st.startup_menu = bool(st.cfg.get("open_menu_on_start", True))
     st.split_pos = min(1.0, max(0.0, float(st.cfg.get("split", 0.0))))
@@ -220,22 +259,14 @@ def bring_up(st) -> None:
 
     # Build bindings using the cross-platform hotkeys module
     from hotkeys import build_bindings, describe as describe_hotkeys
-    from commands import COMMAND_MAP  # noqa: F401 — ensures commands are importable
+    # commands is imported at module scope by main_linux, so there is nothing to
+    # ensure here - and COMMAND_MAP never existed in it, so this was an ImportError
+    # waiting for the first run that got this far.
+    import commands  # noqa: F401
     st.hotkey_bindings = build_bindings(hotkey_overrides)
     st.hotkeys = []  # track registered combos
 
-    def _make_callback(cmd: str):
-        """Wrap a command string so the hotkey pushes it into the queue."""
-        def _cb(_name):
-            st.tray_commands.put(cmd)
-        return _cb
-
-    for cmd, combo in st.hotkey_bindings.items():
-        try:
-            register_global_hotkey(combo, _make_callback(cmd))
-            st.hotkeys.append(combo)
-        except (ValueError, RuntimeError) as exc:
-            print(f"[main] hotkey {combo} failed: {exc}", file=sys.stderr)
+    st.hotkeys = _register_hotkeys(st, register_global_hotkey)
 
     if st.hotkeys:
         print(f"[main] hotkeys registered: {', '.join(st.hotkeys)} "

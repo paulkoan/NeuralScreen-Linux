@@ -1,0 +1,10 @@
+{
+  "id": "r2026-11-07-motionsmall",
+  "entry": "minimal",
+  "args": ["--source", "synthetic", "--size", "2560x1440", "--headless", "--frames", "120",
+           "--shm", "--motion-guides", "--motion-small", "--worker-log",
+           "--save-after", "motionsmall-after.png"],
+  "timeout_s": 600,
+  "artifacts": ["motionsmall-after.png"],
+  "note": "Arm B: the same motion field at the optical-flow size. 320x180 float16 two-component is 230 KB against arm A's 14.7 MB, and the worker upscales it (FRAME_FLAG_MOTION_SMALL, protocol.py). That is 64x less to write, to cross the pipe and to upload to the GPU, and the live run above says the full-size field costs about 10ms a frame for it. --motion-small was marked NOT USABLE after it made the worker go silent for 60s and never answer frame 0 - but that was the PIPE path, measured before --shm existed; the frame and pixel channels are both shared memory now, so the question is open again and this run answers it. If the worker still goes silent the timeout catches it and arm A stands as the baseline. Judge it on three things: the run completes, motionsmall-after.png hashes equal to motionfull-after.png (a coarser field the worker upscales should land in the same place; a different hash means the upscale is not equivalent and the saving is not free), and the worker's proxy copy plus our send drop."
+}

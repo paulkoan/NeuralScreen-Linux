@@ -2,12 +2,42 @@
 
 > ## 🚧 Linux port — this is the upstream Windows README below
 >
-> **Do not start with `python main_linux.py`.** That is the legacy port entry
-> point; it needs a `config.json` that is not in this repository and will fail
-> with `FileNotFoundError`, which tells you nothing useful.
+> **v1 is `./neuralscreen.sh`.** It runs the MVP (`minimal/`) — portal capture of one
+> window, the native port as the worker, an SDL window showing the result — with global
+> hotkeys. That pipeline is the one that has worked for weeks; `main_linux.py` is the
+> Windows-derived GUI whose Linux backend was never finished, and v1 does not need it.
 >
-> The active work is the MVP in **[`minimal/`](minimal/README.md)**, with the
-> plan and milestones in **[`docs/MVP-PLAN.md`](docs/MVP-PLAN.md)**.
+> ```bash
+> ./neuralscreen.sh                 # 2560x1440, one window
+> ./neuralscreen.sh --frames 300    # extra flags go to minimal
+> ```
+>
+> It needs the port binary at `/opt/neuralscreen/port/build/dlss5vk` and the model at
+> `/opt/neuralscreen/model` (override with `NEURALSCREEN_PORT_BIN` /
+> `NEURALSCREEN_MODEL_DIR`), and it must run in the graphical session: the capture is a
+> portal screen-cast, so pick the game window when the dialog appears.
+>
+> Global hotkeys read `/dev/input/event*`, which needs read access — on Arch that is the
+> `input` group: `sudo usermod -aG input "$USER"`, then log out and back in. Without it the
+> launcher falls back to the X11 grab (which cannot see a Wayland window's keys) and says so.
+>
+> **Ctrl+Alt+1** toggles the enhancement live — that is the A/B — and **Ctrl+Alt+Q** quits.
+> Both are global, so they work while the game has focus. Esc or `q` also quits, but the
+> output window has to be focused for that.
+>
+> On exit the run prints how far the pass moved the picture (per-channel MAD, maximum, PSNR, and
+> the share of pixels that changed by more than 2 and 8 levels) and the GPU's utilisation over the
+> run. Both are diagnostics; neither changes what the pass does.
+>
+> A badge in the top-left corner says **ON** in green while the pass runs and **OFF** in grey
+> when it is bypassed. The renderer draws it after uploading the frame, so a saved PNG is the
+> pass's output and nothing else. `--no-indicator` hides it, `--indicator` forces it on.
+>
+> `python main_linux.py` on its own still needs a `config.json` and will fail
+> with `FileNotFoundError`; that is why the launcher exists.
+>
+> The measurement harness is the MVP in **[`minimal/`](minimal/README.md)**, with
+> the plan and milestones in **[`docs/MVP-PLAN.md`](docs/MVP-PLAN.md)**.
 >
 > ```bash
 > ls native/nvngx_dlssnr.dll    # 159 MB, gitignored — must be supplied

@@ -1,0 +1,144 @@
+usage: minimal [-h] [--frames FRAMES] [--monitor MONITOR] [--bgra]
+               [--source {auto,screen,wayland,window,synthetic,image}]
+               [--capture-no-scale] [--size WxH] [--input-image PATH]
+               [--param NAME=VALUE] [--work-scale F] [--hotkeys] [--indicator]
+               [--no-indicator] [--ab-alternate SECONDS] [--report-gpu]
+               [--report-diff] [--save-diff PATH] [--diff-gain DIFF_GAIN]
+               [--windowed] [--prefetch] [--worker-env KEY=VALUE] [--bypass]
+               [--send-ahead N] [--frame-timeout S] [--writev] [--shm]
+               [--motion] [--no-motion] [--motion-guides] [--motion-small]
+               [--worker-log] [--headless] [--save-before PATH]
+               [--save-after PATH] [--list-monitors]
+
+NeuralScreen MVP — capture, DLSS5 neural pass, display.
+
+options:
+  -h, --help            show this help message and exit
+  --frames FRAMES       stop after N frames (0 = until the window is closed)
+  --monitor MONITOR     screen index (default 0)
+  --bgra                hand the synthetic card over in BGRA order, the way a
+                        capture card does, so the handoff can be timed without
+                        a screen
+  --source {auto,screen,wayland,window,synthetic,image}
+                        where frames come from: auto (portal on Wayland, X11
+                        grab otherwise), screen, wayland, window (the portal
+                        asks for ONE window instead of a screen — cheaper, and
+                        what a game stream wants), a generated test card, or a
+                        still image
+  --capture-no-scale    drop videoscale from the capture pipeline. The chain
+                        measures 33% of a core at 2560x1440 — about 42ms of
+                        CPU per frame — and this removes one 14.7MB pass from
+                        it. The risk is caps negotiation failing when the
+                        portal's reported size and the stream's disagree
+                        (fractional scaling), which is loud rather than silent
+  --size WxH            force the frame size for sources that can make one
+                        (synthetic). Lets the 2560x1440 matrix be measured
+                        without the portal and so without a dialog — which is
+                        how the 1440p cost gets decomposed instead of guessed.
+                        Required by --source window: a window stream reports
+                        no size, and frames are scaled to this
+  --input-image PATH    the frame to replay with --source image
+  --param NAME=VALUE    override an NR parameter; repeatable. Known:
+                        auto_mask, intensity, local_structure, local_tone,
+                        preset, profile, skin_structure, style, ui_correction.
+                        e.g. --param intensity=0 to dial the effect off
+  --work-scale F        fraction of the frame the network works on, 0<F<=1
+                        (default 1.0). The result is scaled back to full size,
+                        so this buys frame rate without shrinking the output:
+                        the cost falls with the square of the scale. Lower it
+                        if the pass is too slow, at the cost of the effect's
+                        own resolution
+  --hotkeys             register global hotkeys: Ctrl+Alt+1 toggles the
+                        enhancement, Ctrl+Alt+Q quits. Global, so they work
+                        while the game window has focus; needs a running X
+                        server (XWayland is enough)
+  --indicator           draw an ON/OFF badge in the top-left corner of the
+                        output window (default: on unless --headless). It is
+                        drawn by the renderer, not into the frame, so a saved
+                        PNG stays clean
+  --no-indicator        do not draw the badge
+  --ab-alternate SECONDS
+                        flip the enhancement on and off every SECONDS. An A/B
+                        with no keypress, which matters because a global X
+                        grab does not see keys pressed in a Wayland-native
+                        window
+  --report-gpu          sample GPU utilisation for the life of the run and
+                        report it with the timings. A frame that is slow while
+                        the GPU is idle is one better code could fix; one that
+                        is slow at 98% means the work has to come out
+  --report-diff         print how far the pass moved the picture: per-channel
+                        MAD, maximum, PSNR and the share of pixels that
+                        changed by more than 2 and 8 levels
+  --save-diff PATH      write the difference as a PNG, amplified so a one-
+                        level change is visible (see --diff-gain)
+  --diff-gain DIFF_GAIN
+                        amplification for --save-diff (default 8: 128 is no
+                        change, +/-8 levels maps to the full range at gain 16)
+  --windowed            draw in a window instead of fullscreen
+  --prefetch            drain the frame source on its own thread and always
+                        process the newest frame. A screencast whose client
+                        stops consuming stops producing, so without this the
+                        capture leg absorbs a producer round trip every frame
+                        (measured: 238ms per grab in the loop against 13ms
+                        with nothing else running). Costs a busy core
+  --worker-env KEY=VALUE
+                        set an environment variable in the worker process
+                        only. Repeatable. The policy's [entry.env] applies to
+                        every run of that entry, so this is how one run turns
+                        on a port-side switch (DLSS5VK_SERVE_SPLIT=1, a memory
+                        setting) without editing the policy or affecting other
+                        runs
+  --bypass              NR OFF: the worker skips NGX entirely and hands back
+                        the frame it was given. A truer control than --param
+                        intensity=0, which may still run the network at zero
+                        strength: this one separates the network from the
+                        texture upload/readback when hunting the per-frame
+                        cost
+  --send-ahead N        keep N frames in flight instead of sending one and
+                        waiting for it (default 1 = the original serial loop).
+                        The worker fed with no client at all runs 42.5fps at
+                        1440p against the pipeline's 9.1, and the
+                        serialisation is most of that difference
+  --frame-timeout S     how long to wait for a reply before calling it a stall
+                        (default 60s). A stall stops the run and names itself
+                        rather than hanging: the worker answers in order, so
+                        after a missing reply every later reply is
+                        unattributable
+  --writev              hand each frame to the kernel in one scatter-gather
+                        write instead of four separate ones. Each separate
+                        write can block on a full pipe while the worker polls
+                        with a Sleep(8), and the loop pays a fixed ~45ms a
+                        frame in send at every frame size — while the worker's
+                        own timestamps say it delivers a 64KB frame in 0.21ms
+  --shm                 put the frame in a shared section for the worker to
+                        read, and take the result pixels from another: 14.7MB
+                        each way at 2560x1440 that otherwise go down a pipe.
+                        The native worker implements both; the Wine worker
+                        refuses and frames stay on the pipe
+  --motion              send the motion field after all. Not a quality
+                        decision - the field is all zeros and the native
+                        worker's no-field path is byte-identical - but the
+                        Wine worker derives flow from it, so the NGX arm needs
+                        this on. Off by default: 14.7MB and ~5ms a frame at
+                        2560x1440 for bytes that change no pixel
+  --no-motion           do not send the motion field (the default; kept so
+                        existing run requests and scripts still parse)
+  --motion-guides       estimate the motion field with guides.py (DIS optical
+                        flow on a downscaled gray frame, noise floor applied)
+                        instead of sending zeros. Implies the field goes out,
+                        so the default no-motion path is off for that run.
+                        Needs OpenCV (cv2) on this machine.
+  --motion-small        send the motion field at the optical-flow size
+                        (320x180) and let the worker upscale it. NOT USABLE in
+                        the pipe path: measured on the box, the worker goes
+                        silent for 60s and never answers frame 0. Kept for the
+                        wire format and the tests; see docs/M0-FINDINGS.md
+  --worker-log          echo the worker's stderr as it arrives — its warm-up
+                        and its per-frame timings — instead of only printing
+                        it when a run fails, which is why a slow first frame
+                        was invisible
+  --headless            run without presenting (for tests and CI)
+  --save-before PATH    write the frame the pass was given, from the same
+                        iteration as --save-after, as a PNG
+  --save-after PATH     write the last processed frame as a PNG
+  --list-monitors       print the screens and exit

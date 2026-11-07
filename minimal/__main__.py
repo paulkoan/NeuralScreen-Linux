@@ -95,6 +95,33 @@ def build_parser() -> argparse.ArgumentParser:
                         "the cost falls with the square of the scale. Lower it "
                         "if the pass is too slow, at the cost of the effect's "
                         "own resolution")
+    p.add_argument("--hotkeys", action="store_true",
+                   help="register global hotkeys: Ctrl+Alt+1 toggles the enhancement, "
+                        "Ctrl+Alt+Q quits. Global, so they work while the game window has "
+                        "focus; needs a running X server (XWayland is enough)")
+    p.add_argument("--indicator", dest="indicator", action="store_true", default=None,
+                   help="draw an ON/OFF badge in the top-left corner of the output window "
+                        "(default: on unless --headless). It is drawn by the renderer, not into "
+                        "the frame, so a saved PNG stays clean")
+    p.add_argument("--no-indicator", dest="indicator", action="store_false",
+                   help="do not draw the badge")
+    p.add_argument("--ab-alternate", type=float, default=0.0, metavar="SECONDS",
+                   help="flip the enhancement on and off every SECONDS. An A/B with no keypress, "
+                        "which matters because a global X grab does not see keys pressed in a "
+                        "Wayland-native window")
+    p.add_argument("--report-gpu", action="store_true",
+                   help="sample GPU utilisation for the life of the run and report it with the "
+                        "timings. A frame that is slow while the GPU is idle is one better code "
+                        "could fix; one that is slow at 98%% means the work has to come out")
+    p.add_argument("--report-diff", action="store_true",
+                   help="print how far the pass moved the picture: per-channel MAD, maximum, "
+                        "PSNR and the share of pixels that changed by more than 2 and 8 levels")
+    p.add_argument("--save-diff", metavar="PATH",
+                   help="write the difference as a PNG, amplified so a one-level change is "
+                        "visible (see --diff-gain)")
+    p.add_argument("--diff-gain", type=float, default=8.0,
+                   help="amplification for --save-diff (default 8: 128 is no change, +/-8 levels "
+                        "maps to the full range at gain 16)")
     p.add_argument("--windowed", action="store_true",
                    help="draw in a window instead of fullscreen")
     p.add_argument("--prefetch", action="store_true",
@@ -255,14 +282,29 @@ def main(argv: list[str] | None = None) -> int:
                         # Ask for them only when something consumes them: a window to
                         # draw or a PNG to write. A headless benchmark that saves
                         # nothing should not pay for a channel it throws away.
-                        want_pixels=(not args.headless) or bool(args.save_before or args.save_after),
+                        want_pixels=((not args.headless) or bool(args.save_before or args.save_after)
+                                     or bool(args.report_diff or args.save_diff)),
                         frame_timeout=args.frame_timeout,
                         writev=args.writev,
                         worker_log=args.worker_log,
-                        worker_env_extra=worker_extra)
+                        worker_env_extra=worker_extra,
+                        indicator=args.indicator,
+                        report_diff=args.report_diff,
+                        save_diff=args.save_diff,
+                        diff_gain=args.diff_gain,
+                        ab_alternate=args.ab_alternate,
+                        report_gpu=args.report_gpu)
     except (CaptureError, DisplayError) as exc:
         print(f"startup failed: {exc}", file=sys.stderr)
         return 2
+
+    if args.hotkeys:
+        # Which backend is decided in hotkeys_backend: on Wayland the X11 grab cannot see a
+        # Wayland window's keys, and it fails *silently* — that is why Ctrl+Alt+1 registered and
+        # then did nothing. The callbacks only enqueue; the loop owns the state, and a toggle
+        # applied from a reader thread would race the frame it is building.
+        import hotkeys_backend
+        hotkeys_backend.install(pipe)
 
     print(f"source {args.source}"
           + (f" ({args.input_image})" if args.source == "image" else "")
@@ -311,6 +353,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"timing: {'  '.join(parts)}   "
               f"(mean {1000 * t['total']:.1f}ms/frame, {t['fps']:.1f} fps; "
               f"median {1000 * med:.1f}ms/frame, {steady:.1f} fps steady)")
+    # An A/B run alternates, and a bypassed frame runs no network at all, so the frame time above
+    # is a mixture of two different machines. Said loudly, because it reads as a rate the pipeline
+    # can hold, and with the pass on it is roughly half of what the mixture suggests.
+    modes = summary.get("modes") or {}
+    if modes.get("alternate") and modes.get("bypassed_frames"):
+        print(f"          ! the A/B was on (every {modes['alternate']:g}s): "
+              f"{modes['enhanced_frames']} frames enhanced at {modes['enhanced_fps']:.1f} fps, "
+              f"{modes['bypassed_frames']} bypassed at {modes['bypassed_fps']:.1f} fps. "
+              f"The frame time above is both modes averaged - the enhanced rate is the one that "
+              f"describes the product. Run with --ab-alternate 0 to measure throughput.")
     # The worker's own timestamps, which know nothing of ours. Printed beside the
     # timing line on purpose: if these two disagree about the same run, the
     # timing line is what is wrong.
@@ -371,13 +423,13 @@ def main(argv: list[str] | None = None) -> int:
     # a slow grab is the compositor if the wait dominates, and us if the read
     # does.
     if "capture_wait" in t:
-        pipe = t.get("capture_pipe_bytes")
+        pipe_bytes = t.get("capture_pipe_bytes")
         # The threshold moves with the buffer: a drained frame is 14.7 MB at 2560x1440, and
         # the floor is what the pipe can carry. 64 KiB hosts give ~19 ms, 1 MiB ~9 ms. Naming
         # the buffer the kernel granted keeps the number from being read against the wrong one.
-        if pipe:
-            kib = pipe // 1024
-            floor = {65536: 19.0, 1048576: 9.0}.get(pipe, 0.3 * kib / 14.7)
+        if pipe_bytes:
+            kib = pipe_bytes // 1024
+            floor = {65536: 19.0, 1048576: 9.0}.get(pipe_bytes, 0.3 * kib / 14.7)
             note = (f"read near {floor:.0f}ms at 2560x1440 with a {kib} KiB pipe means we are "
                     f"draining a stocked pipe; far above that means the compositor was "
                     f"dribbling")
@@ -386,9 +438,9 @@ def main(argv: list[str] | None = None) -> int:
                     "that means the compositor was dribbling")
         print(f"capture split: wait {1000 * t['capture_wait']:.1f}ms  "
               f"read {1000 * t['capture_read']:.1f}ms   ({note})")
-    # What the prefetch drain saw. The frame age is the honest latency the
-    # capture adds: with old frames dropped it stays near one frame time rather
-    # than growing with a queue.
+    # What the prefetch drain saw. The frame age is the latency the capture
+    # adds, for real: with old frames dropped it stays near one frame time
+    # rather than growing with a queue.
     pf = summary.get("prefetch")
     if pf:
         mean = pf.get("age_mean")
@@ -417,6 +469,8 @@ def main(argv: list[str] | None = None) -> int:
         # a measurement that quietly looks like zero.
         print(f"capture cpu: NOT measured — {cc['reason']} "
               f"(pid {cc.get('pid')})")
+    if pipe.gpu is not None:
+        print(pipe.gpu.describe())
     if args.save_before:
         print(f"  before -> {args.save_before}")
     if args.save_after:
