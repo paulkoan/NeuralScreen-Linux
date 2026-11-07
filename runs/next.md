@@ -164,10 +164,39 @@ this section asks only what is still being asked.
 
 **Needs a decision (3):**
 
-* **The mid-frame's price** — measured 2026-11-08 (`r2026-11-08-midslot-run` against -midslot):
-  one generated mid costs **~+42 ms** per iteration at 1440p, so interpolation lowers the
-  presented rate to **~26/s** (14.4 computed + 11.9 generated) from **37.2/s** computed-only. Keep
-  paying it, park the route, or spend on the mid's own 14.7 MB readback first - say which.
+* **The mid-frame's price** — measured 2026-11-08 (`r2026-11-08-midslot-run` against `-midslot`,
+  both 300 frames 1440p shm --motion; the only difference is --interpolate). The mid-frame works:
+  299 of 300 frames carried one (frame 0 has no history), all 299 arrived, all 299 were presented,
+  and both PNGs came back. It also **loses**: one generated mid costs **+42.4 ms** per iteration
+  (median 26.9 -> 69.3 ms), so interpolation takes the presented rate to **~26/s** (14.4 computed +
+  11.9 generated) from **37.2/s** computed alone. Presenting more frames is slower than presenting
+  fewer - the route only wins if the mid costs a fraction of a computed frame, and it currently
+  costs 2.2x one.
+
+  Where the 42 ms goes, from the run's own numbers:
+  * **+~13 ms in the worker.** Its per-frame readback line reads 11.7-13.7 ms with a mid against
+    3.8 without, for a second 14.7 MB transfer that should cost about what the first does. The
+    cause is in `Context::download`: each call is its own command buffer, its own submit and its own
+    **fence wait**, into one shared staging buffer - so two downloads in a frame are two full
+    round trips, serialised, and the mid's is issued first, so its fence absorbs the frame's GPU
+    completion and the real frame's then looks free. Combining the two into one submit and one
+    fence is a contained change and worth a few ms.
+  * **+~28 ms in the client's `recv`** (median 18.3 -> 46.2 ms): the second reply, the second
+    copy out of its slot (measured copy 1.4 -> 2.3 ms) and the handoff for a frame that is
+    published on a second path.
+  * **+~13 ms in presentation**: the ~8 ms hold that makes the mid visible at all plus a second
+    present per iteration (display 0.0 -> 2.9 ms mean). This one is not removable by tuning; it is
+    what showing two frames instead of one costs.
+
+  Recommendation: **park the route.** The avoidable piece is the readback (a contained change,
+  maybe 5-8 ms of the 13), and even free it leaves ~29 ms against a mid that must cost near zero
+  to beat 37.2/s. Removing it properly means the GPU writing the mid straight into the client's
+  shared section, with no CPU round trip at all - a real project, not a flag, and not worth
+  starting to serve a route that is 11/s behind the current one. The cheaper presented-fps levers
+  are the pass itself (12 ms) and the 1.7x implementation gap against NGX. Say if you want the
+  GPU-direct publish scoped instead, or a downscaled mid (the mid is a blend of two real frames, so
+  sending it at half resolution would cut the transfer 4x) - both are product calls.
+
 
 * **Reply format / pixel channel** — open, but only if 60 *computed* fps at 1440p is still the goal.
   The original trade was FP8's quality loss against ~4-6 ms of payload. Re-priced under shm (be/bg,
