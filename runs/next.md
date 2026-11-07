@@ -10,16 +10,26 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* Frame generation is AUTHORISED (2026-11-07, user: "do both") - it was an "ask first" item in
-  section 2 because it needs a decision on the price. It has one now. State of it: the CLIENT half
-  is built and tested (`FRAME_FLAG_WANT_INTERP`, `OUT_FLAG_INTERPOLATED`, the mid-frame routed to
-  its own map rather than the reply queue, presented mid-then-real with a hold, an `interp` stage
-  and a presented-count line; 5 tests, docs/interpolation.md carries the contract and the
-  arithmetic). The PORT half is not written: `serve.cpp` must generate the frame, and `OUTS` is one
-  slot with a seqlock, so a mid written before the real frame can be overwritten before the client
-  copies it - a dropped mid rather than a corrupt one, but the rate would fall silently. Needs a
-  second output slot or an ack. `port-build` is a policy entry, so the runner can compile and test
-  it on the box; this does NOT need a person.
+* learned: the port half of frame generation is WRITTEN, and the second slot with it (2026-11-08
+  tick). `serve.cpp` + `shaders/mid_warp.comp` now generate the mid-frame the client half was
+  waiting for: `mid(pixel) = historySample(pixel + 0.5 + 0.5 * motion)` - the history the composite
+  already reads, at half the offset, through the same five-tap reconstruction and the same byte
+  rounding - and where the half-motion position leaves the valid rectangle it publishes the pixel
+  itself, which is "no interpolation here" rather than a smear along the border. The single-slot
+  hazard is gone by construction: the client creates `<pixel channel name>m` beside the pixel
+  channel and reads whichever slot the reply's `OUT_FLAG_INTERPOLATED` bit points at, and the
+  worker opens that name when it gets `OUTS` and sends no mid-frames at all if the section is
+  absent - so an old client and an old worker each keep exactly the behaviour they had. Two runs
+  are queued, build then measure: `r2026-11-08-midslot-build` (the stamp must name the current
+  patch, not `088280e62d50`, and must read 16 shader modules / 78 PTX kernels - there is no glslang
+  on the tick's box, so that build is the new shader's first compile) and `r2026-11-08-midslot`
+  (300 frames, 1440p, shm, `--motion --interpolate`). Read the worker's "N generated mid-frame(s)
+  sent, M request(s) answered without one, X ms mean per mid" against the ~299 that ask, and the
+  client's presented count against N. NOT verified: the shader has never been compiled and no
+  mid-frame's picture has been seen - a wrong warp is a picture, not a number, so a live session
+  is where that gets looked at, and it needs the developer at the box. Open after it: the field's
+  320x180 resolution, occlusion, latency and the price (docs/interpolation.md, points 2-4). Nothing
+  else queues this tick.
 
 * The client side is CLOSED as a source of waste - and the 8 ms that looked like waste was our own
   arithmetic error. Comparing like with like, `r2026-11-08-recsplit` reads client recv **mean 29.6 /
