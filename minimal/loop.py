@@ -195,6 +195,10 @@ class Pipeline:
         # reported as a stage.
         self.interp_pace = max(0.0, float(interp_pace))
         self.interp_shown = 0
+        # The last generated mid-frame, kept so --save-mid can write it. None means none arrived -
+        # which is a normal outcome (a worker that does not know the flag replies once), and is
+        # reported as such rather than as a failure.
+        self.last_mid = None
         # Split by mode. A bypassed frame runs no network, so its frame time is a different
         # animal from an enhanced frame's; averaging them yields a rate that describes neither.
         # That is how a summary read "26.45 fps steady" off a pipeline that cannot do 26 fps with
@@ -415,6 +419,12 @@ class Pipeline:
             if self.interpolate:
                 mid = self.worker.take_interpolated(index)
                 if mid is not None:
+                    # Kept for --save-mid. The mid-frame is the one output of this path that no
+                    # other artifact shows: --save-after saves a real frame, and a wrong warp is a
+                    # picture rather than a number, so without this the only way to look at the
+                    # thing being built is to sit in front of the screen while it runs.
+                    self.last_mid = mid
+
                     def _present_mid():
                         self.display.show(mid)
                         if self.interp_pace > 0:
@@ -513,7 +523,8 @@ class Pipeline:
         return getattr(self.capture, "pipeline_pid", None)
 
     def run(self, frames: int = 0, save_before: str | None = None,
-            save_after: str | None = None, on_frame=None) -> dict:
+            save_after: str | None = None, save_mid: str | None = None,
+            on_frame=None) -> dict:
         """Run the loop. frames=0 means until quit/EOF.
 
         Returns a summary dict — the caller (or a test) can assert on it.
@@ -593,6 +604,16 @@ class Pipeline:
         if save_after and last_after is not None:
             # The worker always answers in RGBA, whatever went in.
             _save_rgba(save_after, last_after, bgra=False)
+        if save_mid and self.last_mid is not None:
+            # The last generated mid-frame, same bytes on the wire as a real frame. Comparing it
+            # against --save-after is how a wrong warp is found without a person watching: a mid
+            # that equals the frame before it is not interpolating, and one that equals the frame
+            # after it is not warping either.
+            _save_rgba(save_mid, self.last_mid, bgra=False)
+        elif save_mid:
+            print(f"  mid    -> not saved: no generated mid-frame arrived in this run "
+                  f"(--interpolate asks for one, but the worker sends none unless it was built "
+                  f"with the mid path and the client asked for pixels)", flush=True)
 
         timing = self.timing_summary()
         return {
@@ -865,7 +886,8 @@ def _save_rgba(path: str, frame: np.ndarray, *, bgra: bool = False) -> None:
 
 def run(frames: int = 0, monitor: int = 0, fullscreen: bool = True,
         headless: bool = False, save_before: str | None = None,
-        save_after: str | None = None) -> dict:
+        save_after: str | None = None, save_mid: str | None = None) -> dict:
     """Convenience wrapper used by __main__ and the integration tests."""
     pipe = Pipeline(monitor=monitor, fullscreen=fullscreen, headless=headless)
-    return pipe.run(frames=frames, save_before=save_before, save_after=save_after)
+    return pipe.run(frames=frames, save_before=save_before, save_after=save_after,
+                    save_mid=save_mid)

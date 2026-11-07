@@ -223,9 +223,33 @@ def build_parser() -> argparse.ArgumentParser:
                         "iteration as --save-after, as a PNG")
     p.add_argument("--save-after", metavar="PATH",
                    help="write the last processed frame as a PNG")
+    p.add_argument("--save-mid", metavar="PATH",
+                   help="write the last generated mid-frame as a PNG. Implies asking for pixels, "
+                        "because a mid-frame IS a pixel reply (the worker skips it when the "
+                        "caller wants none). Without this, --save-after writes a real frame and "
+                        "the mid-frame — the point of the flag — is never visible in any artifact, "
+                        "so a wrong warp can only be seen by watching the screen")
     p.add_argument("--list-monitors", action="store_true",
                    help="print the screens and exit")
     return p
+
+
+def wants_pixels(args) -> bool:
+    """Does this run need the worker's pixels back?
+
+    Pixels cost the worker a 14.7MB readback plus a 14.7MB reply, so they are asked for only
+    when something consumes them: a window to draw, a PNG to write, a diff to report. A
+    headless benchmark that saves nothing should not pay for a channel it throws away.
+
+    `--interpolate` belongs on this list and was missing from it. A generated mid-frame IS a
+    pixel reply - the port's midPath is `wantInterp && wantPixels` - so a headless run with
+    --interpolate asked for no pixels, got no mid-frames, and would have reported zero mids:
+    a null that reads as a broken feature rather than as a question nobody asked.
+    """
+    return bool((not args.headless)
+                or args.save_before or args.save_after or args.save_mid
+                or args.report_diff or args.save_diff
+                or args.interpolate)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -312,8 +336,7 @@ def main(argv: list[str] | None = None) -> int:
                         # Ask for them only when something consumes them: a window to
                         # draw or a PNG to write. A headless benchmark that saves
                         # nothing should not pay for a channel it throws away.
-                        want_pixels=((not args.headless) or bool(args.save_before or args.save_after)
-                                     or bool(args.report_diff or args.save_diff)),
+                        want_pixels=wants_pixels(args),
                         frame_timeout=args.frame_timeout,
                         writev=args.writev,
                         worker_log=args.worker_log,
@@ -357,7 +380,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         summary = pipe.run(frames=args.frames,
                            save_before=args.save_before,
-                           save_after=args.save_after)
+                           save_after=args.save_after,
+                           save_mid=args.save_mid)
     except KeyboardInterrupt:
         print("\ninterrupted", file=sys.stderr)
         pipe.close()
@@ -534,6 +558,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  before -> {args.save_before}")
     if args.save_after:
         print(f"  after  -> {args.save_after}")
+    if args.save_mid:
+        n = summary.get("interp_shown", 0)
+        if n:
+            print(f"  mid    -> {args.save_mid} ({n} generated frames arrived; the last one)")
+        else:
+            print(f"  mid    -> nothing written: asked for a mid-frame, none arrived "
+                  f"(the worker needs the mid path, and it only runs when the caller asks for "
+                  f"pixels - which this run now does)")
     return 0 if summary["frames_done"] > 0 else 4
 
 
