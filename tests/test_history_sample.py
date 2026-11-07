@@ -1,7 +1,7 @@
 """check_history_sample.py: the demo's reprojection and five-tap filter, checked as arithmetic.
 
 `serve`'s composite samples the history at the pixel itself, and the patch's header says why:
-no motion is handed to it. That is honest only while the demo's own reprojection and filter
+no motion is handed to it. That is valid only while the demo's own reprojection and filter
 reduce to it when the field is zero — and that reduction is the thing worth a checker, because
 it is the whole justification for the simpler expression that ships. HISTORY.md is what the
 definition is; this is where the definition's arithmetic is checked rather than asserted.

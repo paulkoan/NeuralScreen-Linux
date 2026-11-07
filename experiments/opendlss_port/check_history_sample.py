@@ -5,7 +5,7 @@
 
 `serve`'s composite sampled the history at the pixel itself while the path was handed no motion,
 and the patch's own header said why: "this path is handed no motion, so the reprojection is the
-identity". That was honest only while the demo's reprojection and filter reduce to it when the
+identity". That was valid only while the demo's reprojection and filter reduce to it when the
 motion field is zero, and this is where that reduction is checked rather than asserted. (The
 history half has since landed: shaders/composite_serve.comp carries the two, and
 check_composite.py is where that rendering of them is compared with the demo's.) The definition

@@ -1,10 +1,10 @@
-From 088280e62d5047a684d65df2a3fb2dcf84d5f9d1 Mon Sep 17 00:00:00 2001
+From 91c8a0c768c0900041c2b03e1317e9e3d0d82fa0 Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
  `serve` mode that speaks our worker protocol
 
-gcc 14 / glslang 16.6.0 build the whole thing: 15/15 shaders to SPIR-V, all 78 PTX
+gcc 14 / glslang 16.6.0 build the whole thing: 16/16 shaders to SPIR-V, all 78 PTX
 kernels, a dlss5vk that runs the network on the GPU box (9.960 ms median at 2560x1440
 on a 4080 SUPER, 249 dispatches, PTX route).
 
@@ -98,26 +98,61 @@ tested on a machine with no GPU.
 Also lands: `--model`/`--shaders`/`--frames` for the mode, the warm record that pays the
 249-kernel JIT burst on a zero proxy where the log can say what the wait was, and a
 per-frame timing line on stderr.
+
+Generated mid-frames, the port half of 30-computed / 60-presented. A frame carrying
+FRAME_FLAG_WANT_INTERP is answered TWICE: the generated mid-frame first, then the frame
+that was sent, and the mid is told apart by a bit in the reply's ngx_result field, which
+carries nothing on the happy path - no new header, and the client (protocol.py) already
+routes it to its own map rather than the reply queue. The mid is the history the composite
+reads, at half the motion:
+
+    mid(pixel) = historySample(pixel + 0.5 + 0.5 * motion)      # shaders/mid_warp.comp
+
+same five-tap reconstruction, same publication arithmetic, same valid-rectangle rule, so
+the frame a person sees a refresh before the real one is the same kind of object. Where
+the half-motion position leaves the valid rectangle there is no history to carry and the
+shader publishes the pixel itself: "no interpolation here" rather than a smear along the
+border, the same case the composite skips its blend for. It is one dispatch, one 14.7MB
+readback and one more reply per frame, and the run reports how many were sent against how
+many requests went without one.
+
+The structural problem the client half left open is the reason there is a second pixel
+slot: OUTS is one section with a seqlock, so a mid written there would be overwritten by
+the real frame before the client had copied it - a lost mid rather than a corrupt one, but
+the presented rate would fall with nothing in either log to say why. The client creates
+`<pixel channel name>m` beside the pixel channel and reads whichever slot the reply's flag
+points at; the worker opens that name when it gets OUTS and sends no mid-frames at all if
+it is absent. So an old client and an old worker each keep exactly the behaviour they had:
+the flag is ignored by a worker that never heard of it (one reply, which the client treats
+as normal), and a client with no second slot gets no mid-frames.
+
+What this is NOT: the motion field is the client's 320x180 upscaled, which is fine for
+knowing roughly where history came from and visibly coarse for placing a whole frame by
+the vector, and the field carries no occlusion flag - so on real content small fast objects
+smear and disoccluded pixels fall back to no interpolation (docs/interpolation.md prices
+both, and the hold the client pays to present the mid).
 ---
- scripts/build_linux.sh       | 161 +++++++
- shaders/composite_serve.comp | 196 ++++++++
+ scripts/build_linux.sh       | 161 ++++++
+ shaders/composite_serve.comp | 196 +++++++
+ shaders/mid_warp.comp        | 146 ++++++
  shaders/preprocess.comp      |  26 +-
  shaders/proxy_expand.comp    |  35 ++
- src/kernels.cpp              |  54 ++-
- src/kernels.h                |  38 +-
+ src/kernels.cpp              |  79 ++-
+ src/kernels.h                |  48 +-
  src/main.cpp                 |  69 ++-
- src/nr_graph.cpp             | 109 +++--
+ src/nr_graph.cpp             | 109 ++--
  src/nr_graph.h               |   6 +-
  src/nr_model.cpp             |  11 +
  src/nr_model.h               |   6 +
- src/nr_schedule.cpp          | 235 ++++++++++
- src/nr_schedule.h            |  56 +++
- src/serve.cpp                | 871 +++++++++++++++++++++++++++++++++++
+ src/nr_schedule.cpp          | 235 +++++++++
+ src/nr_schedule.h            |  56 ++
+ src/serve.cpp                | 989 +++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |  71 ++-
  src/vk_context.h             |  23 +
- 16 files changed, 1908 insertions(+), 59 deletions(-)
+ 17 files changed, 2207 insertions(+), 59 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
+ create mode 100644 shaders/mid_warp.comp
  create mode 100644 shaders/proxy_expand.comp
  create mode 100644 src/nr_schedule.cpp
  create mode 100644 src/nr_schedule.h
@@ -492,6 +527,158 @@ index 0000000..2df5917
 +  pixels[id.y * pc.validWidth + id.x] =
 +      bytes.r | (bytes.g << 8u) | (bytes.b << 16u) | (255u << 24u);
 +}
+diff --git a/shaders/mid_warp.comp b/shaders/mid_warp.comp
+new file mode 100644
+index 0000000..3fe3f91
+--- /dev/null
++++ b/shaders/mid_warp.comp
+@@ -0,0 +1,146 @@
++#version 460
++// The generated mid-frame: the previous published frame, carried along the client's own
++// motion field by a fraction of a frame - src/serve.cpp passes 0.5, which is the frame
++// between the one that was published last and the one being served now.
++//
++//   mid(pixel) = historySample(pixel + 0.5 + 0.5 * motion)
++//
++// where `history` is the same surface the composite reads for the real frame (the frame
++// this one published last, expanded by proxy_expand.comp) and `historySample` is the
++// demo's five-tap reconstruction, spelled out in composite_serve.comp. The arithmetic is
++// deliberately the composite's own: the mid-frame's only claim is that it is the history
++// the composite already warps, at half the offset, so the picture a person sees between
++// two real frames is the same reconstruction in the same units.
++//
++// What this cannot do, and does not pretend to: the client's field is 320x180 upscaled,
++// which is fine for knowing roughly where history came from and visibly coarse for
++// placing a whole frame by the vector (docs/interpolation.md, "the field is too coarse
++// for warping"). Small fast objects smear. The field also carries no "is there a history
++// at that previous position" flag, so the one case this can read is a position that
++// leaves the valid rectangle - and there it publishes the pixel itself, which degrades to
++// no interpolation at that pixel rather than to a streak. Occlusion and disocclusion are
++// the client's product question, not this shader's.
++//
++// It writes RGBA8, the same publication arithmetic as the composite (truncate to the half
++// grid, then the byte rounding), so a mid-frame and a real frame are the same kind of
++// object on the wire and the client needs no special case for the bytes.
++layout(local_size_x = 8, local_size_y = 8) in;
++
++layout(push_constant) uniform Push {
++  uint proxyWidth;   // the history proxy's stride: both surfaces are at the valid size
++  uint validWidth;
++  uint validHeight;
++  uint pad0;
++  float midOffset;   // 0.5: half the frame's motion, i.e. the frame between this one and the last
++} pc;
++
++// The previous published frame, through the same proxy transform (binding 1 is the
++// composite's history binding, and this is the same buffer).
++layout(std430, binding = 1) readonly buffer History { vec4 history[]; };
++// The client's motion field: 2 x f16 per pixel, current -> previous, work-resolution
++// pixels, y down. Always bound; a caller that declared no field sends none, so this
++// reads zeros and the mid-frame is the published frame itself - no interpolation, and no
++// branch to get there.
++layout(std430, binding = 2) readonly buffer Motion { uint motionField[]; };
++layout(std430, binding = 7) writeonly buffer Out { uint pixels[]; };   // RGBA8, little-endian
++
++float truncateHalf(float value) {
++  uint bits = floatBitsToUint(value);
++  uint signBit = (bits >> 16u) & 0x8000u;
++  uint exponent = (bits >> 23u) & 0xffu;
++  uint mantissa = bits & 0x7fffffu;
++  uint halfBits;
++  if (exponent == 0xffu) halfBits = signBit | (mantissa != 0u ? 0x7e00u : 0x7c00u);
++  else {
++    int halfExponent = int(exponent) - 112;
++    if (halfExponent >= 31) halfBits = signBit | 0x7c00u;
++    else if (halfExponent <= 0)
++      halfBits = halfExponent < -10 ? signBit
++                                    : signBit | ((mantissa | 0x800000u) >> uint(14 - halfExponent));
++    else halfBits = signBit | (uint(halfExponent) << 10u) | (mantissa >> 13u);
++  }
++  return unpackHalf2x16(halfBits).x;
++}
++
++uint toByte(float value) {
++  return uint(clamp(floor(value * 255.0 + 0.5), 0.0, 255.0));
++}
++
++// One bilinear fetch of the history at `p`, a position in "pixel + 0.5" units. The history
++// is a buffer and not a sampled image, so this is the bilinear a texture unit would do,
++// with the same clamp to the valid rectangle. Identical to composite_serve.comp's; the two
++// have to agree, and check_composite.py transliterates the composite's copy.
++vec3 historyFetch(vec2 p) {
++  vec2 base = floor(p - 0.5);
++  vec2 t = (p - 0.5) - base;
++  ivec2 last = ivec2(int(pc.validWidth), int(pc.validHeight)) - 1;
++  ivec2 lo = clamp(ivec2(base), ivec2(0), last);
++  ivec2 hi = clamp(ivec2(base) + 1, ivec2(0), last);
++  vec3 topLeft = history[lo.y * pc.proxyWidth + lo.x].rgb;
++  vec3 topRight = history[lo.y * pc.proxyWidth + hi.x].rgb;
++  vec3 bottomLeft = history[hi.y * pc.proxyWidth + lo.x].rgb;
++  vec3 bottomRight = history[hi.y * pc.proxyWidth + hi.x].rgb;
++  return mix(mix(topLeft, topRight, t.x), mix(bottomLeft, bottomRight, t.x), t.y);
++}
++
++// The demo's five-tap Catmull-Rom reconstruction, at the composite's own spelling: the
++// four axis taps and the centre combined with the bilinear-weight trick, normalized by
++// the weight sum. The history is fed back into the network as well as shown, so a
++// bilinear fetch here would soften the picture frame over frame (the demo's own reason for
++// five taps), and the mid-frame has to be the same reconstruction or the two frames a
++// person sees a refresh apart would differ by the filter.
++vec3 historySample(vec2 position) {
++  vec2 valid = vec2(pc.validWidth, pc.validHeight);
++  vec2 base = floor(position - 0.5) + 0.5;
++  vec2 f = clamp(position - base, vec2(0.0), vec2(1.0));
++  vec2 square = f * f;
++  vec2 cube = f * square;
++  vec2 w0 = fma(f + cube, vec2(-0.5), square);
++  vec2 w1 = (cube * 1.5 - square * 2.5) + 1.0;
++  vec2 w3 = (cube - square) * 0.5;
++  vec2 w2 = ((1.0 - w0) - w1) - w3;
++  vec2 middle = w1 + w2;
++  vec2 low = clamp(base - 1.0, vec2(0.5), valid - 0.5);
++  vec2 center = clamp(base + w2 / middle, vec2(0.5), valid - 0.5);
++  vec2 high = clamp(base + 2.0, vec2(0.5), valid - 0.5);
++  vec3 left = historyFetch(vec2(low.x, center.y));
++  vec3 top = historyFetch(vec2(center.x, low.y));
++  vec3 mid = historyFetch(center);
++  vec3 bottom = historyFetch(vec2(center.x, high.y));
++  vec3 right = historyFetch(vec2(high.x, center.y));
++  float a = w0.x * middle.y; float b = w0.y * middle.x;
++  float c = middle.x * middle.y; float d = w3.y * middle.x; float e = w3.x * middle.y;
++  vec3 value = fma(left, vec3(a), top * b);
++  value = fma(mid, vec3(c), value);
++  value = fma(bottom, vec3(d), value);
++  value = fma(right, vec3(e), value);
++  return value * (1.0 / (e + (d + (c + (a + b)))));
++}
++
++void main() {
++  uvec2 id = gl_GlobalInvocationID.xy;
++  if (id.x >= pc.validWidth || id.y >= pc.validHeight) return;
++  uint index = id.y * pc.proxyWidth + id.x;
++  vec2 valid = vec2(pc.validWidth, pc.validHeight);
++  vec2 pixel = vec2(id);
++  // `pixel + 0.5 + motion` is where the composite reads history for this pixel; half of
++  // that motion is where it was half a frame ago.
++  vec2 position = pixel + 0.5 + pc.midOffset * unpackHalf2x16(motionField[index]);
++  vec3 value;
++  if (all(greaterThanEqual(position, vec2(0.5))) &&
++      all(lessThanEqual(position, valid - 0.5))) {
++    value = historySample(position);
++  } else {
++    // This pixel's position half a frame ago left the valid rectangle, so there is no
++    // history to carry: publish the pixel itself. That is "no interpolation here" rather
++    // than a smear along the border, and it is the same case the composite skips its
++    // blend for (its hasHistory).
++    value = historyFetch(pixel + 0.5);
++  }
++  // The publication arithmetic the composite uses, for the same reason: what leaves the
++  // device is the truncated, rounded byte the client will show.
++  value = vec3(truncateHalf(value.r), truncateHalf(value.g), truncateHalf(value.b));
++  uvec3 bytes = uvec3(toByte(value.r), toByte(value.g), toByte(value.b));
++  pixels[id.y * pc.validWidth + id.x] =
++      bytes.r | (bytes.g << 8u) | (bytes.b << 16u) | (255u << 24u);
++}
 diff --git a/shaders/preprocess.comp b/shaders/preprocess.comp
 index 97edc1b..b5f247b 100644
 --- a/shaders/preprocess.comp
@@ -589,7 +776,7 @@ index 0000000..23d1ef5
 +}
 \ No newline at end of file
 diff --git a/src/kernels.cpp b/src/kernels.cpp
-index 62bb8c3..d2b26b2 100644
+index 62bb8c3..602cb9c 100644
 --- a/src/kernels.cpp
 +++ b/src/kernels.cpp
 @@ -42,7 +42,8 @@ void check(bool condition, const char* message) {
@@ -598,11 +785,11 @@ index 62bb8c3..d2b26b2 100644
    for (const char* name : {"gemm_fp8", "gemm_f16", "ops", "window_normalize", "window_attend", "global_normalize",
 -                           "global_attend", "preprocess", "fused_block32", "qkv_attention", "gemm_mlp", "global_attention", "gemm_reduce"}) {
 +                           "global_attend", "preprocess", "fused_block32", "qkv_attention", "gemm_mlp", "global_attention",
-+                           "gemm_reduce", "composite_serve", "proxy_expand"}) {
++                           "gemm_reduce", "composite_serve", "proxy_expand", "mid_warp"}) {
      modules_[name] = context_.loadShaderModule(shaderDirectory + "/" + name + ".spv");
    }
  }
-@@ -498,16 +499,58 @@ void Kernels::preprocessFromProxy(VkCommandBuffer commands, const vk::Buffer& pr
+@@ -498,16 +499,83 @@ void Kernels::preprocessFromProxy(VkCommandBuffer commands, const vk::Buffer& pr
    struct Push {
      uint32_t fullWidth, fullHeight, validWidth, validHeight, sourceWidth, sourceHeight, seed;
      float autoMask, localTone, localStructure, skinStructure, style;
@@ -659,10 +846,35 @@ index 62bb8c3..d2b26b2 100644
 +           (validWidth + 7) / 8, (validHeight + 7) / 8, 1);
 +}
 +
++// The generated mid-frame: the history the composite reads, at `midOffset` of the motion.
++// Its own dispatch because the composite cannot produce it - the composite's position is
++// `pixel + 0.5 + motion` and this one is `pixel + 0.5 + midOffset * motion`, and only the
++// second is a frame that lies between two real ones. Same five-tap reconstruction, same
++// publication arithmetic, same valid-rectangle rule, so the two pictures a person sees one
++// refresh apart are the same kind of object (shaders/mid_warp.comp carries the reasoning).
++void Kernels::midWarpToRgba8(VkCommandBuffer commands, const vk::Buffer& history,
++                             const vk::Buffer& motion, const vk::Buffer& output,
++                             uint32_t proxyWidth, uint32_t validWidth, uint32_t validHeight,
++                             float midOffset) {
++  struct Push {
++    uint32_t proxyWidth, validWidth, validHeight, pad0;
++    float midOffset;
++  } push{proxyWidth, validWidth, validHeight, 0, midOffset};
++  const vk::Buffer* bindings[vk::kGenericBindings] = {};
++  bindings[1] = &history;
++  // Always bound, and zeroed by a caller that declared no field: the mid-frame is then the
++  // published frame itself rather than a warp that has nothing to warp by.
++  bindings[2] = &motion;
++  bindings[7] = &output;
++  dispatchLabel_ = "mid warp";
++  dispatch(commands, pipeline("mid_warp", {}, 0), bindings, &push, sizeof(push),
++           (validWidth + 7) / 8, (validHeight + 7) / 8, 1);
++}
++
  void Kernels::convertF32ToF16(VkCommandBuffer commands, const Activation& input, Activation& output) {
    check(input.format == Format::F32 && output.format == Format::F16, "convert formats");
    uint32_t count = input.rows * input.channels;
-@@ -793,6 +836,13 @@ uint32_t Kernels::ffnRowTiles(uint32_t channels) {
+@@ -793,6 +861,13 @@ uint32_t Kernels::ffnRowTiles(uint32_t channels) {
    return channels == 256 ? 3u : 4u;   // warps = E * rowTiles (<= 32); C=256: 24 warps at .maxnreg 80 keep one workgroup per SM
  }
  
@@ -677,10 +889,10 @@ index 62bb8c3..d2b26b2 100644
    check(a.input && a.input->format == Format::E4 && a.output && a.output->format == Format::E4, "PTX FFN formats");
    check(a.channels == 64 || a.channels == 128 || a.channels == 256, "PTX FFN channels");
 diff --git a/src/kernels.h b/src/kernels.h
-index 472bd36..cfa52b8 100644
+index 472bd36..d2eadf0 100644
 --- a/src/kernels.h
 +++ b/src/kernels.h
-@@ -77,10 +77,38 @@ class Kernels {
+@@ -77,10 +77,48 @@ class Kernels {
      uint32_t fullWidth, fullHeight, validWidth, validHeight, sourceWidth, sourceHeight, seed;
      bool autoMask;
      float localTone, localStructure, skinStructure, style;
@@ -716,10 +928,20 @@ index 472bd36..cfa52b8 100644
 +                        const vk::Buffer& output, uint32_t proxyWidth, uint32_t headWidth,
 +                        uint32_t validWidth, uint32_t validHeight, const vk::Buffer& motion,
 +                        const vk::Buffer* history = nullptr, float blendScale = 1.0f);
++  // The generated mid-frame (shaders/mid_warp.comp): the previous published frame carried
++  // along the same motion field by `midOffset` of a frame - 0.5 is the frame between the
++  // last one and this one - RGBA8 out, through the composite's own five-tap reconstruction
++  // and byte rounding. `history` is the composite's history buffer; a caller that declared
++  // no motion field passes the zeroed one, and the mid-frame is then the published frame
++  // itself. It exists because 30 computed / 60 presented needs a frame between two real
++  // ones, and this is the only part of it that has to happen on the device.
++  void midWarpToRgba8(VkCommandBuffer commands, const vk::Buffer& history, const vk::Buffer& motion,
++                      const vk::Buffer& output, uint32_t proxyWidth, uint32_t validWidth,
++                      uint32_t validHeight, float midOffset = 0.5f);
    void convertF32ToF16(VkCommandBuffer commands, const Activation& input, Activation& output);
    void quantize(VkCommandBuffer commands, const Activation& input, Activation& output);
    void downsample2x(VkCommandBuffer commands, const Activation& input, Activation& output, uint32_t inWidth,
-@@ -210,13 +238,19 @@ class Kernels {
+@@ -210,13 +248,19 @@ class Kernels {
    // w2 tile-major [e][4][32][32], w3 tile-major [K/32][K][32].
    static bool ptxFfnEnabled();
    static uint32_t ffnRowTiles(uint32_t channels);          // PTX expert FFN: 16-row tiles per workgroup (its chaining signals cover 16 * tiles rows)
@@ -1483,10 +1705,10 @@ index 0000000..8d64f1c
 +}  // namespace nr
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..a95f1bc
+index 0000000..e1cba4a
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,871 @@
+@@ -0,0 +1,989 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -1503,9 +1725,11 @@ index 0000000..a95f1bc
 +//
 +//   * No NGX upscaling. fullWidth/fullHeight must be 0 or the work size. The MVP sends
 +//     0 ("colour and work are the same size"); a --work-scale run is rejected here.
-+//   * No shared-memory channel. SHMI is answered ok=0, which is the documented
-+//     fallback: the client stays on sending frames down the pipe. (Worker.start passes
-+//     no shm at all, so the MVP never asks; this is for everything else that might.)
++//   * The shared-memory channels, both directions: SHMI carries the frame up (colour +
++//     motion, no pipe copy) and OUTS carries the pixels back, with OAK2/SACK acknowledgements.
++//     A refusal is answered ok=0, which is the documented fallback: the client stays on
++//     sending frames down the pipe and reading them from it. (Worker.start passes no shm at
++//     all, so a --no-shm run never asks; this is for everything else that might.)
 +//   * A history, reprojected and filtered. serve keeps the frame it published last, feeds it
 +//     back as lanes 7-9 (the network's temporal input) and blends it in the composite:
 +//
@@ -1528,6 +1752,22 @@ index 0000000..a95f1bc
 +//     (motionTex.z): a reprojection that leaves the valid rectangle is the one case readable
 +//     from the position, and those pixels skip the blend. Disocclusion is not visible to
 +//     either and stays the network's blend logit to reject.
++//
++//   * Generated mid-frames, when the caller asks for them. FRAME_FLAG_WANT_INTERP makes a
++//     frame answer TWICE: the generated mid-frame first, then the frame that was sent. The
++//     mid is the history the composite reads, at half the motion
++//
++//       mid(pixel) = historySample(pixel + 0.5 + 0.5 * motion)          # shaders/mid_warp.comp
++//
++//     so 30 computed frames a second can be presented as 60 (docs/interpolation.md has the
++//     contract and the arithmetic). It is told apart by a bit in the reply's ngx_result field
++//     (OUT_FLAG_INTERPOLATED, whose field is 0 on the happy path) and it goes to its own
++//     shared section - the pixel channel's name with an `m` on the end - because OUTS is one
++//     slot with a seqlock, and a mid written there would be overwritten by the real frame
++//     before the client had copied it. That loses a mid rather than corrupting one, but the
++//     rate would fall silently. No second slot, no history, or no pixels wanted means no mid:
++//     the client treats a missing mid as a normal reply, not a stall, and the run reports how
++//     many were sent and how many requests went without one.
 +//
 +// The proxy is the incoming frame's code values, f16-rounded. The network sees a
 +// display proxy (docs/frame.md) and an SDR video frame is already display-referred, so
@@ -1604,6 +1844,16 @@ index 0000000..a95f1bc
 +// 2560x1440 the field is 14.7MB of float16 - as much as the colour.
 +constexpr uint32_t kFrameFlagNoMotion = 0x40;
 +constexpr uint32_t kFrameFlagBgra = 0x80;   // the colour bytes are BGRA, not RGBA
++// Ask for a generated mid-frame (protocol.py's FRAME_FLAG_WANT_INTERP). A worker that has
++// never heard of the bit ignores it and replies once, which the client treats as normal, so
++// this flag cannot break an older worker - and an older client cannot ask for one.
++constexpr uint32_t kFrameFlagWantInterp = 0x100;
++// A bit in the OUT reply's ngx_result field (protocol.py's OUT_FLAG_INTERPOLATED): this
++// reply is the generated mid-frame, not the frame that was sent. The field is 0 on the
++// happy path, so the bit costs no header; the client routes it to its own map rather than
++// to the reply queue, which is the only way a second reply per index can be carried
++// without desynchronising every frame after it.
++constexpr uint32_t kOutFlagInterpolated = 0x40000000u;
 +
 +constexpr size_t kHeaderBytes = 64;        // HEADER_FMT  "<10I4f2I"
 +constexpr size_t kFrameHeaderBytes = 24;   // FRAME_FMT   "<4Iq"
@@ -1912,6 +2162,15 @@ index 0000000..a95f1bc
 +
 +  SharedInput input;
 +  SharedOutput output;
++  // The second output slot, for generated mid-frames. It is the client's own section: it
++  // creates `<pixel channel name>m` beside the pixel channel and reads whichever slot a
++  // reply's flag points at (protocol.py's SharedFrameBuffer). It exists because OUTS is one
++  // slot with a seqlock - a mid written there would be replaced by the real frame before the
++  // client had copied it. That loses a mid rather than corrupting one, but the rate would
++  // fall silently, which is the one failure a 30-computed / 60-presented mode cannot afford
++  // (docs/interpolation.md). Unmapped, no mid-frame is sent at all and the client sees a
++  // worker that never heard of the flag.
++  SharedOutput midOutput;
 +
 +  std::unique_ptr<vk::Context> context;
 +  std::unique_ptr<nr::Model> model;
@@ -1920,6 +2179,7 @@ index 0000000..a95f1bc
 +  vk::Buffer proxy{};
 +  vk::Buffer colourBuffer{};  // the client's RGBA8 frame, from the pipe or the mapping
 +  vk::Buffer imageBuffer{};      // RGBA8, the composite's output and what leaves the device
++  vk::Buffer midBuffer{};        // RGBA8, the generated mid-frame, when one is asked for
 +  vk::Buffer historyProxy{};     // the last published frame, as a proxy the next one reads
 +  vk::Buffer motionBuffer{};     // the client's motion field, 2 x f16 per pixel, as it arrived
 +  nr::Activation* features = nullptr;
@@ -1994,6 +2254,10 @@ index 0000000..a95f1bc
 +    colourBuffer =
 +        context->createBuffer((VkDeviceSize)workWidth * workHeight * 4, false, "rgba8 frame");
 +    imageBuffer = context->createBuffer((VkDeviceSize)workWidth * workHeight * 4, false, "rgba8 image");
++    // The mid-frame's own surface: the composite writes imageBuffer, so a generated frame
++    // cannot share it, and a proxy (the history) is not a picture - what leaves the device
++    // for a mid is RGBA8 like any other frame's.
++    midBuffer = context->createBuffer((VkDeviceSize)workWidth * workHeight * 4, false, "rgba8 mid-frame");
 +    // The history surface: the frame this one published last, expanded to a proxy of its own.
 +    // A buffer and a dispatch, no host bytes: how the composite publishes a frame is what the
 +    // next frame's lanes 7-9 read (docs/frame.md's history, at this path's 8 bits).
@@ -2029,6 +2293,12 @@ index 0000000..a95f1bc
 +
 +  uint32_t frames = 0;
 +  double totalMs = 0;
++  // Generated mid-frames: sent, and asked for but not sent (no history yet, no pixels
++  // wanted, no second slot). Both are reported at the end, because a rate that fell has to
++  // be visible in the log rather than inferred from it - a mid the client never receives
++  // otherwise looks exactly like a worker that ignored the flag.
++  uint32_t midFrames = 0, midSkipped = 0;
++  double totalMidMs = 0;
 +  try {
 +    while (true) {
 +      uint8_t magicBytes[4];
@@ -2072,6 +2342,27 @@ index 0000000..a95f1bc
 +              }
 +              fprintf(stderr, "serve: pixel channel open (%ux%u, %.1f MB, %s)\n",
 +                      output.width, output.height, (double)output.bytes / 1e6, name);
++              // The mid-frame slot, if the client made one: the pixel channel's own name
++              // with an `m` on the end. Best-effort on purpose - a caller that never asks
++              // for a mid-frame does not need it, and a refusal here must not cost it the
++              // pixel channel it did ask for.
++              if (!midOutput.map) {
++                const std::string midName = std::string(name) + "m";
++                try {
++                  midOutput.width = output.width;
++                  midOutput.height = output.height;
++                  midOutput.bytes = output.bytes;
++                  midOutput.fd = openShared(midName.c_str(), midOutput.bytes, false);
++                  midOutput.map = (uint8_t*)mapShared(midOutput.fd, midOutput.bytes);
++                  fprintf(stderr, "serve: mid-frame channel open (%.1f MB, %s)\n",
++                          (double)midOutput.bytes / 1e6, midName.c_str());
++                } catch (const std::exception& error) {
++                  if (midOutput.fd >= 0) { ::close(midOutput.fd); midOutput.fd = -1; }
++                  midOutput.map = nullptr;
++                  fprintf(stderr, "serve: no mid-frame slot (%s): generated frames will not be sent\n",
++                          error.what());
++                }
++              }
 +              sendAck(kOutsAck, 1);
 +            }
 +          } catch (const std::exception&error) {
@@ -2124,6 +2415,20 @@ index 0000000..a95f1bc
 +      // paid for a channel it ignored, and a live run paid for one the overlay draws from the
 +      // worker's own window. A bare header is the answer when nothing wants the pixels.
 +      const bool wantPixels = (flags & kFrameFlagWantPixels) != 0;
++      // A generated mid-frame is asked for per frame, and every precondition is a fact about
++      // this frame: the caller asked (kFrameFlagWantInterp), the pixels are wanted (a mid
++      // travels in the pixel slot, so without one there is nowhere to put it), a frame has
++      // been published already (a reset frame has no history to carry) and the client gave
++      // us a second slot to put it in. A missing mid is normal to the client, not a stall.
++      const bool wantInterp = (flags & kFrameFlagWantInterp) != 0;
++      const bool midPath = wantInterp && wantPixels && haveHistory && midOutput.map != nullptr;
++      if (wantInterp && !midPath) {
++        if (midSkipped++ == 0)
++          fprintf(stderr, "serve: frame %u asked for a mid-frame and cannot have one (%s): "
++                          "the caller sees one frame per send, as before\n",
++                  index, !wantPixels ? "no pixels wanted" : (!haveHistory ? "no history yet"
++                                                                          : "no second pixel slot"));
++      }
 +      if (noMotion && !motionSaidNothing) {
 +        motionSaidNothing = true;
 +        fprintf(stderr, "serve: the caller declared no motion field: the reprojection is the identity\n"
@@ -2229,6 +2534,9 @@ index 0000000..a95f1bc
 +        kernels->compositeToRgba8(commands, proxy, graph->head(), imageBuffer, workWidth, fullWidth,
 +                                  workWidth, workHeight, motionBuffer,
 +                                  haveHistory ? &historyProxy : nullptr, blendScale);
++        if (midPath)
++          kernels->midWarpToRgba8(commands, historyProxy, motionBuffer, midBuffer, workWidth,
++                                  workWidth, workHeight, 0.5f);
 +        if (splitTiming && splitPool)
 +          vkCmdWriteTimestamp(commands, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, splitPool, 2);
 +        context->endAndSubmit(commands, true);
@@ -2302,6 +2610,30 @@ index 0000000..a95f1bc
 +        // killed r2026-10-29-c ("serve: write(stdout): Bad address") on the pixel path only.
 +        std::vector<uint8_t> image;
 +        std::chrono::steady_clock::time_point afterDownload;
++        // The generated mid-frame leaves BEFORE the frame it belongs to, and that order is
++        // load-bearing: the client takes it immediately after recv returns that frame, so a
++        // mid sent after it can still be in the pipe at that moment and is simply missed
++        // (measured, not reasoned - at 320x180 none arrived, at 8x8 all did). What makes the
++        // order safe is the second slot: the mid is published to its own section, so the real
++        // frame cannot overwrite it before the client has copied it.
++        std::vector<uint8_t> midImage;
++        double midMs = 0.0;
++        if (midPath) {
++          const std::chrono::steady_clock::time_point midBegan = std::chrono::steady_clock::now();
++          midImage = context->download(midBuffer, (VkDeviceSize)workWidth * workHeight * 4);
++          const std::vector<uint8_t>* midInline = nullptr;
++          uint32_t midBytes = 0;
++          publishImage(midOutput, midImage, &midInline, &midBytes);
++          sendFrame(index, 1, midBytes, kOutFlagInterpolated, pts, midInline);
++          midMs = std::chrono::duration<double, std::milli>(
++                      std::chrono::steady_clock::now() - midBegan).count();
++          totalMidMs += midMs;
++          if (midFrames == 0)
++            fprintf(stderr, "serve: frame %u carries a generated mid-frame first: half the motion, "
++                            "one dispatch and one 14.7MB readback (%.1f ms this frame; the run's "
++                            "mean is reported at the end)\n", index, midMs);
++          midFrames++;
++        }
 +        if (wantPixels) {
 +          image = context->download(imageBuffer, (VkDeviceSize)workWidth * workHeight * 4);
 +          afterDownload = std::chrono::steady_clock::now();
@@ -2349,6 +2681,14 @@ index 0000000..a95f1bc
 +      }
 +
 +      if (frameLimit > 0 && (int)frames >= frameLimit) {
++        // The mid-frames are reported as a rate, not a total: "sent" against "asked for" is
++        // what says whether the client's presented rate rose or whether the flag was
++        // ignored, and `asked for` is the only way to tell a worker that cannot (no history,
++        // no second slot) from one that never tried.
++        if (midFrames || midSkipped)
++          fprintf(stderr, "serve: %u generated mid-frame(s) sent, %u request(s) answered without one, "
++                          "%.2f ms mean per mid (dispatch + readback + reply)\n",
++                  midFrames, midSkipped, midFrames ? totalMidMs / (double)midFrames : 0.0);
 +        fprintf(stderr, "serve: %u frames, %.2f ms mean, stopping as asked\n", frames, totalMs / (double)frames);
 +        return 0;
 +      }

@@ -412,7 +412,7 @@ class VideoRecorder:
         try:
             self._queue.put((pts, rgba), timeout=self.PUT_TIMEOUT_S)
         except queue.Full:
-            # The encoder cannot keep up. Dropping the frame is more honest than
+            # The encoder cannot keep up. Dropping the frame is better than
             # holding up the main loop: the user would notice on screen, not in
             # the file. The reserved slot is lost - the next needs_frame()
             # waits for the next one.

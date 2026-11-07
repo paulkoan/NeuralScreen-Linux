@@ -336,7 +336,7 @@ def test_the_example_policy_can_rebuild_the_port():
 
 
 def test_the_watcher_declares_every_flag_its_body_uses():
-    """A cron tick caught this the honest way: `--verbose` was read but never declared.
+    """A cron tick caught this in practice: `--verbose` was read but never declared.
 
     --help exits before the body runs, so asking it what it accepts is a cheap way to notice
     that a flag the code branches on was never added - which is otherwise only visible when

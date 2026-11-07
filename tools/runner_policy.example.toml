@@ -47,7 +47,7 @@ pause_file = "/opt/neuralscreen/PAUSE"           # touch this and nothing runs
 # If you ever want the stronger bound (checkout read-only, one writable directory, no
 # network at all), build tools/runner_container/Dockerfile somewhere outside the repo, point
 # podman at a user-level CDI spec, and flip this to true. Until then `container = false` is
-# the honest description of what runs: this user, these files, this sandbox.
+# the accurate description of what runs: this user, these files, this sandbox.
 container = false
 # image = "localhost/neuralscreen-runner:1"
 # device = "nvidia.com/gpu=all"

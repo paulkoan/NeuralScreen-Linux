@@ -173,7 +173,7 @@ Python stops capturing entirely — `grab` and `guides` drop to 0.1 ms.
 Fallback (dxcam + full-frame send) stays intact.
 
 **Guides.** The optical flow needs a small gray frame. On `GRAY` the worker
-computes it with an honest block average (12×12 per cell at 4K → 320×180,
+computes it with a plain block average (12×12 per cell at 4K → 320×180,
 matching `cv2.INTER_AREA`; bilinear would alias text and break the flow) and
 writes it into a named mapping. No 4K frame ever crosses the CPU.
 

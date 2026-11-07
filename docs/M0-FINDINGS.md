@@ -733,7 +733,7 @@ capturews  work 1280x720   capture 14.4ms  send 99.3ms  recv 30.0ms  (148.0ms, 6
 The model said ~85-90ms. It came back at 148.0, against 139.7 for full work
 resolution. **Halving the network's own resolution at 1440p bought nothing** —
 the 8ms difference is inside the spread the NGX rows show between runs, so the
-honest reading is "no win", not "worse".
+reading is "no win", not "worse".
 
 So at 2560x1440 the cost is not the network's arithmetic, and round 19's model is
 wrong. What was wrong with it: `scaled` at 720p shrinks **two** things (the
@@ -878,7 +878,7 @@ variant, same code, measured **238.1ms** with `wait 225.3ms`.
 So the capture leg varies by ~15x between runs and I do not know why. Round 17's
 explanation — that the loop was throttling the producer — is not supported by
 this run, and the probe pair that suggested it had a changing screen in both
-runs, so it never isolated the variable either. What can be said honestly: on
+runs, so it never isolated the variable either. What can be said for certain: on
 this box the capture leg has been anywhere from 14.9ms to 238ms, and the probe
 puts the portal's own rate at ~13ms per 2560x1440 frame. Retracting the
 mechanism, keeping the measurement.
@@ -960,7 +960,7 @@ with      timing: capture  2.1ms  send 12.3ms  recv 484.6ms  display 0.6ms
 245 frames drained while 5 were processed, and the frame actually used was
 **0.5ms old**. The capture leg collapses to a lock and a reference, and the
 staleness that dropping frames would otherwise cause is reported rather than
-hidden — that age is the honest latency the capture adds.
+hidden — that age is the latency the capture adds.
 
 The gate gains `capturepf`, the same capture with the producer kept unthrottled
 against `capture`, so the size of the round trip is in one run rather than
@@ -994,7 +994,7 @@ capture   capture 238.1ms  send  68.2ms  recv 54.4ms  display 4.1ms  (364.8ms,  
 
 `bypass` and `baseline` both report `mean abs diff 0.0000` — byte-identical,
 `the pass returned the input unchanged` — so the worker's NGX-skip does exactly
-what the protocol says, and those two rows are honest controls.
+what the protocol says, and those two rows are valid controls.
 
 ## The floor with NGX skipped is 60.5ms
 
@@ -1291,7 +1291,7 @@ the display upload is 0.5ms.
 What is left is **7.4 MB of frame going one way and 3.7 MB coming back**, every
 frame, through two pipes — 11.1 MB per frame, which at 81ms/frame is 137 MB/s.
 
-One honest caveat on the split. `send` is our own write, but a pipe write blocks
+One caveat on the split. `send` is our own write, but a pipe write blocks
 while the worker is not draining, so `send` also absorbs any of the worker's work
 that does not overlap with it. Its 67ms is therefore not purely our bytes. What
 the split does establish is the negative result, which is the useful part: the
@@ -2273,7 +2273,7 @@ Round 17's probe, twice, at 2560x1440 with the screen verifiably changing:
 12.8ms/frame (78.3 fps) and 13.4ms/frame (74.6 fps). The probe's grab *is*
 wait+read, and `read` alone is 9.2-20.2ms — so a 12.8ms grab against a 12.5ms
 median read means the wait was ~0.3ms, i.e. **the probe was copy-bound, not
-compositor-bound.** The honest pair is:
+compositor-bound.** The pair to compare is:
 
 * our copy: **9.2-20.2ms per grab**, 31 grabs over 17 runs — the number that has
   never moved;

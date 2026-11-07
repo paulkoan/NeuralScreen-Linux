@@ -12,7 +12,7 @@
 #
 # --push writes the run to test-results/<UTC>-mmap-bridge/ (report plus the raw
 # log) and pushes it via ../lib/report.sh, which owns the auth convention and the
-# honest failure messages for both experiments.
+# failure messages that name the cause for both experiments.
 #
 # Exit: 0 the pages were shared, 1 they were not, 2 a prerequisite is missing.
 set -euo pipefail
