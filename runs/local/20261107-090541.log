@@ -1,0 +1,51 @@
+hotkeys: reading 13 keyboard(s) via evdev: ENIAC Flexbar Keyboard, Yubico YubiKey OTP+FIDO+CCID, JosefAdamcik Sofle, JosefAdamcik Sofle Keyboard, keyd virtual keyboard, ydotoold virtual device, Logitech MX Master 2S, Logitech MX Ergo, Logitech G604 , Keychron  Keychron Link-KM Keyboard, Keychron  Keychron Link-KM Keyboard, Swiftpoint Z3 Receiver Keyboard, ENIAC Flexbar Keyboard
+hotkeys: Ctrl+Alt+1, Ctrl+Alt+Q via evdev (Wayland session)
+source video  capture 2560x1440  ->  work 2560x1440 (work scale 1.00, NGX ceiling 2560x1440)
+params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+worker: /opt/neuralscreen/port/build/dlss5vk serve --model /opt/neuralscreen/model
+version: repo c3aa6fb (+37 uncommitted) · worker built from patch 088280e62d50 at port 9d08f41 · in sync
+[main] shared memory agreed: 29.5 MB, the frame does not go through the pipe
+[main] shared memory: frames in and pixels out through /dev/shm (frame 29.5MB, pixels 14.7MB)
+frame 0 is the worker's warm-up: the window stays black until its first answer lands
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[nr] A/B: enhancement off
+[nr] A/B: enhancement on
+[nr] A/B: enhancement off
+diff: skipped - the last frame was the bypass half of the A/B; quit while the badge reads ON, or run with --ab-alternate 0
+frames: 3368 done, 0 skipped, 78.265s (43.03 fps headline, 56.82 fps steady), worker exit 0
+timing: capture 5.0ms  send 2.3ms  recv 12.1ms  display 3.6ms   (mean 23.0ms/frame, 43.5 fps; median 17.6ms/frame, 56.8 fps steady)
+          ! the A/B was on (every 3s): 1063 frames enhanced at 27.2 fps, 2305 bypassed at 59.9 fps. The frame time above is both modes averaged - the enhanced rate is the one that describes the product. Run with --ab-alternate 0 to measure throughput.
+send spread: min 1.4  median 2.2  max 10.4 ms at frame 0 of 3368   (one-off at frame 0 — sent before the worker's first reply lands, so the warm-up, not a per-frame cost)
+recv spread: min 4.0  median 6.4  max 1256.5 ms at frame 0 of 3368   (one-off at frame 0 — sent before the worker's first reply lands, so the warm-up, not a per-frame cost)
+capture spread: min 3.0  median 4.7  max 35.8 ms at frame 883 of 3368   (a one-off at frame 883 — not the warm-up, so worth looking at)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/opt/neuralscreen/state/repo/minimal/__main__.py", line 489, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/opt/neuralscreen/state/repo/minimal/__main__.py", line 457, in main
+    print(f"prefetch: drained {pf['drained']} frames on its own thread, "
+                               ~~^^^^^^^^^^^
+KeyError: 'drained'
