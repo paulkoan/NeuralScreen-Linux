@@ -163,6 +163,53 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## Learned
 
+* learned: a queued run can be null for reasons that look like the feature failing (2026-11-08,
+  reading r2026-11-08-midslot before it ran). Two defects found by reading it rather than by
+  running it, and neither was in the port. **First:** the port's mid path is `wantInterp &&
+  wantPixels` - a generated mid-frame IS a pixel reply - and `--interpolate` was not in the list
+  that decides `want_pixels`. A headless `--interpolate` run therefore asked for no pixels, got no
+  mid-frames, and would have reported zero mids: a null that reads as a broken feature rather than
+  as a question nobody asked. The decision now lives in `wants_pixels(args)` with the reason beside
+  it and a truth table in the tests, including the plain headless case which must keep asking for
+  none (29.5MB a frame the caller throws away). **Second:** the mid presentation lived only in the
+  serial loop. The window path (`--send-ahead N`) collected every mid-frame into the map and
+  presented none, so `--send-ahead 2 --interpolate` asked for a mid, paid for it, and showed
+  nothing - a run indistinguishable from the feature being off except in the timing, and the path
+  a throughput run uses. It is now one method (`_show_generated_mid`) called by both, and the new
+  test was proved to fail without it.
+
+* learned: a picture that no artifact holds cannot be checked by anyone not at the box (2026-11-08).
+  `--save-after` writes a real frame, and the generated mid-frame - the entire point of the flag -
+  was written nowhere, so the only way to see whether the warp is right was to sit in front of the
+  screen while the run happened. That is the one check this whole path has, because a wrong warp is
+  a picture and not a number. `--save-mid PATH` writes the last generated mid-frame; the queued
+  request takes it beside `--save-after`, so the mid and the real frame it belongs to both come
+  back in the artifacts. The test writes the captured array through the same writer and requires
+  the files to be identical, and a second test requires that no mid-frame arriving writes no file -
+  the quiet failure being a real frame sitting under the mid's filename, which looks like success.
+  What the artifacts still cannot say: whether the mid is the RIGHT in-between. That is occlusion
+  and disocclusion, which the 320x180 field cannot express.
+
+* learned: `mid_warp.comp` claimed a contract in its own header and nothing checked it (2026-11-08).
+  It states its reconstruction is the composite's and that `historyFetch` is "identical to
+  composite_serve.comp's; the two have to agree". `check_composite.py` transliterates the
+  composite's copy and there was no equivalent for the second copy the mid-frame added. A new test
+  reads both shaders out of the patch and compares the three shared functions comments-and-
+  whitespace aside, compares the push-constant fields name for name against the host struct, and
+  requires the call site to still pass 0.5 (a mid-frame is a fraction of a frame by definition).
+  One test mutates a copy and requires the comparison to notice. All four pass; the three functions
+  are identical today. This is a stand-in for the build, not a replacement: the shader has still
+  never been compiled and no mid-frame's picture has been seen.
+
+* learned: the port patch is generated from /opt/data/tmp/odl-src, so editing the patch is half a
+  fix (2026-11-08). The prose sweep cleared 22 of 23 occurrences and the last one came back: it was
+  in `shaders/mid_warp.comp`'s neighbouring file `src/serve.cpp` inside the patch, and the patch is
+  `git format-patch` output - fix the patch and not the commit and the next regeneration restores
+  it. Fixed in the source, the commit amended, the patch re-cut: three lines differ (the From sha,
+  the blob index for the changed file, and the line itself), which is what an amendment touching
+  one comment should do. The patch id moves 91c8a0c -> 043fc12, so every port run stamps OUT OF
+  SYNC until the box rebuilds - which `r2026-11-08-midslot-build` does anyway.
+
 * learned: the split measurement lands, and the composite is NOT the missing 3 ms (2026-11-03,
   `r2026-11-03-split`, 60 frames synthetic 1440p shm, exit 0). The worker's own timestamps, now
   printed per frame when DLSS5VK_SERVE_SPLIT is set: **network 10.5-11.1 ms, composite 0.3 ms**,

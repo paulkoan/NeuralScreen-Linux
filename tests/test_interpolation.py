@@ -48,6 +48,37 @@ def test_the_mid_frame_is_presented_before_its_own_frame(fake_capture, fake_disp
     assert summary["frames_done"] == 4, "a generated frame is not a computed one"
 
 
+def test_the_window_path_presents_the_mid_too(fake_capture, fake_display, mock_worker_cmd):
+    """`--send-ahead N` presents a mid-frame per frame, in the same order.
+
+    The window path collected mid-frames into the map and presented none of them, because the
+    presentation lived only in the serial loop: `--send-ahead 2 --interpolate` asked for every
+    mid, paid for it, and showed nothing. A run like that is indistinguishable from the feature
+    being off unless the presented count is read, and it is the path a throughput run uses.
+    """
+    pipe = _pipeline(fake_capture, fake_display, mock_worker_cmd,
+                     interpolate=True, interp_pace=0.0, send_ahead=2)
+    summary = pipe.run(frames=6)
+    shown = fake_display.frames
+    assert summary["frames_done"] == 6
+    assert summary["interp_shown"] == 6, "every frame was answered with a mid-frame"
+    assert len(shown) == 12, f"expected a mid and a real frame per frame, got {len(shown)}"
+    for pair in range(6):
+        assert _starts_with_marker(shown[2 * pair]), (
+            f"iteration {pair}: the mid must still go first with two frames in flight")
+        assert not _starts_with_marker(shown[2 * pair + 1])
+
+
+def test_the_window_path_keeps_the_mid_for_saving(fake_capture, fake_display,
+                                                  mock_worker_cmd, tmp_path):
+    saved = tmp_path / "mid.png"
+    pipe = _pipeline(fake_capture, fake_display, mock_worker_cmd,
+                     interpolate=True, interp_pace=0.0, send_ahead=2)
+    pipe.run(frames=4, save_mid=str(saved))
+    assert pipe.last_mid is not None and bytes(pipe.last_mid[0, 0, :4]) == MARKER
+    assert saved.exists()
+
+
 def test_without_the_flag_nothing_changes(fake_capture, fake_display, mock_worker_cmd):
     """The default path must be byte-for-byte what it was: one present per frame."""
     pipe = _pipeline(fake_capture, fake_display, mock_worker_cmd)

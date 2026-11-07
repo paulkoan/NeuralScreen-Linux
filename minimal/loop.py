@@ -407,32 +407,48 @@ class Pipeline:
             self.frames_skipped += 1
             return None
         self.frames_done += 1
+        self._show_generated_mid(index)
         if present and self.display is not None:
             # The badge follows the same flag the frame was built with, so it cannot disagree
             # with the picture it is drawn on.
             setter = getattr(self.display, "set_enhanced", None)
             if setter is not None:
                 setter(not self.bypass)
-            # The mid-frame belongs *before* this frame and *after* the previous one, and the
-            # previous one is what is on screen now - so it goes first. Held for interp_pace or
-            # the compositor coalesces the two presents and it is never seen at all.
-            if self.interpolate:
-                mid = self.worker.take_interpolated(index)
-                if mid is not None:
-                    # Kept for --save-mid. The mid-frame is the one output of this path that no
-                    # other artifact shows: --save-after saves a real frame, and a wrong warp is a
-                    # picture rather than a number, so without this the only way to look at the
-                    # thing being built is to sit in front of the screen while it runs.
-                    self.last_mid = mid
-
-                    def _present_mid():
-                        self.display.show(mid)
-                        if self.interp_pace > 0:
-                            time.sleep(self.interp_pace)
-                    self._timed("interp", _present_mid)
-                    self.interp_shown += 1
             self._timed("display", self.display.show, result)
         return result
+
+    def _show_generated_mid(self, index: int) -> None:
+        """Present the generated mid-frame for `index`, if the worker sent one.
+
+        One implementation, because both loops need it and only the serial one had it. The window
+        path (`--send-ahead N`) had none at all: it collected every mid-frame into the map and
+        presented none of them, so `--send-ahead 2 --interpolate` asked for a mid-frame, paid for
+        it, and showed nothing - a run indistinguishable from the feature being off, except in the
+        timing.
+
+        The mid belongs *before* this frame and *after* the previous one, and the previous one is
+        what is on screen now, so it goes first. It is held for interp_pace because two presents
+        back to back are coalesced by the compositor and the mid is then never seen at all.
+
+        The frame is kept for --save-mid whether or not there is a window to draw it in: a headless
+        run still has a picture worth writing down, and that picture is the only way to check the
+        warp without sitting in front of the screen.
+        """
+        if not self.interpolate:
+            return
+        mid = self.worker.take_interpolated(index)
+        if mid is None:
+            return
+        self.last_mid = mid
+        if self.display is None:
+            return
+
+        def _present_mid():
+            self.display.show(mid)
+            if self.interp_pace > 0:
+                time.sleep(self.interp_pace)
+        self._timed("interp", _present_mid)
+        self.interp_shown += 1
 
     def timing_summary(self) -> dict:
         """Mean seconds per stage, plus the total and the implied frame rate.
@@ -741,6 +757,10 @@ class Pipeline:
                 f"measurement")
         if after is None:
             return sent_index, input_frame, None
+        # Before the frame it belongs to, exactly as the serial path does it - the mid is the
+        # frame between the previous one and this one, so presenting it after would put it in
+        # the wrong position and read as lag.
+        self._show_generated_mid(sent_index)
         if self.display is not None:
             setter = getattr(self.display, "set_enhanced", None)
             if setter is not None:
