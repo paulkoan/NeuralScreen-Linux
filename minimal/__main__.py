@@ -370,6 +370,14 @@ def main(argv: list[str] | None = None) -> int:
               f"{modes['bypassed_frames']} bypassed at {modes['bypassed_fps']:.1f} fps. "
               f"The frame time above is both modes averaged - the enhanced rate is the one that "
               f"describes the product. Run with --ab-alternate 0 to measure throughput.")
+    # What the frame source replayed, when it can say. A timing from a file is meaningless without
+    # knowing which file and how far into it the run got: a run that looped twice is not the same
+    # run as one that never reached the end.
+    src = summary.get("source")
+    if src and src.get("path"):
+        loops = src.get("loops")
+        print(f"source: replayed {src['path']} — {src.get('frames_decoded', '?')} frames decoded"
+              + (f", {loops} loop{'s' if loops != 1 else ''}" if loops is not None else ""))
     # The worker's own timestamps, which know nothing of ours. Printed beside the
     # timing line on purpose: if these two disagree about the same run, the
     # timing line is what is wrong.
