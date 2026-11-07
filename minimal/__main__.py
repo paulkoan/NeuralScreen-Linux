@@ -353,6 +353,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"timing: {'  '.join(parts)}   "
               f"(mean {1000 * t['total']:.1f}ms/frame, {t['fps']:.1f} fps; "
               f"median {1000 * med:.1f}ms/frame, {steady:.1f} fps steady)")
+    # An A/B run alternates, and a bypassed frame runs no network at all, so the frame time above
+    # is a mixture of two different machines. Said loudly, because it reads as a rate the pipeline
+    # can hold, and with the pass on it is roughly half of what the mixture suggests.
+    modes = summary.get("modes") or {}
+    if modes.get("alternate") and modes.get("bypassed_frames"):
+        print(f"          ! the A/B was on (every {modes['alternate']:g}s): "
+              f"{modes['enhanced_frames']} frames enhanced at {modes['enhanced_fps']:.1f} fps, "
+              f"{modes['bypassed_frames']} bypassed at {modes['bypassed_fps']:.1f} fps. "
+              f"The frame time above is both modes averaged - the enhanced rate is the one that "
+              f"describes the product. Run with --ab-alternate 0 to measure throughput.")
     # The worker's own timestamps, which know nothing of ours. Printed beside the
     # timing line on purpose: if these two disagree about the same run, the
     # timing line is what is wrong.

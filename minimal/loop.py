@@ -162,6 +162,14 @@ class Pipeline:
         # the network at zero strength, this does not run it at all, so the
         # difference between the two is what the network actually costs.
         self.bypass = bool(bypass)
+        # Split by mode. A bypassed frame runs no network, so its frame time is a different
+        # animal from an enhanced frame's; averaging them yields a rate that describes neither.
+        # That is how a summary read "26.45 fps steady" off a pipeline that cannot do 26 fps with
+        # the pass on - half the frames were skipping it.
+        self.enhanced_frames = 0
+        self.enhanced_seconds = 0.0
+        self.bypassed_frames = 0
+        self.bypassed_seconds = 0.0
         # Commands from the global hotkeys (or anything else) are drained between frames. A
         # command rather than a shared flag so a toggle cannot be missed or applied twice.
         self.commands: queue.Queue = queue.Queue()
@@ -284,6 +292,42 @@ class Pipeline:
 
     def process_one(self, index: int, timeout: float = 60.0,
                     present: bool = True) -> np.ndarray | None:
+        """Time one frame and book it against the mode it ran in.
+
+        An A/B run alternates, and a bypassed frame does no neural work at all, so its frame time
+        is not comparable to an enhanced frame's. Reporting their average describes neither mode -
+        and it reads as though the pipeline can sustain a rate it cannot: with the pass on it is
+        ~40ms a frame, and a run that mixed in bypassed frames summarised as 26 fps.
+        """
+        started = time.monotonic()
+        try:
+            return self._one_frame(index, timeout=timeout, present=present)
+        finally:
+            took = time.monotonic() - started
+            if self.bypass:
+                self.bypassed_frames += 1
+                self.bypassed_seconds += took
+            else:
+                self.enhanced_frames += 1
+                self.enhanced_seconds += took
+
+    def mode_split(self) -> dict:
+        """The two modes separately: counts, seconds, and the rate of each."""
+        def rate(frames: int, seconds: float) -> float:
+            return round(frames / seconds, 2) if seconds > 0 else 0.0
+
+        return {
+            "alternate": self.ab_alternate,
+            "enhanced_frames": self.enhanced_frames,
+            "enhanced_seconds": round(self.enhanced_seconds, 3),
+            "enhanced_fps": rate(self.enhanced_frames, self.enhanced_seconds),
+            "bypassed_frames": self.bypassed_frames,
+            "bypassed_seconds": round(self.bypassed_seconds, 3),
+            "bypassed_fps": rate(self.bypassed_frames, self.bypassed_seconds),
+        }
+
+    def _one_frame(self, index: int, timeout: float = 60.0,
+                   present: bool = True) -> np.ndarray | None:
         """Grab, send, present, receive one frame.
 
         Returns the processed RGBA, or None if the worker returned no pixels
@@ -491,6 +535,9 @@ class Pipeline:
             "frames_attempted": index,
             "frames_done": self.frames_done,
             "frames_skipped": self.frames_skipped,
+            # An A/B run mixes two modes; these are that split, so a summary can report the rate
+            # of each instead of an average of both.
+            "modes": self.mode_split(),
             # How many frames were allowed in flight, so a summary says which
             # loop produced it, and how many times the worker went silent.
             "send_ahead": self.send_ahead,
