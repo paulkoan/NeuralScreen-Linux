@@ -9,9 +9,34 @@ should be readable, diffable and restorable.
 
 | file | what it does |
 |---|---|
-| `ns-results-monitor.sh` | The change detector. Prints the newest run id on the results branch (by commit time, not by name) and a 12-char hash of the work items in `runs/next.md` above `## Learned`. The scheduler skips the agent run when this output is unchanged, so it is what stops the tick waking on its own bookkeeping. |
-| `ns-progress-watchdog.sh` | Fires every 15 minutes and is silent unless something is wrong: the tick has stopped, the plan's `## 1. Next work` holds no items, the model is returning empty responses, or the scheduler has recorded a failure. Empty stdout sends nothing - saying nothing is the normal case. |
+| `ns-results-monitor.sh` | The change detector. Prints the newest run id on the results branch (by commit time, not by name), a 12-char hash of the work items in `runs/next.md` above `## Learned`, and the tick's last recorded outcome. The scheduler skips the agent run when this output is unchanged, so it decides when the loop wakes. |
+| `ns-tick-state.py` | The tick's record of what it did: item, outcome (done / blocked / failed / idle), reason, attempts. The detector folds its `line` subcommand in, and the watchdog's stop report reads its `report` subcommand. |
+| `ns-progress-watchdog.sh` | Fires every 15 minutes and is silent unless something is wrong: the tick has stopped, the plan's `## 1. Next work` holds no items, the model is returning empty responses, the scheduler has recorded a failure, or the loop has stopped with a reason. Empty stdout sends nothing - saying nothing is the normal case. |
 | `ns-cron-failure.py` | The watchdog's failure check. Reads the scheduler's `cron/executions.db` (open incidents, else a non-completed execution) and prints one line, or nothing. |
+
+## Why the loop goes quiet, and why that is now meaningful
+
+The tick is gated: it only runs when the detector's output changes. For most of this loop's life
+that output was the newest result plus a hash of the plan - and **both of those change only when
+the loop succeeds**. A tick that failed, or that found its item needed a decision, left the output
+identical and was never run again. Measured on 2026-11-08: **50 fires, 3 agent runs, 47
+suppressions**, while a heartbeat told the developer "still on it" every 32 minutes. The loop was
+not stuck in a way anything could see.
+
+Two changes fix that, and they only work together:
+
+1. **The tick records an outcome every run** (`ns-tick-state.py record`). The detector folds it in,
+   so a run that does not retire its item still changes the detector's output and wakes the next
+   tick. The attempts count is capped *in the detector's line*, not in the record, so the loop
+   retries up to three times and then settles instead of spinning.
+2. **The watchdog's heartbeat is gone, replaced by a stop report.** It speaks once when the loop
+   cannot get on by itself, naming the item and the reason, and stays quiet until that changes.
+   The old heartbeat could not answer "is it stuck", because it looked identical whether the loop
+   was working or wedged.
+
+The rule this all follows: **never infer the loop's health from prose.** The failure check reads
+the scheduler's database, the state reads a record the tick writes, and the only thing still
+parsed from text is the plan's work-item count.
 
 ## Installing
 
