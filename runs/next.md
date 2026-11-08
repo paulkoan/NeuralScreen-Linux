@@ -10,10 +10,41 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* **60 fps is the goal, stated 2026-11-08, and it re-ranks everything.** "60 is the goal, so the
-  investment priorities are optimising towards that." The earlier position in this plan was "aim
-  for max FPS, accepting that 60 may not be reached" - that is now superseded, and the two
-  decisions still open in section 2 have to be read in that light rather than as quality questions.
+* **60 fps is the goal, restated 2026-11-08 with the constraint and the caveat: "60fps is the goal,
+  or as close as we can get to it, with 1440p output. I accept that it might not be achievable."**
+  So: 1440p *output* is fixed, 60 is the target rather than a gate, and the task is to get as close
+  as the architecture allows. That also settles the inside of the pipeline - the output is what must
+  be 1440p, so an internal 1080p pass scaled to a 1440p output is in scope, which is the largest
+  measured lever. The earlier position ("aim for max FPS, accepting that 60 may not be reached") is
+  superseded in framing but not in substance: the caveat stands.
+
+  **Where that leaves the ceiling, from measured numbers only.** Best measured frame so far is
+  **27.4 ms / 36.5 fps at 1440p output** (`r2026-11-08-1080p-video`, 1080p internal, present scaled
+  by the renderer), against 35.2 ms / 28.4 fps at 1440p internal. 60 fps needs 16.7 ms, so 10.7 ms
+  is still on the table and the ranked levers do not obviously add up to it. Reading the two
+  worker logs frame-for-frame is what says why, and it moves the target:
+
+  | stage | 1440p (frame 299) | 1080p (frame 299) | pixels scaled would be |
+  |---|---|---|---|
+  | proxy | 2.2 ms | 1.7 | 1.2 |
+  | network+composite | 11.5 | 9.9 | 6.5 |
+  | readback | 3.6 | 1.7 | 2.0 |
+  | reply | 2.0 | 0.7 | 1.1 |
+
+  Readback, reply and proxy scale roughly as pixels demand. **The network does not**: 11.5 -> 9.9 is
+  14% off for 44% fewer pixels, where a pixel-bound pass would be 6.5. NGX scales - 7.1 ms at 1440p,
+  4.6 at 1080p - so this is the port's own shape, not the model's. The gap to NGX is therefore 1.6x
+  at 1440p (12-13.5 against 7.1, or 9.75 against 7.1 on the profile's own sum) but **2.15x at 1080p
+  (9.9 against 4.6)**, because NGX gets cheaper with the frame and the port does not. That is
+  consistent with ~5 ms of the port's network being independent of resolution, which would make it
+  the largest single item in the project - larger than the "close the NGX gap, ~2.6 ms" item this
+  plan used to rank second.
+  `r2026-11-08-profile-1080p` is queued to settle it: the same per-dispatch profile at 1920x1080,
+  against the 1440p sum of 9.749 ms. Linear would be ~5.5. **Near 9 means the spans themselves carry
+  a fixed cost and the kernels are the target; near 5.5 means the arithmetic is fine and the 9.9 ms
+  wall clock is ~4.4 ms of CPU-side gap between dispatches, which is a different fix and makes the
+  kernel table a dead end.** Only one of those two is worth the next week, so nothing gets built
+  until this run answers it.
 
   Two further instructions came with it, and both change what is buildable:
 
@@ -53,10 +84,13 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
      the resize is `videoscale` inside the gst chain and that cost is not in `bg`'s 19.5 ms,
      which came off a synthetic 1080p card; the run that would price it is a live or window run
      at `--size 1920x1080`.
-  2. **Close the implementation gap against NGX - ~5 ms.** The port is 11.8-12.4 ms at 1440p where
-     NGX is 7.1 ms for the same weights, and `r2026-11-03-profile`/`-profile2` exist to say why.
-     This is the only lever that costs no picture quality at all, which makes it the right one to
-     take second.
+  2. **Close the implementation gap against NGX - ~2.6 ms at 1440p, and more at 1080p.** The port is
+     11.8-12.4 ms at 1440p where NGX is 7.1 ms for the same weights (1.6x), and the profile's own
+     sum says 9.749 against 7.1 (1.37x) - so chasing the network recovers at most ~2.6 ms at 1440p.
+     Superseded in emphasis by the table at the top of this section, which says the same gap is
+     **2.15x at 1080p** (9.9 against NGX's 4.6) because NGX scales with the frame and the port does
+     not. `r2026-11-08-profile-1080p` decides which half of that (spans or gaps) is the target. This
+     is the only lever that costs no picture quality at all, which is why it stays second.
   3. **The 31-block small network - 1.78x claimed at 1440p.** `model-small` is extracted and the
      claim is measured on NVIDIA's own runtime, but the port cannot use it as a swap: `kBlockCount`
      is compile-time and `nr_graph.cpp` hardcodes the layer layout, so it needs a second graph.
