@@ -54,6 +54,30 @@ anything there.
   (its R3 sibling keeps 80), the `.maxntid` argument, and the `proj` emitter pair as a separate
   variable; if 80 on C=128 comes back worse than 64, revert that entry and take the next candidate.
 
+* learned: the FFN sweep's fourth pair has landed - the 720p half reads the change as worse and the
+  1080p half is contended, so one second identical run is queued under the item (2026-11-08 tick, read
+  of `r2026-11-08-ffn6-0-build`, `-1-720p` and `-2-1080p`). All three exit 0, `gpu_before` WARN and
+  `idle_waited_s` 0.0, and the build landed in sync (patch `499bd294cc3` at port `9d08f41`, 16 shader
+  modules / 78 PTX kernels), so unlike the earlier contended pairs these profiles measured the change
+  they were queued for. **720p is a clean single-variable sample and it says the cap-80 change pays
+  nothing**: `ffn_ptx 16128x128 e4 r4 +proj` reads **0.316 ms** against `r2026-11-08-ffn4-1-720p`'s
+  **0.250** (+0.066, twice the 0.03 noise bar, in the bad direction), its sibling `e4 r4` **0.051**
+  against **0.043** (+0.008, inside the bar), the pass total **3.480** against **3.388**, and every row
+  the change does not touch comes back inside 0.005 ms (`ffn_ptx 4032x256 e8 r4` 0.309 -> 0.311,
+  `ffn_ptx 64512x64 e2 r4 +proj` 0.156 -> 0.161, `gemmv_ptx 1056x512->512 f5` 0.186 flat,
+  `block32_ptx 16128w f74` 0.169 -> 0.171) with the barrier probe 0.408 -> 0.409 - so the one row that
+  moved is the change's own and the reading is that 80 is worse than 64 on the C=128 R4 entry at this
+  size. **The 1080p half is not a number**: total **30.165 ms** against `ffn5-0-1080p`'s **6.315**
+  (4.8x), `block32_ptx 34560w f74` **5.460** against **0.351** (15.6x) and `ffn_ptx 8640x256 e8 r4`
+  **2.005** against **0.607**, every row up by its own factor while the fixed-cost probe sits at 0.406 -
+  the signature `r2026-11-08-ffn5-1-1080p` and `-ffn4-2-1080p` both wore, so it is quoted nowhere and
+  the item's own clause applies. Queued and pushed behind it: `r2026-11-08-ffn6-2-1080p-b`
+  (`port-profile 1920 1080`, same binary, the item's "a second identical run may be queued"), so the
+  item stays standing on that sample. If it comes back inflated too, the pair has no 1080p number and
+  the item stops there for a human; if it lands at baseline scale the next tick reads it and, on the
+  present 720p reading, reverts the C=128 R4 entry to 64 rather than taking the next candidate. NOT
+  verified: no device here, so nothing was re-timed this tick.
+
 * learned: the FFN sweep's fourth change is made and queued - the C=128 R4 entry's cap goes 64 -> 80
   (2026-11-08 tick, no run - no device here). `scripts/build_linux.sh`'s emitter list now reads
   `"64 4 64" "128 4 80" "256 3 80" "256 4 64"`, one emitter argument moved and one change per build,
