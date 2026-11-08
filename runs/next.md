@@ -329,6 +329,38 @@ section asks only what is still being asked.
 
 ## Learned
 
+* learned: the port is not pixel-bound, and the profile says a SMALLER frame is dearer - same
+  binary, same size, opposite of expectation (2026-11-08, `r2026-11-08-profile-1080p` and
+  `r2026-11-08-profile-1440p`, both exit 0, both WARN card before and after). The pair is clean:
+  same binary (f2cd1f27), same instrument, minutes apart. **1440p 9.714 ms, 1080p 13.733 ms - 0.51x
+  the work at 1.41x the time**, where the work sum is the leading dimension across the tables
+  (1,335,918 against 682,132). Neither figure is a build artifact: the 1440p run reproduces
+  r2026-11-03-profile's 9.749 to 0.4%, so the mid-frame dispatch and the counter work changed the
+  pass by nothing, and the `400 trivial dispatches + barriers` probe is identical in both (0.408 ms,
+  1.02 us each) - which is also what says the two runs saw the same GPU clocks, since that probe is
+  pure fixed cost.
+
+  Both tables have 120 kernel rows, so the dispatch *count* is the same at both sizes and only the
+  shapes moved: **81 of 120 (kernel, args) pairs are identical across the two**, 39 differ. Across
+  the 81 shared, the median ratio is **1.48** (1080p slower) and the best is 0.93 - **no shared
+  kernel gets meaningfully faster when the frame halves**. The worst is 2.26x. So this is not one
+  pathological kernel; it is the pass's shape.
+
+  What that means for the ranking. "Run the pass at 1080p" is still worth 7.8 ms end to end
+  (`r2026-11-08-1080p-video` against `video-b`), but **the network is not where it comes from**:
+  the worker's own line moves network+composite 11.5 -> 9.9 (-1.6) where the pixels demand -5.0,
+  while readback 3.6 -> 1.7, reply 2.0 -> 0.7 and proxy 2.2 -> 1.7 all fall roughly as the pixel
+  count says. The gain is in the pixel channel and the proxy. Resolution is close to a dead end for
+  the pass, and the pass is where the 10.7 ms to 16.7 has to come from - so the target is what makes
+  it 9.7-13.7 ms at ANY size, which is per-dispatch and per-kernel cost, not area.
+
+  Caveat that must travel with this: the profile route disables chaining by design, and at 1080p its
+  sum (13.733) is *above* the production wall clock for the same region (9.9-11.4), which it cannot
+  be if the spans were a subset of that wall clock. So the instrument's reading is inflated at
+  1080p and its cross-size numbers are not frame times. The direction is what to take from it -
+  halving the frame does not halve the pass - and the magnitude needs a wall-clock pair, which the
+  worker's own line already gives.
+
 * learned: the 1080p lever is real on real video, and the capture resize is what eats part of it
   (2026-11-08, `r2026-11-08-1080p-video`, exit 0, 300 frames, video source, shm). Against the same
   fixture at 1440p (`r2026-11-07-video-b`, 600 frames, 35.2 ms median / 28.4 fps steady) the
