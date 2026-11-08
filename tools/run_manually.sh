@@ -55,17 +55,56 @@
 #
 #   /opt/neuralscreen/run_manually.sh                    # policy at the default path
 #   /opt/neuralscreen/run_manually.sh /path/to/policy.toml
+#   /opt/neuralscreen/run_manually.sh --include-manual   # accepted, see below
 #
 # A request that needs the dialog prints its capture split when it finishes; the
 # numbers and any artifacts land in runs/done/<id>/ on the results branch.
 set -uo pipefail
 
-POLICY="${1:-/opt/neuralscreen/policy.toml}"
+usage() {
+    cat >&2 <<'USAGE'
+usage: run_manually.sh [policy.toml] [--include-manual]
+
+  policy.toml        the runner's policy. Default /opt/neuralscreen/policy.toml.
+  --include-manual   accepted and already implied: this script exists to run the requests the
+                     unattended ticker skips for being manual. The flag is here because it is
+                     the runner's flag and someone will reasonably type it - before this it was
+                     read as the policy path, and the script answered "no policy at
+                     --include-manual", which is true and useless.
+  -h, --help         this text.
+USAGE
+}
+
+# Arguments are parsed rather than taken positionally. The first-argument-is-the-policy form cost
+# someone a confusing failure on 2026-11-08: `run_manually.sh --include-manual` asked for a policy
+# at a path named "--include-manual", and the error named the flag as a missing file.
+POLICY=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --include-manual) shift ;;          # implied; accepted so it cannot be read as a path
+        -h|--help) usage; exit 0 ;;
+        --) shift; break ;;
+        -*) echo "unknown option: $1" >&2; usage; exit 2 ;;
+        *)
+            if [[ -z "$POLICY" ]]; then POLICY="$1"
+            else echo "unexpected argument: $1" >&2; usage; exit 2
+            fi
+            shift ;;
+    esac
+done
+[[ $# -gt 0 ]] && { echo "unexpected argument: $1" >&2; usage; exit 2; }
+POLICY="${POLICY:-/opt/neuralscreen/policy.toml}"
 RUNNER="${NEURALSCREEN_RUNNER:-/opt/neuralscreen/auto_runner.py}"
 
 if [[ ! -f "$POLICY" ]]; then
     echo "no policy at $POLICY" >&2
-    echo "  install tools/runner_policy.example.toml as that path first" >&2
+    if [[ "$POLICY" == /opt/neuralscreen/policy.toml ]]; then
+        echo "  the box keeps its policy outside the repo, so it is installed by hand:" >&2
+        echo "    install -m 0644 tools/runner_policy.example.toml /opt/neuralscreen/policy.toml" >&2
+        echo "  (run that from a checkout of this repo, then edit it - the entries decide what may run)" >&2
+    else
+        echo "  that path was given as the policy argument; omit it to use the default" >&2
+    fi
     exit 1
 fi
 if [[ ! -f "$RUNNER" ]]; then

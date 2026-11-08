@@ -1,0 +1,4 @@
+  CreateSession
+  session /org/freedesktop/portal/desktop/session/1_2459590/nsl_port
+  SelectSources
+  Start  (the compositor will ask you to choose a screen)
