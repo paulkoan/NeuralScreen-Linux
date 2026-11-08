@@ -1,0 +1,7 @@
+{
+  "id": "r2026-11-08-ffn-1-720p",
+  "entry": "port-profile",
+  "args": ["1280", "720"],
+  "timeout_s": 600,
+  "note": "The 720p half of the FFN sweep's measurement pair, re-run against the binary r2026-11-08-ffn-0-build just produced. The first attempt (r2026-11-08-ffn-720p) is void: it ran before that build, so it profiled the old code (its largest row still reads ffn_ptx 4032x256 e8 r3), and its total 17.042 ms against r2026-11-08-profile-720p's 3.620 ms is not comparable - its gpu_after probe says BUSY at 60% utilisation, which by this plan's own rule invalidates the sample. Read against r2026-11-08-profile-720p (3.620 ms, WARN card before and after, idle_waited_s 0.0, FFN family 0.461 + 0.314 + 0.160 + 0.053 + 0.051 = 1.04 ms = 28.7%, ffn_ptx 4032x256 e8 r3 0.461). On the new binary the C=256 expert FFN is the r4 kernel, so that row's name and shape change and the row must be quoted by its new name. Controls: the barrier probe (400 trivial dispatches + barriers, 0.409 ms / 1.02 us each) tells whether the card's clocks moved; gpu_before, gpu_after and idle_waited_s are part of the reading, and a BUSY before invalidates it."
+}

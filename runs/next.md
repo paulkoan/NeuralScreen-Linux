@@ -41,13 +41,35 @@ anything there.
   `r2026-11-08-profile-720p` (3.620 ms, FFN family 1.04 ms, `ffn_ptx 4032x256 e8 r3` 0.461) and
   `-profile-1080p-b` / `-c` (6.494 / 6.522, `ffn_ptx 8640x256 e8 r3` 1.431), quoting the FFN rows
   by their new r4 names and the `400 trivial dispatches + barriers` control. If the pair has not
-  landed when this is read, do nothing this tick and leave the item standing. If it has: make the
+  landed when this is read, do nothing this tick and leave the item standing. The first pair
+  (`r2026-11-08-ffn-720p`, `-ffn-1080p`) IS VOID - it profiled the pre-change binary, see the
+  learned line below - and has been re-queued with the order carried in the names
+  (`r2026-11-08-ffn-0-build` then `-1-720p` then `-2-1080p`); read THOSE, not the first pair. If they
+  have: make the
   second change of the sweep as the next item, with the exact file it edits named, and queue the same
   `port-build` + `port-profile` pair behind it. One change per build. The knobs the sweep has not
   spent: a lower register cap on the C=256 R4 kernel (an entry in `scripts/build_linux.sh`'s emitter
   list, which is inside the patch), and a first cap on the C=64 / C=128 FFN, which that list emits
   uncapped today (`"64 4 0"`, `"128 4 0"`). If R4 came back worse, the second change is to put C=256
   back on R3 and take the next candidate.
+
+* learned: the sweep's first pair measured the wrong binary, because the runner runs the queue in
+  name order and `ffn-build` sorts last (2026-11-08 tick, read of `r2026-11-08-ffn-720p`,
+  `-ffn-1080p` and `-ffn-build`, all exit 0). `tools/auto_runner.py:446` is
+  `sorted((worktree / "runs" / "queue").glob("*.json"))`, so the three ids ran in the order
+  `-1080p` (15:21:34), `-720p` (15:21:42), `-build` (15:21:54) - the prerequisite last, in direct
+  contradiction to the note in its own `request.json` ("It needs r2026-11-08-ffn-build to have landed
+  first"). The profiles' own output is the proof: both still name the C=256 expert FFN
+  `ffn_ptx 4032x256 e8 r3` at 720p and `ffn_ptx 8640x256 e8 r3` at 1080p, and the 1080p total is
+  **6.530 ms** against the pre-change binary's 6.494 / 6.522 - the same code, so no R3-vs-R4
+  comparison exists yet and R4's direction is still unmeasured. The 720p total (**17.042 ms against
+  3.620 ms**) is not a measurement at all: its `gpu_after` probe reads BUSY at 60%, which by this
+  plan's own gate rule invalidates the sample, and that run's card was contended throughout. So the
+  item's second change is not available and the item stands (nothing was edited in
+  `/opt/data/tmp/odl-src` this tick). Re-queued so the name IS the order:
+  `r2026-11-08-ffn-0-build`, `-1-720p`, `-2-1080p`. Rule for any future multi-run item: a queue id
+  cannot express a dependency unless its name sorts right - alphabetical order is the run order, and
+  a prerequisite whose id ends in a letter lands last.
 
 * learned: the FFN sweep's first change is made in the source and queued, one change per build
   (2026-11-08 tick, no run - no device here). `ffnRowTiles()` no longer special-cases C=256, so the
