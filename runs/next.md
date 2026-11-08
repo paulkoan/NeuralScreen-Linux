@@ -366,6 +366,25 @@ section asks only what is still being asked.
 
 ## Learned
 
+* learned: the capture chain's convert+scale runs on frames nobody sees, because the leaky queue
+  sits at the *end* of the pipeline (2026-11-08 tick, source read of `minimal/capture_wayland.py`
+  `_pipeline_args` against `r2026-11-08-1080p-window-b`'s own stdout). The chain is `pipewiresrc !
+  videoconvert [! videoscale] ! <rgba caps> ! queue max-size-buffers=1 leaky=downstream ! fdsink`,
+  so the drop point is downstream of both expensive elements: every frame the compositor produces
+  is converted and scaled, and only then discarded when the client is not reading. That is not a
+  rounding error in the run's own numbers - the chain used **8.52 s of CPU over 9.50 s (90% of one
+  core)** while the client presented 120 frames, and **3.75 s of that window was the worker's JIT
+  warm-up** (frame 0 recv 4735 ms) with nothing draining the pipe, so at least that share of the
+  8.52 s went on frames that were thrown away, with a core busy while the worker wanted the CPU
+  for its own 21.71 ms frame. Moving `queue leaky=downstream` ahead of `videoconvert`/`videoscale`
+  - the queue then holds raw PipeWire buffers and the expensive pair runs only on the frames the
+  pipe actually takes - changes no pixel (the caps stay 1920x1080 RGBA) and is a client change in
+  `minimal/capture_wayland.py`, which this tick may not edit. Not settled by it: how much of the
+  8.52 s is discarded-frame work rather than genuine per-frame cost (the producer's rate is the
+  compositor's, so the saving is at most produced/presented); that needs the change and a window
+  run. It is independent of the port's `fullWidth != workWidth` route, which removes the resize
+  outright - and it is the cheap half of the same residual.
+
 * learned: the 1080p window run landed clean and the resize price is real, not free (2026-11-08
   tick, read of `r2026-11-08-1080p-window-b`, exit 0, 120/0 frames, entry `minimal`, `--source
   window --size 1920x1080 --shm`, port patch `f2cd1f27` in sync, card WARN before and after, both
