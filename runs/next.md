@@ -33,6 +33,24 @@ anything there.
 
 ## 1. Next work
 
+* **Next: what the port's pass is actually bound by - one run away, and the loop can do it.**
+  `r2026-11-08-profile-720p` is written and committed (entry `port-profile 1280 720`). It is the
+  third size that separates the two explanations for the 6.5 ms the pass costs at 1080p, and the
+  two have opposite next steps: **area-bound** means the kernels are the target (the FFN pair is
+  ~25% of the pass, and that work is `experiments/opendlss_port/linux-port.patch`, cut from
+  `/opt/data/tmp/odl-src`), while **dispatch-bound** means the target is the dispatch structure -
+  bigger tiles, fewer of them - and no amount of kernel tuning helps. 1280x720 is 0.44 of 1080p's
+  pixels, so 2.9 ms says area and ~6 ms says dispatch; read the run before writing anything.
+
+  Two things this item fixes beyond its own question. First, it puts the pass back in reach of the
+  loop: **the port needs no screen and no developer** - `port-build` rebuilds it and `port-profile`
+  measures it on the box, both unattended, which is how the two 1080p runs and this one were
+  produced. The plan has been treating port work as blocked-waiting-for-a-device, and that framing
+  is what left the loop idle, because the port is the largest remaining stage. Second, when the
+  answer arrives this item is replaced by the port change the answer names, **with the exact file
+  it edits written into the item** - the tick may not edit `experiments/` or `minimal/` otherwise,
+  and an item that does not name its file is an item that stops the loop.
+
 * **60 fps is the goal, restated 2026-11-08 with the constraint and the caveat: "60fps is the goal,
   or as close as we can get to it, with 1440p output. I accept that it might not be achievable."**
   So: 1440p *output* is fixed, 60 is the target rather than a gate, and the task is to get as close
