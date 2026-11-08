@@ -375,6 +375,21 @@ section asks only what is still being asked.
 
 ## Learned
 
+* **CORRECTION, same day, from the runs' own logs: the entry below gets its central claim wrong.**
+  window-c did *not* run the same chain as window-b - it was the A/B for the one-line queue move in
+  `minimal/capture_wayland.py` (commit `b294583`), which is why it existed. The two pipelines as
+  each run printed them: window-b `pipewiresrc fd=5 target-object=4483 ! videoconvert ! videoscale
+  ! <rgba caps> ! queue max-size-buffers=1 leaky=downstream ! fdsink fd=1`; window-c `pipewiresrc
+  fd=5 target-object=4762 ! queue max-size-buffers=1 leaky=downstream ! videoconvert ! videoscale !
+  <rgba caps> ! fdsink fd=1`. So the 90% -> 25% of a core is that move and not "that run, not a
+  stable property of the resize", and this pair does not show the resize's own CPU price at all -
+  the chain's 25% now excludes the frames the queue drops, which was the point. The prediction in
+  `docs/M0-FINDINGS.md` is met on both halves and the second half overshot: `capture cpu:` fell
+  **4.2x** (8.52 s -> 2.05 s over comparable windows) *and* the frame time did not merely hold, it
+  improved - 36.2 ms / 27.7 fps to 30.5 ms / 32.8 fps steady, from a run that also read capture 5.7
+  against 7.6 ms. What the entry below still carries correctly: the stage-by-stage split, the spread
+  warning, and that neither window run has a same-build 1440p companion.
+
 * learned: the 1080p window route reads its second clean sample and the spread is the story - 30.5 ms / 32.8 fps against window-b's 36.2 ms / 27.7 fps - and the gst "90% of a core"
   price did not repeat (2026-11-08 tick, read of `r2026-11-08-1080p-window-c`, exit 0, 120/0
   frames, entry `minimal`, `--source window --size 1920x1080 --shm`, patch f2cd1f27 in sync, card
