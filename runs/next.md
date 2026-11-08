@@ -33,23 +33,43 @@ anything there.
 
 ## 1. Next work
 
-* **Next: read the third change's 1080p half back.** The change is built and the box is in sync
-  (patch `b7e051c1`), so this needs no build - two `port-profile 1920 1080` runs, ~4.2 s of box time
-  each, so `r2026-11-08-ffn5-0-1080p` and `r2026-11-08-ffn5-1-1080p` are queued, the names carrying
-  their order. Two because the third of three back-to-back runs is the one that hit the contention
-  (below): quote a sample only if it lands at baseline scale (~6.5 ms total, not 28), with the
-  `400 trivial dispatches + barriers` probe inside 0.406-0.409 ms, `gpu_before` WARN and
-  `idle_waited_s` 0.0; if both come back inflated, that is a box-level problem and the item stops
-  here for a human. The rows are the ones the third change moved, against `r2026-11-08-ffn-2-1080p`
-  as the like-for-like baseline (this binary differs from it only in the three emitter arguments):
-  (a) `ffn_ptx 8640x256 e8 r4` against **0.613** ms, and the total against **6.550** - that is the
-  revert landing; (b) `ffn_ptx 34560x128 e4 r4 +proj` **0.551** / `e4 r4` **0.090** and
-  `ffn_ptx 138240x64 e2 r4 +proj` **0.318** / `e2 r4` **0.099** - that is the first cap on the C=64
-  and C=128 R4 entries. A move inside 0.03 ms on a row is noise and the direction is the reading, and
-  the rest of the table must come back within ~0.01 ms of that baseline on the rows the change does
-  not touch. The knob after this one, from the reading below: the caps were not worse at 720p, so
-  unless 1080p says otherwise revert nothing and spend `.maxnreg 80` on an R4 kernel next, one change
-  per build, with the `.maxntid` argument and the `proj` emitter pair still unspent behind it.
+* **Next: spend `.maxnreg 80` on the C=128 R4 emitter entry.** Files, named so the tick may touch
+  them: `/opt/data/tmp/odl-src/scripts/build_linux.sh` (its emitter list, `"128 4 64"` -> `"128 4
+  80"`, one argument, one change per build) and `experiments/opendlss_port/linux-port.patch` (the
+  re-cut, `git format-patch -1`, after the one commit is amended). C=128 `e4` is the entry the third
+  change moved at both sizes, so 80 is spent there first; the C=64 entry and the C=256 R4 entry stay
+  at 64 for a later build, and the `.maxntid` argument and the `proj` emitter pair stay behind both.
+  Then push, and queue `r2026-11-08-ffn6-0-build`, `-1-720p` and `-2-1080p` behind it, the names
+  carrying their order. What reads them: at 1080p against `r2026-11-08-ffn5-0-1080p` (`ffn_ptx
+  34560x128 e4 r4 +proj` **0.418**, `e4 r4` **0.076**, `ffn_ptx 8640x256 e8 r4` **0.607**, total
+  **6.315**, barrier probe 0.407), at 720p against `r2026-11-08-ffn4-1-720p` (`ffn_ptx 16128x128 e4
+  r4 +proj` **0.250**, `e4 r4` **0.043**, total **3.388**, probe 0.408). A move inside 0.03 ms on a
+  row is noise and the direction is the reading; every row the change does not touch must come back
+  inside ~0.02 ms of its baseline. Two 1080p samples, because one of the last pair lost its card:
+  quote one only at baseline scale (~6.3-6.6 ms total, not 30) with the `400 trivial dispatches +
+  barriers` probe inside 0.406-0.409 ms, `gpu_before` WARN and `idle_waited_s` 0.0; if both come back
+  inflated, that is a box-level problem and the item stops there for a human.
+
+* learned: the third change's 1080p half landed clean on its first sample and the new caps pay at
+  that size too, so nothing is reverted and the next knob is 80 on the C=128 R4 entry (2026-11-08
+  tick, read of `r2026-11-08-ffn5-0-1080p` and `-1-1080p`, both exit 0, entry `port-profile 1920
+  1080`, `gpu_before` WARN and `idle_waited_s` 0.0 on both). **ffn5-0 is the usable sample**: total
+  **6.315 ms** against `r2026-11-08-ffn-2-1080p`'s **6.550**, barrier probe **0.407** against 0.409
+  (inside the 0.406-0.409 window), all 120 (kernel, args) rows present - and the row the third change
+  was made for moves in the good direction, four times the noise bar: `ffn_ptx 34560x128 e4 r4 +proj`
+  **0.418** against **0.551** (-0.133 ms, -24%), its sibling `e4 r4` **0.076** against 0.090, and the
+  ten c128 stage rows it sits in each fall ~0.014 (block 14 c128 0.103 -> 0.087 down to block 13 c128
+  0.084 -> 0.071). The revert half is invisible here as it was at 720p - `ffn_ptx 8640x256 e8 r4`
+  **0.607** against **0.613** and `ffn_ptx 138240x64 e2 r4 +proj` 0.312 against 0.318, both flat, and
+  `.maxnreg 64` is what that kernel carried in the baseline too, so the sample reads the two new caps
+  and not the 48 -> 64 step. Nothing regressed: the largest rise anywhere is `gemmv_ptx 640x4096->1024
+  f5 s4` +0.013. **ffn5-1 is the discarded `ffn4-2-1080p`'s signature and is quoted nowhere**: total
+  **30.677 ms** (4.7x) with the fixed-cost probe unmoved (0.409) and every row up by its own factor
+  (`block32_ptx 34560w f74` 0.352 -> 5.463, 15.5x; `upsampleResidual` 0.050 -> 0.839, 17x) - a
+  contended card wearing a WARN gate, so the pair yielded one sample and it is the first. Caveat: ~14
+  rows the change does not touch moved 0.012-0.017 (largest `qkv_ptx 40w x16 K512` 0.365 -> 0.349), a
+  little over the item's 0.01 bar, but all in the same direction as the change's own rows with the
+  probe held, so they are read as one sample's noise rather than as a second effect.
 
 * learned: the FFN sweep's third change is a clear win at the size that read it cleanly, and its
   1080p half did not land at all - a contended card, not a number (2026-11-08 tick, read of
