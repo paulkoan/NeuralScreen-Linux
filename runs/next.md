@@ -344,6 +344,13 @@ section asks only what is still being asked.
 
 ## Learned
 
+* learned: `run_manually.sh --include-manual` was reported as "finds no policy" and was not
+  that - the script took its policy from `$1`, so the flag became a filename and the error named
+  a path nobody passed. The runner's unit reads `/opt/neuralscreen/policy.toml` and has been
+  executing runs, so the policy exists; a missing-file message is not evidence that the file is
+  missing, it is evidence that the argument was. Fixed by parsing (`4870499`): the flag is
+  accepted and implied, help exists, and an unknown flag exits 2 rather than becoming a path.
+
 * learned: the goal item's first lever has one measurement left and it needs a human, so it is
   queued rather than run (2026-11-08 tick, no run - no device here, and this one is a portal run
   the box cannot do unattended). Lever 1 (run the pass at 1080p, let the present scale it to the
