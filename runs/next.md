@@ -33,23 +33,31 @@ anything there.
 
 ## 1. Next work
 
-* **Next: what the port's pass is actually bound by - one run away, and the loop can do it.**
-  `r2026-11-08-profile-720p` is written and committed (entry `port-profile 1280 720`). It is the
-  third size that separates the two explanations for the 6.5 ms the pass costs at 1080p, and the
-  two have opposite next steps: **area-bound** means the kernels are the target (the FFN pair is
-  ~25% of the pass, and that work is `experiments/opendlss_port/linux-port.patch`, cut from
-  `/opt/data/tmp/odl-src`), while **dispatch-bound** means the target is the dispatch structure -
-  bigger tiles, fewer of them - and no amount of kernel tuning helps. 1280x720 is 0.44 of 1080p's
-  pixels, so 2.9 ms says area and ~6 ms says dispatch; read the run before writing anything.
+* **Next: the FFN pair in the port's own kernels - the pass is area-bound, so the target is the
+  kernels and not the dispatch structure, and the largest kernel family is the FFN.** The exact
+  files: `/opt/data/tmp/odl-src/src/kernels.cpp` (`ffnRowTiles()`, the `expertFfnPtx` launch) and
+  the PTX generator `/opt/data/tmp/odl-src/scripts/ptx/ffn_e4m3.py`, re-cut into
+  `experiments/opendlss_port/linux-port.patch` (`git -C /opt/data/tmp/odl-src`, amend the one
+  commit, `git format-patch -1`) - edit the source and re-cut it; fixing the patch alone is half a
+  fix. One change per build, and the build and the measurement are both unattended: the port needs
+  no screen and no developer. Queue entry `port-build`, then `port-profile` at `1280 720` and
+  `1920 1080`, against the profile baselines 3.620 / 6.494 / 9.714 ms and NGX's 2.90 / 4.6 / 7.1.
 
-  Two things this item fixes beyond its own question. First, it puts the pass back in reach of the
-  loop: **the port needs no screen and no developer** - `port-build` rebuilds it and `port-profile`
-  measures it on the box, both unattended, which is how the two 1080p runs and this one were
-  produced. The plan has been treating port work as blocked-waiting-for-a-device, and that framing
-  is what left the loop idle, because the port is the largest remaining stage. Second, when the
-  answer arrives this item is replaced by the port change the answer names, **with the exact file
-  it edits written into the item** - the tick may not edit `experiments/` or `minimal/` otherwise,
-  and an item that does not name its file is an item that stops the loop.
+  What the numbers say to chase: the FFN family is 0.461 + 0.314 + 0.160 + 0.053 + 0.051 = 1.04 ms
+  at 720p (28.7% of 3.620) and 0.980 + 0.908 + 0.516 = 2.40 ms at 1440p (~25% of 9.749), the same
+  kernel names holding the same share at both sizes, and the port reads 1.25-1.41x NGX at every
+  size (3.620/2.90, 6.508/4.6, 9.714/7.1) - so a kernel change is a change to the pass at every
+  resolution and the recoverable gap is ~2.6 ms at 1440p.
+
+  First candidate, from the source read this tick: `ffnRowTiles()` returns 3 for C=256 and 4
+  otherwise ("warps = E * rowTiles (<= 32); C=256: 24 warps at .maxnreg 80 keep one workgroup per
+  SM"), and the C=256 FFN is the single largest kernel at all three sizes - rowTiles and the
+  register cap are the cheapest first sweep. Not verified: no device here; the box's `port-build`
+  and `port-profile` are the only instruments.
+
+* learned: the pass is area-bound and the three sizes settle it - kernels, not dispatch structure
+  (2026-11-08 tick, read of `r2026-11-08-profile-720p`, exit 0: 3.620 ms against 6.494/6.522 at
+  1080p and 9.714 at 1440p; the full reading is at the top of Learned).
 
 * **60 fps is the goal, restated 2026-11-08 with the constraint and the caveat: "60fps is the goal,
   or as close as we can get to it, with 1440p output. I accept that it might not be achievable."**
@@ -401,6 +409,33 @@ section asks only what is still being asked.
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the port's pass is **area-bound**, and the profile's third size settles what nothing else
+  could - the target is the kernels, not the dispatch structure (2026-11-08 tick, read of
+  `r2026-11-08-profile-720p`, exit 0, entry `port-profile 1280 720`, card WARN before and after,
+  `idle_waited_s` 0.0, so a usable sample). **3.620 ms** at 1280x720 against the 6.494/6.522 pair at
+  1920x1080 (`-profile-1080p-b`/`-c`) and 9.714 at 2560x1440 (`-profile-1440p`), same binary and
+  instrument. 720p is 0.444 of 1080p's pixels and the pass reads 0.556 of its time
+  (3.620/6.508), where a dispatch-bound pass would read ~6 ms and pure area 2.9 - so roughly
+  three-quarters of the pass scales with area and the fixed residual is small enough that the
+  dispatch structure is not the lever. The profile's own barrier probe bounds per-dispatch cost
+  from the other side: "400 trivial dispatches + barriers: 0.409 ms (1.02 us each)". The same
+  kernel names carry the time at both ends, scaled by rows rather than held constant - the FFN
+  family is 0.461 + 0.314 + 0.160 + 0.053 + 0.051 = 1.04 ms at 720p (28.7% of the total) against
+  0.980 + 0.908 + 0.516 = 2.40 ms at 1440p (~25%): `ffn_ptx 4032x256 e8 r3` 0.461 here against
+  `ffn_ptx 14720x256 e8 r3` 0.980 there, and the two `+proj` variants scale the same way, which is
+  the opposite of the signature a fixed per-dispatch cost would leave. Against NGX the port reads
+  **1.25x at 720p** (3.620 vs the 2.90 the queue note predicted), 1.41x at 1080p (6.508 vs 4.6) and
+  1.37x at 1440p (9.714 vs 7.1) - so the gap is roughly proportional too, and closing it is ~2.6 ms
+  of kernel work at 1440p. NGX's 2.90 at this size is also what an area-scaled port pass would
+  cost, which is the coincidence the request was built around and it landed. What this retires:
+  the dispatch-structure branch (bigger tiles, fewer dispatches) as the target, and with it the
+  framing that the pass's cost is per-dispatch. What it does not touch: the profile route runs with
+  chaining off and its total is a sum of per-dispatch spans, not a frame time, so nothing here says
+  whether the ~5 ms the worker's wall-clock network line carries above this sum is spans or gaps -
+  the 720p run is a span reading and there is no 720p wall clock to pair it with. Nothing is queued
+  off it: the item is replaced by the port change it names (top of section 1, with the exact files
+  written in), and the next number is a `port-build` + `port-profile` pair after that change.
 
 * learned: the 1440p window companion landed and it retires lever 1's caveat - the top lever now
   has a same-build delta and it is larger than the direction it was quoted as (2026-11-08 tick,
