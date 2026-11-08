@@ -103,9 +103,16 @@ copy sat in the worktree.
      resize at all - a port change, and a device to verify it on. **Not measured end to end**:
      the resize is `videoscale` inside the gst chain and that cost is not in `bg`'s 19.5 ms,
      which came off a synthetic 1080p card; the run that would price it is a live or window run
-     at `--size 1920x1080` - now queued as **`r2026-11-08-1080p-window`** (`manual: true`: the
-     portal needs a dialog clicked, so it waits for the developer at the screen and the timer
-     will not take it).
+     at `--size 1920x1080`. It ran on 2026-11-08 and **came back exit 2 on the portal, not the
+     pipeline**: `r2026-11-08-1080p-window` succeeded through CreateSession/SelectSources/Start
+     and then the window picker was never answered inside the 120 s the capture allows
+     (`startup failed: the portal handshake failed (TimeoutError)`, 122.3 s, no frames, no PNGs),
+     so the resize price is still unmeasured. The same argv is re-queued as
+     **`r2026-11-08-1080p-window-b`** (`manual: true`, artifacts `1080p-window-b-*`, note carries
+     the reading list), because the first request's id is spent and a spent queue file is inert -
+     the mistake recorded under r2026-11-02-bi. The one thing that run needs is the thing this
+     tick cannot supply: a person at the screen to answer the picker. If the repeat also dies at
+     the handshake, the next tick queued nothing and asks instead.
   2. **Close the implementation gap against NGX - ~2.6 ms at 1440p, and more at 1080p.** The port is
      11.8-12.4 ms at 1440p where NGX is 7.1 ms for the same weights (1.6x), and the profile's own
      sum says 9.749 against 7.1 (1.37x) - so chasing the network recovers at most ~2.6 ms at 1440p.
