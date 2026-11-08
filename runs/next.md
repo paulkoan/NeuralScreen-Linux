@@ -54,6 +54,29 @@ anything there.
   (its R3 sibling keeps 80), the `.maxntid` argument, and the `proj` emitter pair as a separate
   variable; if 80 on C=128 comes back worse than 64, revert that entry and take the next candidate.
 
+* learned: the FFN sweep's fourth pair has no 1080p number - the repeat is contended too, so that
+  half of the read is a person's call and the item stays standing (2026-11-08 tick, read of
+  `r2026-11-08-ffn6-2-1080p-b`, exit 0, entry `port-profile 1920 1080`, box revision
+  `eb6db2668edb`). The run's gate is the whole of it: `gpu_before` **BUSY** at 90% with
+  `DyingLightGame_TheBeast_x64_rwdi.exe` resident at 6184 MiB and `idle_waited_s` **297.6** (it
+  waited the idle window out and then ran under the contention anyway), so by the plan's own rule
+  the sample is invalid before a single row is read - where the first run of this pair,
+  `r2026-11-08-ffn6-2-1080p`, read WARN before and after with `idle_waited_s` 0.0 and was rejected
+  on its 30.165 ms inflation instead. The table agrees with the gate: total **8.513 ms** against
+  `r2026-11-08-ffn5-0-1080p`'s **6.315**, and all 2.2 ms of the excess sits in two rows -
+  `block32_ptx 34945w f48` **1.508** against 0.337 (4.5x) and `ffn_ptx 138240x64 e2 r4 +proj`
+  **1.482** against 0.312 (4.7x), the pair `r2026-11-08-ffn4-2-1080p` inflated in the same
+  direction - while every other row lands at baseline (`ffn_ptx 8640x256 e8 r4` 0.571 against
+  0.607, `block32_ptx 34560w f74` 0.352 against 0.351, `ffn_ptx 138240x64 e2 r4` 0.084 against
+  0.101) and the fixed-cost barrier probe reads 0.386 against 0.407. The change's own row reads
+  `ffn_ptx 34560x128 e4 r4 +proj` **0.519** against **0.418** - worse, the same direction the
+  720p half read - but on a BUSY card it is quoted nowhere, so the revert that reading implies is
+  not taken yet. So the item's own clause fires: both 1080p samples are unusable, the pair has no
+  1080p number, and the item stops there for a human. The box-level fact a person needs: the card
+  is held by a running game (6.2 GiB resident), which is what took both samples, and `require_idle`
+  in the policy is the box's config, not this tick's. NOT verified: no device here, so nothing was
+  re-timed.
+
 * learned: the FFN sweep's fourth pair has landed - the 720p half reads the change as worse and the
   1080p half is contended, so one second identical run is queued under the item (2026-11-08 tick, read
   of `r2026-11-08-ffn6-0-build`, `-1-720p` and `-2-1080p`). All three exit 0, `gpu_before` WARN and
