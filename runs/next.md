@@ -33,27 +33,34 @@ anything there.
 
 ## 1. Next work
 
-* **Next: the FFN pair in the port's own kernels - the pass is area-bound, so the target is the
-  kernels and not the dispatch structure, and the largest kernel family is the FFN.** The exact
-  files: `/opt/data/tmp/odl-src/src/kernels.cpp` (`ffnRowTiles()`, the `expertFfnPtx` launch) and
-  the PTX generator `/opt/data/tmp/odl-src/scripts/ptx/ffn_e4m3.py`, re-cut into
-  `experiments/opendlss_port/linux-port.patch` (`git -C /opt/data/tmp/odl-src`, amend the one
-  commit, `git format-patch -1`) - edit the source and re-cut it; fixing the patch alone is half a
-  fix. One change per build, and the build and the measurement are both unattended: the port needs
-  no screen and no developer. Queue entry `port-build`, then `port-profile` at `1280 720` and
-  `1920 1080`, against the profile baselines 3.620 / 6.494 / 9.714 ms and NGX's 2.90 / 4.6 / 7.1.
+* **Next: read the FFN sweep back, then make the change its reading names.** The sweep's first
+  change is queued - `r2026-11-08-ffn-build`, then `r2026-11-08-ffn-720p` and `-ffn-1080p` - and it
+  moved C=256's expert FFN from the 3-tile / .maxnreg 80 variant to R4 / .maxnreg 64 through
+  `/opt/data/tmp/odl-src/src/kernels.cpp`'s `ffnRowTiles()`, re-cut into
+  `experiments/opendlss_port/linux-port.patch`. Read the two profiles against
+  `r2026-11-08-profile-720p` (3.620 ms, FFN family 1.04 ms, `ffn_ptx 4032x256 e8 r3` 0.461) and
+  `-profile-1080p-b` / `-c` (6.494 / 6.522, `ffn_ptx 8640x256 e8 r3` 1.431), quoting the FFN rows
+  by their new r4 names and the `400 trivial dispatches + barriers` control. If the pair has not
+  landed when this is read, do nothing this tick and leave the item standing. If it has: make the
+  second change of the sweep as the next item, with the exact file it edits named, and queue the same
+  `port-build` + `port-profile` pair behind it. One change per build. The knobs the sweep has not
+  spent: a lower register cap on the C=256 R4 kernel (an entry in `scripts/build_linux.sh`'s emitter
+  list, which is inside the patch), and a first cap on the C=64 / C=128 FFN, which that list emits
+  uncapped today (`"64 4 0"`, `"128 4 0"`). If R4 came back worse, the second change is to put C=256
+  back on R3 and take the next candidate.
 
-  What the numbers say to chase: the FFN family is 0.461 + 0.314 + 0.160 + 0.053 + 0.051 = 1.04 ms
-  at 720p (28.7% of 3.620) and 0.980 + 0.908 + 0.516 = 2.40 ms at 1440p (~25% of 9.749), the same
-  kernel names holding the same share at both sizes, and the port reads 1.25-1.41x NGX at every
-  size (3.620/2.90, 6.508/4.6, 9.714/7.1) - so a kernel change is a change to the pass at every
-  resolution and the recoverable gap is ~2.6 ms at 1440p.
-
-  First candidate, from the source read this tick: `ffnRowTiles()` returns 3 for C=256 and 4
-  otherwise ("warps = E * rowTiles (<= 32); C=256: 24 warps at .maxnreg 80 keep one workgroup per
-  SM"), and the C=256 FFN is the single largest kernel at all three sizes - rowTiles and the
-  register cap are the cheapest first sweep. Not verified: no device here; the box's `port-build`
-  and `port-profile` are the only instruments.
+* learned: the FFN sweep's first change is made in the source and queued, one change per build
+  (2026-11-08 tick, no run - no device here). `ffnRowTiles()` no longer special-cases C=256, so the
+  family's largest kernel takes the R4 variant (`warps = E * rowTiles = 32`, the A tile's full 64
+  rows instead of 48) and the `.maxnreg 64` that goes with it, where C=64 and C=128 already were.
+  Edited at `/opt/data/tmp/odl-src/src/kernels.cpp`, the one commit amended, the patch re-cut and
+  pushed: id moves `f2cd1f27 -> f687b434`, so every port run stamps OUT OF SYNC until
+  `r2026-11-08-ffn-build` lands. The build needs no new emitter entry - `scripts/build_linux.sh`
+  already emits `"256 4 64"` beside `"256 3 80"`, so only the selection moved and the PTX count
+  stays 78. The queue carries the build and the pair (`-ffn-720p` against 3.620 ms, `-ffn-1080p`
+  against 6.494 / 6.522), and the item above says what reads them. Suite 564 passed / 9 failed /
+  37 skipped, the same nine libGL/SDL2 environment failures this box always has. NOT verified: no
+  device here, so no kernel has been re-timed - R4 against R3 is unmeasured until the pair lands.
 
 * learned: the pass is area-bound and the three sizes settle it - kernels, not dispatch structure
   (2026-11-08 tick, read of `r2026-11-08-profile-720p`, exit 0: 3.620 ms against 6.494/6.522 at
