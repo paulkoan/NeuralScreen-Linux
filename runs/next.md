@@ -33,21 +33,66 @@ anything there.
 
 ## 1. Next work
 
-* **Next: read the FFN sweep's second pair back.** It is queued with the order in the names -
-  `r2026-11-08-ffn3-0-build`, then `-ffn3-1-720p`, then `-ffn3-2-1080p` - and the change it builds is
-  the C=256 R4 expert FFN's register cap, `.maxnreg 64 -> 48`, in `scripts/build_linux.sh`'s emitter
-  list (inside the patch), one change per build. Read the C=256 row at 1080p against
+* **Next: read the FFN sweep's third pair back.** It is queued with the order in the names -
+  `r2026-11-08-ffn4-0-build`, then `-ffn4-1-720p`, then `-ffn4-2-1080p` - and the change it builds is
+  the R4 family's register caps, one change per build: the C=256 R4 entry goes back to `.maxnreg 64`
+  (48 measured worse, below) and the C=64 / C=128 R4 entries take their first cap, at the same 64, in
+  `scripts/build_linux.sh`'s emitter list, which now reads `"64 4 64" "128 4 64" "256 3 80"
+  "256 4 64"` (inside the patch). Three rows to read. (a) The C=256 row at 1080p against
   `r2026-11-08-ffn-2-1080p`'s `ffn_ptx 8640x256 e8 r4` **0.613 ms** and the total against its
-  **6.550** (against `-profile-1080p-b` / `-c`'s 6.494 / 6.522 on the old binary, whose C=256 row is
-  `e8 r3` **0.694** - the 1.431 this item used to quote was the cold 13.733 run), quoting the `400
-  trivial dispatches + barriers` control. The cap is worth a fraction of a kernel that is 9.4% of the
-  pass, so a move inside 0.03 ms is noise and the direction is the reading. The 720p number is only
-  usable if this run's rows come back at `profile-720p`'s scale (3.620 ms): the two samples since
-  read 6.191 and 1.437 ms for rows the baseline puts at 0.461-0.542, so 720p rows swing 3x across
-  runs on one binary. If the pair has not landed when this is read, do nothing this tick and leave
-  the item standing. The knobs the sweep has not spent: a first cap on the C=64 / C=128 FFN
-  (`"64 4 0"`, `"128 4 0"` in that same list); and if 48 came back worse than 64, put C=256 back on
-  64 and take the next candidate.
+  **6.550** - this build is that binary with the three emitter arguments moved, so the revert landing
+  is the whole of that comparison. (b) The C=64 / C=128 rows at 1080p against that run's
+  `ffn_ptx 34560x128 e4 r4 +proj` **0.551** / `e4 r4` **0.090** and `ffn_ptx 138240x64 e2 r4 +proj`
+  **0.318** / `e2 r4` **0.099**. (c) The same rows at 720p against `r2026-11-08-ffn3-1-720p`'s
+  `ffn_ptx 4032x256 e8 r4` **0.464**, `16128x128 e4 r4 +proj` **0.313**, `64512x64 e2 r4 +proj`
+  **0.159**, and the total against `profile-720p`'s **3.620**. A cap change is a fraction of a family
+  that is ~16% of the pass, so a move inside 0.03 ms on a row is noise and the direction is the
+  reading. Two controls, both quoting: the `400 trivial dispatches + barriers` probe (0.406-0.409 ms
+  in every sample since 2026-11-03) and the rest of the table, which must come back within ~0.01 ms of
+  the comparator on the rows the change does not touch - the C=256 stage rows are the exception,
+  since they carry the changed kernel. `gpu_before`/`gpu_after`/`idle_waited_s` are part of the
+  reading, and a BUSY *before* invalidates the sample. For the 720p half, the row set must land at
+  baseline scale at all (the last pair's did; the one before read 1.7-3x and carried no number). If
+  the pair has not landed when this is read, do nothing this tick and leave the item standing. The
+  knobs the sweep has not spent when this is done: `.maxnreg 80` on any R4 kernel (the R3 C=256
+  variant keeps 80), the `.maxntid` argument, and the `proj` emitter pair as a separate variable; if
+  64 on the newly capped kernels comes back worse than no cap, revert those two entries to `0` and
+  take 80 next.
+
+* learned: the FFN sweep's second change came back WORSE at the one size that can read it, so the cap
+  is reverted and the sweep moves on to the family's other kernels (2026-11-08 tick, read of
+  `r2026-11-08-ffn3-0-build`, `-1-720p` and `-2-1080p`). All three exit 0, the build landed in sync
+  (patch `2c263a21`, 16 shader modules / 78 PTX kernels), `idle_waited_s` 0.0 on both profiles and
+  gpu_before WARN on both; the 1080p one's `gpu_after` reads BUSY at 72%, recorded because the plan's
+  standing rule says to - the request's own gate invalidates on a BUSY *before* only, and the
+  fixed-cost control below is what says the sample is still a reading. At 1080p the C=256 expert FFN
+  reads `ffn_ptx 8640x256 e8 r4` **0.967 ms** against `r2026-11-08-ffn-2-1080p`'s **0.613** on the 64
+  build - **+0.354 ms, +58%**, twelve times the 0.03 noise bar - and the pass total **6.792** against
+  **6.550**. The row is the whole of it: no other kernel row moved by more than 0.014 ms (the largest
+  are qkv_ptx 40w x16 K512 0.365 -> 0.351, gemmv_ptx 2160x512->512 f5 0.288 -> 0.278 and its own
+  sibling ffn_ptx 138240x64 e2 r4 0.099 -> 0.085), the added ~0.35 ms is visible as the 16 c256 stage
+  rows each rising ~0.02 (block 15 c256 0.072 -> 0.099 and its fifteen siblings), and the barrier
+  probe is identical (0.408 against 0.409) - a single-variable signature, not a contended run. At
+  720p the change is invisible: total **3.619** against `profile-720p`'s **3.620** and
+  `ffn_ptx 4032x256 e8 r4` **0.464** against the pre-change `e8 r3` **0.461**, and this 720p sample
+  is usable where the previous one was not - its rows land at baseline scale (`block32_ptx 16128w
+  f74` 0.170 against 0.170), which is the test the queue note had set. So `.maxnreg 48` costs the
+  C=256 R4 kernel at 1080p and buys nothing at 720p; the reading is the direction, since one pair
+  cannot separate the cap from the clock. Third change made: `scripts/build_linux.sh`'s emitter list
+  now reads `"64 4 64" "128 4 64" "256 3 80" "256 4 64"` - the 48 reverted, and the C=64 / C=128 R4
+  kernels capped at 64 for the first time (their `0` meant the directive was omitted entirely:
+  `ptxgen.py`'s `if max_regs:` and `ffn_e4m3.py` passes the argument through). 64 is the value the
+  family's own comment already claims - `src/kernels.cpp`'s `ffnRowTiles()` says "build_linux.sh
+  emits the R4 kernel at .maxnreg 64" - so that comment debt clears without a comment edit, and the
+  same cap on all three entries keeps it one change. The item's other debt (its 1.431 ms quote for
+  the C=256 1080p row, where b / c read 0.694) goes with the item, which this tick deleted. Edited at
+  `/opt/data/tmp/odl-src`, the one commit amended (`2c263a21` -> `b7e051c1`), the patch re-cut into
+  `experiments/opendlss_port/linux-port.patch` (patch id `2c263a2182cf` -> `2b6cd6b90c00`; the diff is
+  the emitter line plus the two `From` / `index` header lines), pushed, and the build plus the same
+  720p / 1080p pair queued behind it, the names carrying the order. Suite 564 passed / 9 failed /
+  37 skipped, the same nine libGL/SDL2 environment failures this box always has. NOT verified: no
+  device here, so neither cap has been re-timed - the revert and the first cap are unmeasured until
+  `r2026-11-08-ffn4-2-1080p` lands.
 
 * learned: the FFN sweep's first change came back neutral-to-better, so its successor is made and
   queued (2026-11-08 tick, read of `r2026-11-08-ffn-0-build`, `-1-720p` and `-2-1080p`, all exit 0,
