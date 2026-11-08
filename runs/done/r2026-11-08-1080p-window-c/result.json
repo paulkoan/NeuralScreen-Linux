@@ -1,0 +1,34 @@
+{
+  "exit_code": 0,
+  "seconds": 25.731,
+  "argv": [
+    "uv",
+    "run",
+    "python",
+    "-m",
+    "minimal",
+    "--frames",
+    "120",
+    "--source",
+    "window",
+    "--size",
+    "1920x1080",
+    "--shm",
+    "--save-before",
+    "1080p-window-c-before.png",
+    "--save-after",
+    "1080p-window-c-after.png",
+    "--worker-log"
+  ],
+  "artifacts": [
+    "1080p-window-c-before.png",
+    "1080p-window-c-after.png"
+  ],
+  "runner": "005dd2c6ea9e",
+  "entry_env": [
+    "NS_WORKER_CMD"
+  ],
+  "gpu_before": "WARN (resident but not contending: signal-desktop (pid 18889, 156.0 MiB); resident but not contending: chromium (pid 18945, 62.0 MiB); resident but not contending: msedge (pid 54723, 342.0 MiB))",
+  "gpu_after": "WARN (resident but not contending: signal-desktop (pid 18889, 156.0 MiB); resident but not contending: chromium (pid 18945, 62.0 MiB); resident but not contending: msedge (pid 54723, 318.0 MiB))",
+  "idle_waited_s": 0.0
+}

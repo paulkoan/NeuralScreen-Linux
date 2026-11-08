@@ -85,6 +85,30 @@ def test_pipeline_drops_stale_frames():
     assert "queue" in args and "max-size-buffers=1" in args and "leaky=downstream" in args
 
 
+def test_the_newest_frame_queue_sits_ahead_of_the_expensive_pair():
+    """Where the drop happens is the cost.
+
+    Downstream of videoconvert/videoscale, the chain converts and scales every frame the
+    compositor produces and only then discards it: r2026-11-08-1080p-window-b spent 8.52 s
+    of CPU across a 9.50 s window to present 120 frames, 90% of one core, busy while the
+    worker wanted the CPU for its own frame. Ahead of the pair the queue holds raw PipeWire
+    buffers and the expensive elements see only the frames the pipe actually takes.
+
+    The caps are identical either way, so this cannot be caught by comparing output - it is
+    purely an ordering assertion, which is why it is asserted on the argument list.
+    """
+    args = _capture()._pipeline_args()
+    assert args.count("queue") == 1, "one queue, so what it holds is unambiguous"
+    drop = args.index("leaky=downstream")
+    assert drop < args.index("videoconvert"), "the queue must come before videoconvert"
+    assert drop < args.index("videoscale"), "the queue must come before videoscale"
+    assert drop < args.index("fdsink")
+    # The sink is still the last word, and the caps still ride between the scale and it.
+    assert args[-2:] == ["fdsink", "fd=1"]
+    caps_i = next(i for i, a in enumerate(args) if a.startswith("video/x-raw"))
+    assert args.index("videoscale") < caps_i < args.index("fdsink")
+
+
 def test_pipeline_writes_raw_frames_to_our_stdout():
     args = _capture()._pipeline_args()
     assert args[-2:] == ["fdsink", "fd=1"]

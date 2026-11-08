@@ -156,19 +156,30 @@ class PortalCapture:
 
         `queue max-size-buffers=1 leaky=downstream` keeps us on the newest frame
         instead of chewing through a backlog: this is a mirror, not a recording.
+        Where it sits is the point, and it sits *before* the convert/scale pair.
+        At the end of the chain the drop happened downstream of both expensive
+        elements, so every frame the compositor produced was converted and scaled
+        and only then discarded - `r2026-11-08-1080p-window-b` spent 8.52 s of CPU
+        across a 9.50 s window (90% of one core) to present 120 frames, with a
+        core busy while the worker wanted it for its own 21.71 ms frame. Ahead of
+        the pair the queue holds raw PipeWire buffers and the expensive elements
+        see only the frames the pipe actually takes. The caps do not move, so no
+        pixel changes; `docs/M0-FINDINGS.md` carries the prediction - `capture
+        cpu:` falls while the frame time does not rise.
         """
         caps = (f"video/x-raw,format=RGBA,width={self.width},height={self.height},"
                 f"pixel-aspect-ratio=1/1")
         args = [
             self._gst, "-q",
             "pipewiresrc", f"fd={self._sc.fd}", *self._sc.pipewire_target,
+            # Before the expensive pair, not after them. See the note above.
+            "!", "queue", "max-size-buffers=1", "leaky=downstream",
             "!", "videoconvert",
         ]
         if self.video_scale:
             args += ["!", "videoscale"]
         args += [
             "!", caps,
-            "!", "queue", "max-size-buffers=1", "leaky=downstream",
             "!", "fdsink", "fd=1",
         ]
         return args
