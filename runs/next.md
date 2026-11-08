@@ -39,13 +39,21 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   consistent with ~5 ms of the port's network being independent of resolution, which would make it
   the largest single item in the project - larger than the "close the NGX gap, ~2.6 ms" item this
   plan used to rank second.
-  **The pair queued to settle it has run and answered neither branch.** `r2026-11-08-profile-1080p`
-  read **13.733 ms** at 1920x1080 against `r2026-11-08-profile-1440p`'s **9.714 ms** on the same
-  binary minutes apart - the smaller frame came back 1.41x dearer, which no pixel effect can
-  produce. Linear would have been ~5.5, the fixed-cost branch ~9; 13.7 is neither, so the
-  comparison as designed cannot decide spans-vs-gaps and the reading above has to be settled before
-  anything is built on it. That is the top item now (the repeat pair), and its outcome goes at the
-  head of Learned.
+  **The repeat pair has run and the contradiction is resolved: the dearer 1080p reading was a cold
+  clock.** `r2026-11-08-profile-1080p-b` and `-c` (same entry, args and binary as the 13.733 run,
+  queued directly behind each other) read **6.494 ms** and **6.522 ms** - a 0.03 ms equal pair, both
+  *below* the 1440p run's 9.714 ms, which is the direction the pixels demand. The one field that
+  differs is the one the queue note named: the 13.733 run waited **45.0 s** in the idle gate where b
+  and c waited **0.0 s**, so the outlier is the run that woke a cold card. So the earlier cross-size
+  table stands (a smaller frame is cheaper, roughly as area says - 6.5/9.714 = 0.67 against 0.56 for
+  the pixels), and the "the pass is not pixel-bound / a smaller frame is dearer" reading built on the
+  single 13.733 sample is withdrawn. What the pair does not touch: the worker-line table above
+  (network 11.5 -> 9.9 for 44% fewer pixels) is a *wall-clock* measurement from a different
+  instrument, and the profile route runs with barriers on, so it sees span cost and not the gaps
+  between dispatches - consistent with that ~5 ms being gaps rather than spans, but not evidence
+  either way. Nothing is queued off this reading: the only lever it names that is not already
+  measured (the port's `fullWidth != workWidth` refusal, so `--work-scale` can do the 1080p pass'
+  resize inside the pass) is a port change that needs a device.
 
   Two further instructions came with it, and both change what is buildable:
 
@@ -333,6 +341,25 @@ section asks only what is still being asked.
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the profile pair's contradiction was a cold clock, and the smaller frame is the cheaper
+  one after all (2026-11-08 tick, read of `r2026-11-08-profile-1080p-b` and `-c`, both exit 0,
+  entry `port-profile 1920 1080`, WARN card before and after, `idle_waited_s` 0.0 on both).
+  **b 6.494 ms, c 6.522 ms** - an equal pair 0.03 ms apart, both under the 1440p run's 9.714 ms and
+  both far under the 13.733 the first 1080p run read on the same binary. The single field the queue
+  note named as the discriminator is the one that shows: the 13.733 run waited **45.0 s** in the
+  idle gate where b and c waited 0.0, so the dearer reading came from waking a cold card and 13.733
+  is the artifact, not the pass's shape. Cross-size reading now: 6.5/9.714 = **0.67** against
+  **0.56** for the pixel ratio, i.e. the pass costs roughly what area says, so the earlier
+  cross-size table stands and the "the pass is not pixel-bound / a smaller frame is dearer"
+  conclusion drawn from the one 13.733 sample is withdrawn. Not touched by this: the worker's own
+  line (network 11.5 -> 9.9 for 44% fewer pixels) is a wall-clock measurement from a different
+  instrument, and the profile route runs with barriers on so it reads span cost and not the gaps
+  between dispatches - the two are consistent with the ~5 ms being gaps rather than spans, but this
+  pair is not evidence either way and the "target the network's fixed ~5 ms" reading should not be
+  built on it alone. Nothing queued: the goal item's blocker is retired and the one lever it names
+  that is not already measured (the port's `fullWidth != workWidth` refusal, so `--work-scale` moves
+  the 1080p pass' resize off gst and into the pass) is a port change that needs a device.
 
 * learned: the profile pair's contradiction is being repeated at one size before any port work is
   chosen, and one instruction in the goal item is not the ticker's to carry out (2026-11-08 tick).
