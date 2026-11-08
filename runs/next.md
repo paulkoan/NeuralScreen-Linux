@@ -95,7 +95,9 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
      resize at all - a port change, and a device to verify it on. **Not measured end to end**:
      the resize is `videoscale` inside the gst chain and that cost is not in `bg`'s 19.5 ms,
      which came off a synthetic 1080p card; the run that would price it is a live or window run
-     at `--size 1920x1080`.
+     at `--size 1920x1080` - now queued as **`r2026-11-08-1080p-window`** (`manual: true`: the
+     portal needs a dialog clicked, so it waits for the developer at the screen and the timer
+     will not take it).
   2. **Close the implementation gap against NGX - ~2.6 ms at 1440p, and more at 1080p.** The port is
      11.8-12.4 ms at 1440p where NGX is 7.1 ms for the same weights (1.6x), and the profile's own
      sum says 9.749 against 7.1 (1.37x) - so chasing the network recovers at most ~2.6 ms at 1440p.
@@ -341,6 +343,22 @@ section asks only what is still being asked.
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the goal item's first lever has one measurement left and it needs a human, so it is
+  queued rather than run (2026-11-08 tick, no run - no device here, and this one is a portal run
+  the box cannot do unattended). Lever 1 (run the pass at 1080p, let the present scale it to the
+  1440p output) has both client halves in and was priced on a file source, but `r2026-11-08-1080p-video`
+  is `--headless` and never presented anything, so neither the portal leg nor the present stretch
+  has been exercised end to end. `r2026-11-08-1080p-window` is queued for it: entry `minimal`,
+  `--source window --size 1920x1080 --shm`, 120 frames, before/after PNGs. It is `"manual": true`
+  deliberately - the portal wants a dialog clicked, and `tools/auto_runner.py` skips manual
+  requests on the timer by design (`run_manually.sh --include-manual` is the only thing that takes
+  them), so this tick moves nothing on the box and plants the request the developer runs on
+  return. What was considered and not queued: the port's `fullWidth != workWidth` refusal would
+  move the same resize out of gst and into the pass for the ~2.3 ms the video run measured the
+  resize costing, but it is a new upscale path in `serve.cpp` that nothing here can verify,
+  against a client-side path that already works - not worth writing blind for 2.3 ms. Still not
+  the ticker's: the recurring dlss5 survey (a Hermes cron job) and anything in "Ask first".
 
 * learned: the profile pair's contradiction was a cold clock, and the smaller frame is the cheaper
   one after all (2026-11-08 tick, read of `r2026-11-08-profile-1080p-b` and `-c`, both exit 0,
