@@ -33,22 +33,44 @@ anything there.
 
 ## 1. Next work
 
-* **Next: spend `.maxnreg 80` on the C=128 R4 emitter entry.** Files, named so the tick may touch
-  them: `/opt/data/tmp/odl-src/scripts/build_linux.sh` (its emitter list, `"128 4 64"` -> `"128 4
-  80"`, one argument, one change per build) and `experiments/opendlss_port/linux-port.patch` (the
-  re-cut, `git format-patch -1`, after the one commit is amended). C=128 `e4` is the entry the third
-  change moved at both sizes, so 80 is spent there first; the C=64 entry and the C=256 R4 entry stay
-  at 64 for a later build, and the `.maxntid` argument and the `proj` emitter pair stay behind both.
-  Then push, and queue `r2026-11-08-ffn6-0-build`, `-1-720p` and `-2-1080p` behind it, the names
-  carrying their order. What reads them: at 1080p against `r2026-11-08-ffn5-0-1080p` (`ffn_ptx
-  34560x128 e4 r4 +proj` **0.418**, `e4 r4` **0.076**, `ffn_ptx 8640x256 e8 r4` **0.607**, total
-  **6.315**, barrier probe 0.407), at 720p against `r2026-11-08-ffn4-1-720p` (`ffn_ptx 16128x128 e4
-  r4 +proj` **0.250**, `e4 r4` **0.043**, total **3.388**, probe 0.408). A move inside 0.03 ms on a
-  row is noise and the direction is the reading; every row the change does not touch must come back
-  inside ~0.02 ms of its baseline. Two 1080p samples, because one of the last pair lost its card:
-  quote one only at baseline scale (~6.3-6.6 ms total, not 30) with the `400 trivial dispatches +
-  barriers` probe inside 0.406-0.409 ms, `gpu_before` WARN and `idle_waited_s` 0.0; if both come back
-  inflated, that is a box-level problem and the item stops there for a human.
+* **Next: read the FFN sweep's fourth pair back.** It is queued with the order in the names -
+  `r2026-11-08-ffn6-0-build`, then `-ffn6-1-720p`, then `-ffn6-2-1080p` - and the change it builds is
+  the C=128 R4 entry's register cap, `.maxnreg 64 -> 80`, in `scripts/build_linux.sh`'s emitter list
+  (inside the patch), one change per build; the C=64 and the C=256 R4 entries stay at 64, and the
+  `.maxntid` argument and the `proj` emitter pair stay behind both. Read the C=128 rows against
+  `r2026-11-08-ffn5-0-1080p` at 1080p (`ffn_ptx 34560x128 e4 r4 +proj` **0.418**, `e4 r4` **0.076**,
+  controls `ffn_ptx 8640x256 e8 r4` 0.607, total 6.315, probe 0.407) and against
+  `r2026-11-08-ffn4-1-720p` at 720p (`ffn_ptx 16128x128 e4 r4 +proj` **0.250**, `e4 r4` **0.043**,
+  total 3.388, probe 0.408). A move inside 0.03 ms on a row is noise and the direction is the
+  reading; every row the change does not touch must come back inside ~0.02 ms of its baseline, and
+  the `400 trivial dispatches + barriers` probe (0.406-0.409 ms in every sample since 2026-11-03)
+  with `gpu_before` WARN and `idle_waited_s` 0.0 is part of the reading - a BUSY *before* invalidates
+  the sample. The 1080p figure is quoted only at baseline scale (~6.3-6.6 ms total, not 30); the item
+  wanted two 1080p samples because one of the third change's pair lost its card, so **a second
+  identical `port-profile 1920 1080` run may be queued under this item** if the first comes back
+  inflated - if both do, that is a box-level problem and the item stops there for a human. If the pair
+  has not landed when this is read, do nothing this tick and leave the item standing. The knobs the
+  sweep has not spent when this is done: `.maxnreg 80` on the C=64 R4 entry and on the C=256 R4 entry
+  (its R3 sibling keeps 80), the `.maxntid` argument, and the `proj` emitter pair as a separate
+  variable; if 80 on C=128 comes back worse than 64, revert that entry and take the next candidate.
+
+* learned: the FFN sweep's fourth change is made and queued - the C=128 R4 entry's cap goes 64 -> 80
+  (2026-11-08 tick, no run - no device here). `scripts/build_linux.sh`'s emitter list now reads
+  `"64 4 64" "128 4 80" "256 3 80" "256 4 64"`, one emitter argument moved and one change per build,
+  and the entry feeds both its emitter calls, so `ffn_e4m3_C128_R4.ptx` and
+  `ffn_e4m3_C128_R4_proj.ptx` both move. Edited at `/opt/data/tmp/odl-src`, the one commit amended
+  (`b7e051c1` -> `499bd2949cc3`), the patch re-cut with `git format-patch -1` into
+  `experiments/opendlss_port/linux-port.patch` (the diff is the emitter line plus the two `From` /
+  `index` header lines) and pushed, so every port run stamps OUT OF SYNC on patch `b7e051c1` until
+  `r2026-11-08-ffn6-0-build` lands and the stamp reads patch `499bd2949cc3` at port `9d08f41`. The
+  build plus the same 720p / 1080p profile pair is queued behind it, the names carrying their order.
+  Suite 564 passed / 9 failed / 37 skipped, the same nine libGL/SDL2 environment failures this box
+  always has; the PTX count stays 78, since only an emitter argument moved. Why 80 here and nowhere
+  else: C=128 `e4` is the entry the third change moved at both sizes and it paid at both (`+proj`
+  0.551 -> 0.418 at 1080p, 0.313 -> 0.250 at 720p), so it is the entry with the most room, while the
+  C=64 and C=256 R4 entries stay at 64 and the `.maxntid` argument and the `proj` pair stay behind
+  both. NOT verified: no device here, so no kernel has been re-timed - 80 against 64 on this entry is
+  unmeasured until `r2026-11-08-ffn6-1-720p` and `-2-1080p` land.
 
 * learned: the third change's 1080p half landed clean on its first sample and the new caps pay at
   that size too, so nothing is reverted and the next knob is 80 on the C=128 R4 entry (2026-11-08
