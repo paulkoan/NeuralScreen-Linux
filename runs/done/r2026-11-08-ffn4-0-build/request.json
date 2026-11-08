@@ -1,0 +1,8 @@
+{
+  "id": "r2026-11-08-ffn4-0-build",
+  "entry": "port-build",
+  "args": [],
+  "timeout_s": 900,
+  "artifacts": [],
+  "note": "Build for the FFN sweep's THIRD change, queued explicitly BEFORE the profiles that measure it. Order is the name: tools/auto_runner.py:446 sorts runs/queue/*.json, so 'ffn4-0-build' < 'ffn4-1-720p' < 'ffn4-2-1080p'. The change: scripts/build_linux.sh's emitter list now reads \"64 4 64\" \"128 4 64\" \"256 3 80\" \"256 4 64\" - the C=256 R4 cap goes back to 64 (48 measured worse: r2026-11-08-ffn3-2-1080p read ffn_ptx 8640x256 e8 r4 0.967 ms against 0.613 on the 64 build, +0.354 on the row and 6.792 against 6.550 total) and the C=64 / C=128 R4 kernels get their first cap at the same 64, where they carried no .maxnreg at all (0 in ffn_e4m3.py means the directive is omitted, ptxgen.py:45). With this, every R4 kernel in the emitter list is at .maxnreg 64, which is what src/kernels.cpp's ffnRowTiles() comment already claims - so that comment debt clears without touching the comment. Read the stamp (must name b7e051c1 and say in sync) and the counts (16 shader modules / 78 PTX kernels - only emitter arguments moved, no kernel is added or dropped)."
+}
