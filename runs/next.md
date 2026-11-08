@@ -125,9 +125,12 @@ anything there.
      it is not free, and the price lands where `1080p-video` guessed: the gst chain used 8.52 s
      over 9.50 s = **90% of one core** for the `videoscale`, work that runs while the worker
      waits. Stages: capture 7.6 (split wait 0.7 / read 6.9), send 2.8, recv 22.9 (the worker's
-     own 21.71 ms mean), display 3.5. Caveat that must travel with the ~10 ms: the 1440p side is
-     a different build (0aabc30e) on a 64 KiB pipe, so it is a direction and not a same-build
-     delta - no 1440p window run exists on this build. What is left is still the port's
+     own 21.71 ms mean), display 3.5. The same-build companion has since landed:
+     `r2026-11-08-1440p-window` (same patch f2cd1f27, same 1024 KiB pipe, `--size 2560x1440`,
+     exit 0) reads **median 48.3 ms / 20.7 fps steady**, so the resolution step is a same-build
+     **~17.8 ms** (30.5 -> 48.3, +12 fps), and the 1440p figure lands near `live-1440p`'s 46.6 ms,
+     so `-c`'s saving is the pass and not the build or the pipe - the caveat is retired and the
+     lever is stronger than the ~10 ms direction it was quoted as. What is left is still the port's
      `fullWidth != workWidth` refusal, which would move the resize inside the pass instead of
      gst - a port change, and no device here to verify it. The run's own send spread carries one
      unexplained one-off (max 5.8 ms at frame 14 against a 2.5 ms median, outside the warm-up).
@@ -375,23 +378,30 @@ section asks only what is still being asked.
   case the answer is "cut the neural pass", not "change the format".
   Decide on the shm figures; bb's ~8.3 ms was the pipe.
 
-**Waiting on a screen (1):**
-
-* **`r2026-11-08-1440p-window`** - queued 2026-11-08, `"manual": true`, the same shape as
-  `r2026-11-08-1080p-window-c` with only `--size 2560x1440` changed. It exists because the 1080p
-  window pair has no same-build 1440p companion: `-c` reads 30.5 ms / 32.8 fps steady and is quoted
-  against 46.6 ms / 21.5 fps from `r2026-11-03-live-1440p`, which is build `0aabc30e`, the old
-  64 KiB pipe and no queue move. So the resolution step - the top-ranked lever - has a direction
-  and not a delta, and the tick cannot run this itself because the window source wants a picker.
-  Run it with `/opt/neuralscreen/run_manually.sh --include-manual` from a terminal in the graphical
-  session. Near 46 ms and the saving is as advertised; near 35 ms and most of what `-c` showed was
-  the build and the pipe, which would cut the lever's claim by about two thirds.
-
 **Standing rule, asked when it comes up (1):**
 
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the 1440p window companion landed and it retires lever 1's caveat - the top lever now
+  has a same-build delta and it is larger than the direction it was quoted as (2026-11-08 tick,
+  read of `r2026-11-08-1440p-window`, exit 0, 120/0 frames, entry `minimal`, `--source window
+  --size 2560x1440 --shm`, patch f2cd1f27 in sync, card WARN before and after, both PNGs back).
+  Median **48.3 ms / 20.7 fps steady** (headline 11.42; the 85.1 ms mean is frame 0's 4232 ms
+  recv, and both spreads' maxima are that same warm-up frame), against `r2026-11-08-1080p-window-c`'s
+  30.5 ms / 32.8 fps on the same patch and the same 1024 KiB pipe - so running the pass at 1080p
+  and letting the present stretch it into the 1440p window is a **same-build ~17.8 ms / +12 fps**,
+  where the earlier different-build comparison (0aabc30e, 64 KiB pipe) showed only a ~10 ms
+  direction. The 1440p window figure lands near `r2026-11-03-live-1440p`'s 46.6 ms, so `-c`'s
+  saving was the pass and not the build or the pipe, and the caveat that travelled with the 1080p
+  window pair is retired. Stages at 1440p: capture 9.5 (split wait 0.5 / read 9.0), send 4.3,
+  recv median 31.1 (mean 67.0, frame 0), display 4.4; the gst chain (its `videoscale` included)
+  used 2.90 s over 10.51 s = 28% of one core, so the resize's CPU price held near window-c's 25%
+  rather than window-b's one-off 90%. Nothing is queued off it: the only move that would take this
+  resize off gst and into the pass is the port's `fullWidth != workWidth` refusal, a port change
+  with no device here to verify it - and the send spread's unexplained one-off (max 5.8 ms at
+  frame 14 in window-b) did not repeat here.
 
 * **CORRECTION, same day, from the runs' own logs: the entry below gets its central claim wrong.**
   window-c did *not* run the same chain as window-b - it was the A/B for the one-line queue move in
