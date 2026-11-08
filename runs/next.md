@@ -25,6 +25,12 @@ never the mechanism, and on 2026-11-08 it put a one-line client change in front 
 though it were a product decision. Writing the item is the authorisation; a person can still veto
 it, which is the point of the plan being readable.
 
+**The loop's own scripts live in `hermes/`** - the change detector, the watchdog and its failure
+check, with `hermes/install.sh` to copy them into the profile, which is not a git repository. They
+were unversioned until 2026-11-08, when the watchdog was rewritten and the only copy of that fix
+turned out to be on one box. `hermes/install.sh --check` reports drift; run it after editing
+anything there.
+
 ## 1. Next work
 
 * **60 fps is the goal, restated 2026-11-08 with the constraint and the caveat: "60fps is the goal,
