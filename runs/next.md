@@ -10,39 +10,6 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
-* **Repeat the profile at 1080p twice, back to back - the 1080p/1440p pair contradicts itself and
-  the plan's newest conclusion rests on it.** The goal item below was blocked on the profile
-  comparison at two sizes; that pair has now run on one binary minutes apart and the smaller frame
-  came back dearer (`r2026-11-08-profile-1080p` **13.733 ms** against `r2026-11-08-profile-1440p`
-  **9.714 ms**). Two readings survive, and one controlled pair decides between them:
-  * the pass really carries a per-dispatch cost a smaller frame does not reduce - then the kernels
-    and the schedule are the target, and lever 2 below is the whole programme;
-  * the 1080p run carried a cold GPU clock - it waited **45.0 s** in the idle gate where the 1440p
-    run waited **0.0 s** - and every span in it is inflated, smallest kernels most. The pair's only
-    argument against this is the `400 trivial dispatches + barriers` probe agreeing (0.408 vs
-    0.411 ms), which is fixed cost by construction, not proof about the kernels.
-
-  Queued as one item, two runs of the same shape on the same entry (`port-profile 1920 1080`,
-  timeout 600): `r2026-11-08-profile-1080p-b` then `r2026-11-08-profile-1080p-c`. Same size twice is
-  the point - a first run after the card has been idle and a second on the heat the first left are
-  the two states that can explain 13.733, and nothing else differs between them. A profile run is
-  4.2 s and the route takes the per-dispatch minimum by design, so the pair costs the box nothing.
-
-  Read b against c, then both against 13.733:
-  * **b ~ c ~ 13.7** - the number is reproducible under this route's own conditions, so the pass is
-    genuinely not pixel-bound and the fixed-cost/per-kernel reading stands; strip the clock caveat
-    from the Learned entry and go at lever 2.
-  * **b ~ 13.7, c clearly lower** (toward the ~5.5 linear expectation) - the 1080p figure is the
-    cold-clock artifact, "a smaller frame is dearer" is withdrawn, and the original cross-size table
-    stands; the 9.9-vs-11.5 ms worker line is then the number to explain.
-  * **b itself clearly below 13.7** - the first pair's 1080p number was a one-off and the whole
-    fixed-cost reading needs redoing before any port work is chosen on it.
-
-  Nothing is built until this is read: every lever below is a port change, and this decides which
-  one is worth starting. Also read c's `gpu_before`/`idle_waited_s` - if the gate held again for c
-  as long as it did for b, both runs started cold and a b~c result weakens the clock reading
-  without killing it.
-
 * **60 fps is the goal, restated 2026-11-08 with the constraint and the caveat: "60fps is the goal,
   or as close as we can get to it, with 1440p output. I accept that it might not be achievable."**
   So: 1440p *output* is fixed, 60 is the target rather than a gate, and the task is to get as close
@@ -366,6 +333,22 @@ section asks only what is still being asked.
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the profile pair's contradiction is being repeated at one size before any port work is
+  chosen, and one instruction in the goal item is not the ticker's to carry out (2026-11-08 tick).
+  The goal item's blocker is retired: the 1080p-vs-1440p profile comparison has run
+  (`r2026-11-08-profile-1080p` 13.733 ms against `r2026-11-08-profile-1440p` 9.714 ms, same binary,
+  minutes apart) and answered neither of its two branches - the smaller frame came back dearer - so
+  what it means is unresolved rather than decided. Two readings survive and nothing else
+  distinguishes them: the pass carries a per-dispatch cost a smaller frame does not reduce, or the
+  1080p run's spans were inflated by a cold clock (it waited 45.0 s in the idle gate where the
+  1440p run waited 0.0 s). Same shape twice, back to back, is the cheap discriminator, so
+  `r2026-11-08-profile-1080p-b` and `-c` are queued (entry `port-profile 1920 1080`, 600 s each,
+  ~4.2 s of box time apiece) and the reading is in their queue notes; nothing is built until they
+  are read. Also recorded in the goal item: the periodic survey of other dlss5 projects is to be
+  its own schedule, and a recurring schedule is a Hermes cron job - this tick is forbidden to
+  create one, so that instruction waits on the developer. Nothing else was open: the queue held no
+  unfinished run and the box has published nothing since 06:47Z.
 
 * learned: the port is not pixel-bound, and the profile says a SMALLER frame is dearer - same
   binary, same size, opposite of expectation (2026-11-08, `r2026-11-08-profile-1080p` and
