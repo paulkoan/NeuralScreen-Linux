@@ -306,7 +306,11 @@ section asks only what is still being asked.
   (median 26.9 -> 69.3 ms), so interpolation takes the presented rate to **~26/s** (14.4 computed +
   11.9 generated) from **37.2/s** computed alone. Presenting more frames is slower than presenting
   fewer - the route only wins if the mid costs a fraction of a computed frame, and it currently
-  costs 2.2x one.
+  costs 2.2x one. **The mid's own device cost has since been measured and it is 8.26 ms**
+  (`r2026-11-08-midcount-run`, 300 frames, same shape: "299 generated mid-frame(s) sent, 1 request(s)
+  answered without one, 8.26 ms mean per mid (dispatch + readback + reply)"), about one 14.7 MB round
+  trip - so the ~42 ms is not the mid's dispatch, readback or reply, and the halves that make it up
+  are the client's recv (+~28) and the presentation hold (+~13) itemised below.
 
   Where the 42 ms goes, from the run's own numbers:
   * **+~13 ms in the worker.** Its per-frame readback line reads 11.7-13.7 ms with a mid against
@@ -351,6 +355,30 @@ section asks only what is still being asked.
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the mid-frame's own device cost is measured, and it is small - 8.26 ms per mid, so the
+  route's ~42 ms price is not the worker (2026-11-08 tick, read of `r2026-11-08-midcount-run`, exit 0
+  on `dab7ec895dfd`, 300 frames, 1440p, `--shm --motion --interpolate --save-mid --save-after`, and
+  of `r2026-11-08-midcount-build` behind it, exit 0 on the same checkout). The counter line the plan
+  was waiting for printed on the stream-closed exit, which is also the proof of the printing fix:
+  "`299 generated mid-frame(s) sent, 1 request(s) answered without one, 8.26 ms mean per mid
+  (dispatch + readback + reply)`", followed by "input stream closed after 300 frame(s), 42.07 ms
+  mean". Both runs in sync (patch `f2cd1f272c4c` at port 9d08f41 - the same patch the build stamped
+  and the run's worker banner repeats), card WARN before and after in both, so it is a usable sample;
+  both artifacts came back (`midcount-mid.png`, `midcount-after.png`; the mid PNG exists, so 299
+  mids really arrived). Client side: 300 done / 0 skipped, median **67.6 ms** and **14.79 fps**
+  steady (headline 12.01), which reproduces `r2026-11-08-midslot-run`'s 69.3 ms / 14.4 fps - so the
+  pair is stable and the +42 ms/iteration price stands (+40.7 here), and the 1 unanswered request is
+  frame 0's no-history case the worker logs. What the counter decides: one generated mid costs the
+  worker **8.26 ms** of device round trip - about one 14.7 MB transfer, not the ~13 ms its
+  frame-level readback line reads - which is the serve.cpp reading confirmed rather than corrected
+  (two labelled downloads, one round trip each). What it does NOT decide: where the rest of the
+  ~42 ms goes. 8.26 against ~42 means the price is not the mid's dispatch, readback or reply, and
+  the client-side halves this plan already localised (recv +~28, presentation hold +~13) are the
+  candidates; this run is a compute-only `--source video --headless` iteration, so its 67.6 ms is
+  not the presented rate either. Nothing is queued off it and the recommendation is unchanged: park
+  the route, since even a free mid leaves ~29 ms against a mid that must cost near zero to beat
+  37.2/s.
 
 * learned: `run_manually.sh --include-manual` was reported as "finds no policy" and was not
   that - the script took its policy from `$1`, so the flag became a filename and the error named
