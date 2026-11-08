@@ -375,6 +375,28 @@ section asks only what is still being asked.
 
 ## Learned
 
+* learned: the 1080p window route reads its second clean sample and the spread is the story - 30.5 ms / 32.8 fps against window-b's 36.2 ms / 27.7 fps - and the gst "90% of a core"
+  price did not repeat (2026-11-08 tick, read of `r2026-11-08-1080p-window-c`, exit 0, 120/0
+  frames, entry `minimal`, `--source window --size 1920x1080 --shm`, patch f2cd1f27 in sync, card
+  WARN before and after, both PNGs back). Same argv and same chain as window-b
+  (`pipewiresrc ! videoconvert ! videoscale ! RGBA 1920x1080 ! queue max-size-buffers=1
+  leaky=downstream ! fdsink`, pipe 64 -> 1024 KiB, portal reported no size and used the requested
+  1920x1080), but the frame is 5.7 ms cheaper: stages capture 5.7 (split wait 0.5 / read 5.1)
+  against 7.6 (0.7/6.9), send 2.4 against 2.8, recv 55.6 mean against 62.8, display 2.3 against
+  3.5, worker's own line 18.89 ms mean against 21.71 (its frames 29/59/89/119: 20.9/16.5/20.9/19.1
+  against 18.2/26.1/23.3/21.6). The one field that moves *against* the plan's cost model: window-c's
+  gst pipeline used **2.05 s over 8.16 s = 25% of one core** where window-b read **8.52 s over 9.50 s
+  = 90%** - identical chain, so the 90% was that run, not a stable property of the resize, and the
+  capture-side resize's real CPU price sits near a quarter of a core. So lever 1 on a real source is
+  **30.5-36.2 ms (27.7-32.8 fps steady)** against live-1440p's 46.6 ms / 21.5 fps - a 10-16 ms gain,
+  direction firm, magnitude a 5.7 ms spread - over two clean runs (`-window` itself is exit 2: the
+  portal handshake timed out before any dialog was clicked, so it carries no number). Still
+  unmeasured: neither window run has a same-build 1440p window companion, so the delta against
+  46.6 ms (build 0aabc30e, 64 KiB pipe) is a direction and not a delta; and the port's
+  `fullWidth != workWidth` refusal - which would move this resize off gst and into the pass - is
+  still the only move that removes the capture-side cost, a port change with no device here to
+  verify it on.
+
 * learned: the capture chain's convert+scale runs on frames nobody sees, because the leaky queue
   sits at the *end* of the pipeline (2026-11-08 tick, source read of `minimal/capture_wayland.py`
   `_pipeline_args` against `r2026-11-08-1080p-window-b`'s own stdout). The chain is `pipewiresrc !
