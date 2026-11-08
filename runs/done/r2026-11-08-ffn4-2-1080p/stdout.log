@@ -1,0 +1,131 @@
+binary: /opt/neuralscreen/port/build/dlss5vk
+model:  /opt/neuralscreen/model
+size:   1920x1080, minimum of 7 frames per dispatch
+
+maxComputeSharedMemorySize 49152 bytes
+400 trivial dispatches + barriers: 0.409 ms (1.02 us each)
+total 28.123 ms (sum of per-dispatch spans, 1920x1080)
+
+by kernel:
+     5.448 ms   19.4%  block32_ptx 34560w f74
+     3.089 ms   11.0%  block32_ptx 34945w f48
+     1.741 ms    6.2%  ffn_ptx 8640x256 e8 r4
+     1.278 ms    4.5%  gemmv_ptx 640x1024->4096 f6
+     1.200 ms    4.3%  gemmv_ptx 640x4096->1024 f5 s4
+     1.176 ms    4.2%  ffn_ptx 34560x128 e4 r4 +proj
+     0.988 ms    3.5%  block32_ptx 8640w f130
+     0.988 ms    3.5%  qkv_ptx 40w x16 K512
+     0.965 ms    3.4%  gemmv_ptx 640x1024->3072 f8 s2
+     0.871 ms    3.1%  ffn_ptx 138240x64 e2 r4 +proj
+     0.832 ms    3.0%  upsampleResidual
+     0.746 ms    2.7%  gemmv_ptx 2160x512->512 f5
+     0.694 ms    2.5%  block32_ptx 8640w f2
+     0.620 ms    2.2%  block32_ptx 8833w f2
+     0.457 ms    1.6%  block32_ptx 8712w f2
+     0.453 ms    1.6%  gemmv_ptx 640x1024->1024 f5 s4
+     0.423 ms    1.5%  gemm_mlp 2160x64->256->64 x8
+     0.401 ms    1.4%  gemmv_ptx 2160x512->512 f4
+     0.385 ms    1.4%  gemmv_ptx 8640x256->256 f5
+     0.375 ms    1.3%  qkv_ptx 2160w x2 K64
+     0.365 ms    1.3%  ffn_ptx 34560x128 e4 r4
+     0.265 ms    0.9%  qkv_ptx 160w x8 K256
+     0.264 ms    0.9%  qkv_ptx 540w x4 K128
+     0.252 ms    0.9%  qkv_ptx 135w x8 K256
+     0.251 ms    0.9%  qkv_ptx 558w x4 K128
+     0.251 ms    0.9%  qkv_ptx 2257w x2 K64
+     0.249 ms    0.9%  qkv_ptx 589w x4 K128
+     0.239 ms    0.9%  qkv_ptx 570w x4 K128
+     0.237 ms    0.8%  qkv_ptx 150w x8 K256
+     0.235 ms    0.8%  qkv_ptx 144w x8 K256
+     0.233 ms    0.8%  block32_ptx 8760w f66
+     0.231 ms    0.8%  ffn_ptx 138240x64 e2 r4
+     0.229 ms    0.8%  qkv_ptx 2196w x2 K64
+     0.227 ms    0.8%  block32_ptx 8760w f2
+     0.225 ms    0.8%  qkv_ptx 2220w x2 K64
+     0.224 ms    0.8%  global_attention_stream_ptx 640t x32
+     0.201 ms    0.7%  gemm_ptx 138240x64->64 f13
+     0.150 ms    0.5%  global_normalize_ptx 640t x32
+     0.122 ms    0.4%  gemm_ptx 34560x64->128 f4
+     0.106 ms    0.4%  downsample2x
+
+by stage:
+     5.448 ms   19.4%  block 0 c32
+     3.089 ms   11.0%  block 70 c32
+     0.988 ms    3.5%  block 66 c32
+     0.756 ms    2.7%  block 31 vit
+     0.694 ms    2.5%  block 1 c32
+     0.581 ms    2.1%  block 34 vit
+     0.544 ms    1.9%  block 32 vit
+     0.538 ms    1.9%  block 33 vit
+     0.487 ms    1.7%  transition ->62
+     0.469 ms    1.7%  block 35 vit
+     0.463 ms    1.6%  block 37 vit
+     0.462 ms    1.6%  block 38 vit
+     0.457 ms    1.6%  block 36 vit
+     0.427 ms    1.5%  block 8 c64
+     0.393 ms    1.4%  block 67 c32
+     0.379 ms    1.3%  block 9 c128
+     0.356 ms    1.3%  block 5 c64
+     0.341 ms    1.2%  block 6 c64
+     0.312 ms    1.1%  block 63 c64
+     0.263 ms    0.9%  block 23 split512
+     0.263 ms    0.9%  block 65 c64
+     0.262 ms    0.9%  block 15 c256
+     0.253 ms    0.9%  transition ->56
+     0.250 ms    0.9%  block 62 c64
+     0.237 ms    0.8%  block 7 c64
+     0.234 ms    0.8%  block 64 c64
+     0.233 ms    0.8%  block 4 c32
+     0.230 ms    0.8%  block 16 c256
+     0.229 ms    0.8%  block 10 c128
+     0.229 ms    0.8%  block 3 c32
+     0.227 ms    0.8%  block 14 c128
+     0.227 ms    0.8%  block 68 c32
+     0.227 ms    0.8%  block 69 c32
+     0.226 ms    0.8%  block 2 c32
+     0.223 ms    0.8%  block 48 c256
+     0.216 ms    0.8%  block 49 c256
+     0.213 ms    0.8%  block 61 c128
+     0.211 ms    0.8%  block 57 c128
+     0.210 ms    0.7%  block 17 c256
+     0.209 ms    0.7%  block 11 c128
+     0.205 ms    0.7%  transition 8
+     0.200 ms    0.7%  block 58 c128
+     0.197 ms    0.7%  block 56 c128
+     0.194 ms    0.7%  block 12 c128
+     0.190 ms    0.7%  block 59 c128
+     0.186 ms    0.7%  block 22 c256
+     0.185 ms    0.7%  block 53 c256
+     0.185 ms    0.7%  block 20 c256
+     0.184 ms    0.7%  block 50 c256
+     0.183 ms    0.7%  block 60 c128
+     0.182 ms    0.6%  block 18 c256
+     0.181 ms    0.6%  block 19 c256
+     0.181 ms    0.6%  block 51 c256
+     0.181 ms    0.6%  block 55 c256
+     0.180 ms    0.6%  block 52 c256
+     0.179 ms    0.6%  block 54 c256
+     0.179 ms    0.6%  block 21 c256
+     0.179 ms    0.6%  block 13 c128
+     0.168 ms    0.6%  block 24 split512
+     0.159 ms    0.6%  block 30 split512
+     0.157 ms    0.6%  block 40 split512
+     0.156 ms    0.6%  block 46 split512
+     0.156 ms    0.6%  block 41 split512
+     0.155 ms    0.5%  block 26 split512
+     0.153 ms    0.5%  block 43 split512
+     0.153 ms    0.5%  block 27 split512
+     0.152 ms    0.5%  block 44 split512
+     0.152 ms    0.5%  block 42 split512
+     0.152 ms    0.5%  block 28 split512
+     0.152 ms    0.5%  block 25 split512
+     0.152 ms    0.5%  block 29 split512
+     0.152 ms    0.5%  block 47 split512
+     0.150 ms    0.5%  block 45 split512
+     0.116 ms    0.4%  transition ->48
+     0.072 ms    0.3%  transition 39
+     0.059 ms    0.2%  transition 30-31
+     0.051 ms    0.2%  transition ->66
+     0.034 ms    0.1%  transition 22
+     0.033 ms    0.1%  transition 14
+     0.027 ms    0.1%  transition 4-5
