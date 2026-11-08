@@ -1,0 +1,123 @@
+# run r2026-11-08-profile-1080p
+
+runner `005dd2c6ea9e` · entry `port-profile` · env from policy: none
+
+`bash tools/port_profile.sh 1920 1080`
+
+exit **0** after 4.2s
+
+gpu before: WARN (resident but not contending: signal-desktop (pid 18889, 152.0 MiB); resident but not contending: chromium (pid 18945, 116.0 MiB); resident but not contending: msedge (pid 54723, 318.0 MiB)) after waiting 45s; after: WARN (resident but not contending: signal-desktop (pid 18889, 152.0 MiB); resident but not contending: chromium (pid 18945, 116.0 MiB); resident but not contending: msedge (pid 54723, 318.0 MiB))
+
+```
+ ms    1.6%  global_attention_stream_ptx 640t x32
+     0.218 ms    1.6%  block32_ptx 8640w f2
+     0.211 ms    1.5%  qkv_ptx 589w x4 K128
+     0.210 ms    1.5%  qkv_ptx 135w x8 K256
+     0.209 ms    1.5%  qkv_ptx 160w x8 K256
+     0.194 ms    1.4%  qkv_ptx 150w x8 K256
+     0.193 ms    1.4%  qkv_ptx 2257w x2 K64
+     0.192 ms    1.4%  qkv_ptx 540w x4 K128
+     0.191 ms    1.4%  qkv_ptx 144w x8 K256
+     0.187 ms    1.4%  qkv_ptx 2220w x2 K64
+     0.186 ms    1.4%  ffn_ptx 34560x128 e4 r4
+     0.185 ms    1.3%  qkv_ptx 2196w x2 K64
+     0.184 ms    1.3%  qkv_ptx 2160w x2 K64
+     0.182 ms    1.3%  ffn_ptx 138240x64 e2 r4
+     0.181 ms    1.3%  qkv_ptx 570w x4 K128
+     0.180 ms    1.3%  qkv_ptx 558w x4 K128
+     0.146 ms    1.1%  block32_ptx 8760w f2
+     0.106 ms    0.8%  global_normalize_ptx 640t x32
+     0.095 ms    0.7%  upsampleResidual
+     0.055 ms    0.4%  gemm_ptx 138240x64->64 f13
+     0.038 ms    0.3%  gemm_ptx 34560x128->128 f13
+     0.037 ms    0.3%  downsample2x
+
+by stage:
+     0.906 ms    6.6%  block 0 c32
+     0.582 ms    4.2%  block 70 c32
+     0.287 ms    2.1%  block 8 c64
+     0.254 ms    1.8%  block 31 vit
+     0.252 ms    1.8%  block 32 vit
+     0.252 ms    1.8%  block 33 vit
+     0.251 ms    1.8%  block 38 vit
+     0.251 ms    1.8%  block 37 vit
+     0.251 ms    1.8%  block 36 vit
+     0.250 ms    1.8%  block 35 vit
+     0.250 ms    1.8%  block 34 vit
+     0.248 ms    1.8%  block 14 c128
+     0.231 ms    1.7%  block 4 c32
+     0.231 ms    1.7%  block 66 c32
+     0.231 ms    1.7%  block 6 c64
+     0.228 ms    1.7%  block 7 c64
+     0.222 ms    1.6%  block 2 c32
+     0.219 ms    1.6%  block 3 c32
+     0.218 ms    1.6%  block 1 c32
+     0.213 ms    1.6%  block 5 c64
+     0.210 ms    1.5%  block 10 c128
+     0.208 ms    1.5%  block 11 c128
+     0.208 ms    1.5%  block 12 c128
+     0.203 ms    1.5%  block 13 c128
+     0.194 ms    1.4%  block 22 c256
+     0.190 ms    1.4%  block 16 c256
+     0.189 ms    1.4%  block 20 c256
+     0.187 ms    1.4%  block 15 c256
+     0.186 ms    1.4%  block 18 c256
+     0.185 ms    1.3%  block 21 c256
+     0.185 ms    1.3%  block 19 c256
+     0.185 ms    1.3%  block 17 c256
+     0.182 ms    1.3%  block 65 c64
+     0.182 ms    1.3%  block 9 c128
+     0.161 ms    1.2%  block 63 c64
+     0.160 ms    1.2%  block 61 c128
+     0.155 ms    1.1%  block 64 c64
+     0.154 ms    1.1%  block 62 c64
+     0.148 ms    1.1%  block 67 c32
+     0.147 ms    1.1%  block 30 split512
+     0.146 ms    1.1%  block 69 c32
+     0.146 ms    1.1%  block 23 split512
+     0.146 ms    1.1%  block 68 c32
+     0.145 ms    1.1%  block 52 c256
+     0.145 ms    1.1%  block 26 split512
+     0.144 ms    1.1%  block 40 split512
+     0.144 ms    1.0%  block 28 split512
+     0.144 ms    1.0%  block 57 c128
+     0.143 ms    1.0%  block 59 c128
+     0.143 ms    1.0%  block 27 split512
+     0.142 ms    1.0%  block 42 split512
+     0.142 ms    1.0%  block 29 split512
+     0.142 ms    1.0%  block 25 split512
+     0.142 ms    1.0%  block 24 split512
+     0.142 ms    1.0%  block 60 c128
+     0.142 ms    1.0%  block 41 split512
+     0.138 ms    1.0%  block 58 c128
+     0.132 ms    1.0%  block 43 split512
+     0.132 ms    1.0%  block 49 c256
+     0.130 ms    0.9%  block 53 c256
+     0.129 ms    0.9%  block 48 c256
+     0.128 ms    0.9%  block 56 c128
+     0.127 ms    0.9%  block 55 c256
+     0.126 ms    0.9%  block 50 c256
+     0.126 ms    0.9%  block 51 c256
+     0.126 ms    0.9%  block 54 c256
+     0.100 ms    0.7%  block 45 split512
+     0.100 ms    0.7%  block 47 split512
+     0.098 ms    0.7%  block 46 split512
+     0.096 ms    0.7%  block 44 split512
+     0.058 ms    0.4%  transition ->62
+     0.043 ms    0.3%  transition 39
+     0.036 ms    0.3%  transition 8
+     0.036 ms    0.3%  transition ->56
+     0.024 ms    0.2%  transition 14
+     0.023 ms    0.2%  transition ->48
+     0.022 ms    0.2%  transition 4-5
+     0.019 ms    0.1%  transition 22
+     0.019 ms    0.1%  transition 30-31
+     0.014 ms    0.1%  transition ->66
+
+```
+
+stderr:
+
+```
+
+```
