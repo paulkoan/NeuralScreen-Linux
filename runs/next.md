@@ -5,8 +5,16 @@ delete it, append what you learned at the bottom.
 
 Not negotiable, because these are the difference between a loop and a runaway: one item per
 pass; the test suite green before anything is pushed; never touch /etc or install system
-packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Linux; never edit
-/opt/neuralscreen (policy, executor, key, unit); never queue a run that is not described here.
+packages; never edit /opt/neuralscreen - the policy, the executor, the key and the unit are
+installed by hand, and the runner's own worktree at /opt/neuralscreen/state/repo is reset on
+every pass, so an edit there dies without landing; never queue a run that is not described here.
+
+Everything on the box lives under /opt/neuralscreen and the pull is automatic: the runner keeps
+/opt/neuralscreen/state/repo on main itself, so a repo-side fix to a tool script reaches the box
+on the next pass. The exception is the handful of scripts installed *outside* the repo
+(run_manually.sh, auto_runner.py) - those are copied in by hand and therefore drift, which is how
+`run_manually.sh --include-manual` came to be misread as a policy path on the box while the fixed
+copy sat in the worktree.
 
 ## 1. Next work
 
