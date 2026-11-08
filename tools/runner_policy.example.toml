@@ -22,7 +22,7 @@ repo_url = "git@github.com:paulkoan/NeuralScreen-Linux.git"
 # The key is generated ON THE MACHINE THAT USES IT (the private half never travels) and
 # lives at /opt/neuralscreen/deploy_key, mode 0600, owned by you and read by nothing else.
 # GIT_SSH_COMMAND pointing at it is set in the unit - see neuralscreen-runner.service.
-worktree = "/opt/neuralscreen/state/repo"        # the runner's OWN clone, not your checkout
+worktree = "/opt/neuralscreen/state/repo"        # the runner's OWN clone; it keeps this on main itself
 request_branch = "main"                          # run requests come from here
 results_branch = "results"                       # results go here, and only the runner writes it
 max_timeout_s = 900
