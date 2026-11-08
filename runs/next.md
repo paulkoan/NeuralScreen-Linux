@@ -375,6 +375,18 @@ section asks only what is still being asked.
   case the answer is "cut the neural pass", not "change the format".
   Decide on the shm figures; bb's ~8.3 ms was the pipe.
 
+**Waiting on a screen (1):**
+
+* **`r2026-11-08-1440p-window`** - queued 2026-11-08, `"manual": true`, the same shape as
+  `r2026-11-08-1080p-window-c` with only `--size 2560x1440` changed. It exists because the 1080p
+  window pair has no same-build 1440p companion: `-c` reads 30.5 ms / 32.8 fps steady and is quoted
+  against 46.6 ms / 21.5 fps from `r2026-11-03-live-1440p`, which is build `0aabc30e`, the old
+  64 KiB pipe and no queue move. So the resolution step - the top-ranked lever - has a direction
+  and not a delta, and the tick cannot run this itself because the window source wants a picker.
+  Run it with `/opt/neuralscreen/run_manually.sh --include-manual` from a terminal in the graphical
+  session. Near 46 ms and the saving is as advertised; near 35 ms and most of what `-c` showed was
+  the build and the pipe, which would cut the lever's claim by about two thirds.
+
 **Standing rule, asked when it comes up (1):**
 
 * Anything touching /etc, system packages or the box's configuration. Every time.
