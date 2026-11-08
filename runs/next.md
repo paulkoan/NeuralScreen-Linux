@@ -100,19 +100,22 @@ copy sat in the worktree.
      `NEURALSCREEN_SIZE=1920x1080 ./neuralscreen.sh` runs the pass at 1080p and presents it on
      the 1440p desktop, with no port change (full and work are the same 1080p). What is left is
      the port's refusal, which would let `--work-scale` do the same thing with no capture-side
-     resize at all - a port change, and a device to verify it on. **Not measured end to end**:
-     the resize is `videoscale` inside the gst chain and that cost is not in `bg`'s 19.5 ms,
-     which came off a synthetic 1080p card; the run that would price it is a live or window run
-     at `--size 1920x1080`. It ran on 2026-11-08 and **came back exit 2 on the portal, not the
-     pipeline**: `r2026-11-08-1080p-window` succeeded through CreateSession/SelectSources/Start
-     and then the window picker was never answered inside the 120 s the capture allows
-     (`startup failed: the portal handshake failed (TimeoutError)`, 122.3 s, no frames, no PNGs),
-     so the resize price is still unmeasured. The same argv is re-queued as
-     **`r2026-11-08-1080p-window-b`** (`manual: true`, artifacts `1080p-window-b-*`, note carries
-     the reading list), because the first request's id is spent and a spent queue file is inert -
-     the mistake recorded under r2026-11-02-bi. The one thing that run needs is the thing this
-     tick cannot supply: a person at the screen to answer the picker. If the repeat also dies at
-     the handshake, the next tick queued nothing and asks instead.
+     resize at all - a port change, and a device to verify it on. **Measured end to end**
+     (2026-11-08 tick, read of `r2026-11-08-1080p-window-b`, exit 0, 120/0 frames,
+     `--source window --size 1920x1080 --shm`, patch f2cd1f27 in sync, card WARN before and
+     after, both PNGs back): the pass ran at 1080p and the present stretched it into the 1440p
+     window with no port change - the worker banner reads `window stream reports no size; using
+     the requested 1920x1080`. Median **36.2 ms / 27.7 fps steady** (headline 12.63) against
+     `r2026-11-03-live-1440p`'s 46.6 ms / 21.5 fps, so the lever is real on a real source - but
+     it is not free, and the price lands where `1080p-video` guessed: the gst chain used 8.52 s
+     over 9.50 s = **90% of one core** for the `videoscale`, work that runs while the worker
+     waits. Stages: capture 7.6 (split wait 0.7 / read 6.9), send 2.8, recv 22.9 (the worker's
+     own 21.71 ms mean), display 3.5. Caveat that must travel with the ~10 ms: the 1440p side is
+     a different build (0aabc30e) on a 64 KiB pipe, so it is a direction and not a same-build
+     delta - no 1440p window run exists on this build. What is left is still the port's
+     `fullWidth != workWidth` refusal, which would move the resize inside the pass instead of
+     gst - a port change, and no device here to verify it. The run's own send spread carries one
+     unexplained one-off (max 5.8 ms at frame 14 against a 2.5 ms median, outside the warm-up).
   2. **Close the implementation gap against NGX - ~2.6 ms at 1440p, and more at 1080p.** The port is
      11.8-12.4 ms at 1440p where NGX is 7.1 ms for the same weights (1.6x), and the profile's own
      sum says 9.749 against 7.1 (1.37x) - so chasing the network recovers at most ~2.6 ms at 1440p.
@@ -362,6 +365,30 @@ section asks only what is still being asked.
 * Anything touching /etc, system packages or the box's configuration. Every time.
 
 ## Learned
+
+* learned: the 1080p window run landed clean and the resize price is real, not free (2026-11-08
+  tick, read of `r2026-11-08-1080p-window-b`, exit 0, 120/0 frames, entry `minimal`, `--source
+  window --size 1920x1080 --shm`, port patch `f2cd1f27` in sync, card WARN before and after, both
+  PNGs back). This is the lever-1 end-to-end measurement the item was waiting on, and the portal
+  answered: the window stream reported no size and the requested 1920x1080 was used, so the pass
+  ran at 1080p and the present stretched it into the 1440p window with no port change - the
+  `NEURALSCREEN_SIZE` precedence fix holds outside its tests, and the 1080p PNGs confirm the pass
+  size. Client: median **36.2 ms / 27.7 fps steady** (headline 12.63, mean 76.7 inflated by frame
+  0's 4735 ms recv), stages capture 7.6 (split wait 0.7 / read 6.9), send 2.8, recv median 22.9
+  (worker's own 21.71 ms mean, 120 frames, exit 0), display 3.5 - so the frame is the same shape
+  as the live runs and the worker is still the largest single leg. Against `r2026-11-03-live-1440p`
+  (46.6 ms / 21.5 fps) the 1080p window frame is ~10 ms cheaper, i.e. the lever survives contact
+  with a real source; the caveat is that the 1440p side is a different build (patch 0aabc30e) on a
+  64 KiB pipe, so that is a direction, not a same-build delta, and no 1440p window run exists on
+  this build to pair it with. The part that is not free: the run's own capture line says the gst
+  pipeline used 8.52 s over 9.50 s = **90% of one core** doing the `videoscale`, and the report's
+  own note reads the same frame as 114.2 ms through the portal against 67.3 ms synthetic - that
+  CPU work runs while the worker waits, which is exactly the cost `1080p-video` predicted (capture
+  6.4 -> 8.7) rather than the free resize the synthetic `bg` suggested. Nothing is queued off it:
+  the only move that would remove the resize (the port's `fullWidth != workWidth` refusal, so
+  `--work-scale` does it inside the pass) is a port change with no device here to verify it. One
+  loose end left standing: the send spread's one-off max 5.8 ms at frame 14 against a 2.5 ms
+  median, outside the warm-up.
 
 * learned: the mid-frame's own device cost is measured, and it is small - 8.26 ms per mid, so the
   route's ~42 ms price is not the worker (2026-11-08 tick, read of `r2026-11-08-midcount-run`, exit 0
