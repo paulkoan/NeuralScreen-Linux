@@ -1,0 +1,16 @@
+{
+  "exit_code": 0,
+  "seconds": 6.085,
+  "argv": [
+    "bash",
+    "tools/port_profile.sh",
+    "1920",
+    "1080"
+  ],
+  "artifacts": [],
+  "runner": "005dd2c6ea9e",
+  "entry_env": [],
+  "gpu_before": "BUSY (utilization 90%; signal-desktop (pid 18889, 165.0 MiB); chromium (pid 18945, 62.0 MiB); msedge (pid 54723, 342.0 MiB); DyingLightGame_TheBeast_x64_rwdi.exe (pid 3135381, 6184.0 MiB))",
+  "gpu_after": "BUSY (utilization 93%; signal-desktop (pid 18889, 165.0 MiB); chromium (pid 18945, 62.0 MiB); msedge (pid 54723, 342.0 MiB); DyingLightGame_TheBeast_x64_rwdi.exe (pid 3135381, 6184.0 MiB))",
+  "idle_waited_s": 297.6
+}
