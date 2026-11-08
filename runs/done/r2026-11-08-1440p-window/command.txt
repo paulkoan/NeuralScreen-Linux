@@ -1,0 +1,1 @@
+uv run python -m minimal --frames 120 --source window --size 2560x1440 --shm --save-before 1440p-window-before.png --save-after 1440p-window-after.png --worker-log

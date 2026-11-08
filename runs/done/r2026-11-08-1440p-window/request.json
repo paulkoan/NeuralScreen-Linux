@@ -1,0 +1,11 @@
+{
+  "id": "r2026-11-08-1440p-window",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--source", "window", "--size", "2560x1440", "--shm",
+           "--save-before", "1440p-window-before.png",
+           "--save-after", "1440p-window-after.png", "--worker-log"],
+  "timeout_s": 900,
+  "artifacts": ["1440p-window-before.png", "1440p-window-after.png"],
+  "manual": true,
+  "note": "The companion the 1080p window pair does not have, and the reason its headline is a direction rather than a delta. r2026-11-08-1080p-window-c reads 30.5 ms / 32.8 fps steady, and the 1440p figure it is quoted against - 46.6 ms / 21.5 fps, r2026-11-03-live-1440p - is a different build (0aabc30e) with the old 64 KiB pipe and without the queue move. So today the plan can say the 1080p route is faster but cannot say by how much on the product path, which is the one number the top-ranked lever rests on. This run is the same shape as -c with only the size changed (120 frames, window source, shm, worker log, both PNGs), so the pair prices the resolution step on one build, one card state and one chain. Read the median and the steady rate, then the stage split; the worker's own line and the `capture cpu:` line are the two that say whether the cost has moved into the pass or stayed in the chain. If the median lands near 46 ms the 1080p route's saving is real and roughly as advertised; if it lands near 35 ms then most of what -c showed was the build and the pipe, not the resolution, and the lever's headline is a third of the claim. Either reading is worth having and neither exists yet. Card state matters: if the gate reports BUSY before or after, say so and do not compare it. Nothing here changes a file."
+}

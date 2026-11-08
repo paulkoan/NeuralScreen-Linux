@@ -1,0 +1,26 @@
+  CreateSession
+  session /org/freedesktop/portal/desktop/session/1_3048728/nsl_port
+  SelectSources
+  Start  (the compositor will ask you to choose a screen)
+  stream node=152 serial=5075 0x0
+  OpenPipeWireRemote
+  window stream reports no size; using the requested 2560x1440
+  pipe buffer 64 -> 1024 KiB
+  pipeline pid 2603137: gst-launch-1.0 -q pipewiresrc fd=5 target-object=5075 ! queue max-size-buffers=1 leaky=downstream ! videoconvert ! videoscale ! video/x-raw,format=RGBA,width=2560,height=1440,pixel-aspect-ratio=1/1 ! fdsink fd=1
+source window  capture 2560x1440  ->  work 2560x1440 (work scale 1.00, NGX ceiling 2560x1440)
+params: auto_mask=0 intensity=1.0 local_structure=1.0 local_tone=1.0 preset=0 profile=1 skin_structure=-1.0 style=1 ui_correction=0
+worker: /opt/neuralscreen/port/build/dlss5vk serve --model /opt/neuralscreen/model
+version: repo 5ba9641 (+53 uncommitted) · worker built from patch f2cd1f272c4c at port 9d08f41 · in sync
+[main] shared memory agreed: 29.5 MB, the frame does not go through the pipe
+frame 0 is the worker's warm-up: the window stays black until its first answer lands
+pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+frames: 120 done, 0 skipped, 10.506s (11.42 fps headline, 20.72 fps steady), worker exit 0
+timing: capture 9.5ms  send 4.3ms  recv 67.0ms  display 4.4ms   (mean 85.1ms/frame, 11.8 fps; median 48.3ms/frame, 20.7 fps steady)
+recv split (means): copy 3.2ms (min 1.9, max 6.5) + waiting 63.8ms   <- the copy is ours; the wait is the worker and the handoff
+send spread: min 2.5  median 4.0  max 11.4 ms at frame 0 of 120   (one-off at frame 0 — sent before the worker's first reply lands, so the warm-up, not a per-frame cost)
+recv spread: min 26.6  median 31.1  max 4232.5 ms at frame 0 of 120   (one-off at frame 0 — sent before the worker's first reply lands, so the warm-up, not a per-frame cost)
+capture split: wait 0.5ms  read 9.0ms   (read near 9ms at 2560x1440 with a 1024 KiB pipe means we are draining a stocked pipe; far above that means the compositor was dribbling)
+capture cpu: the pipeline used 2.90s over 10.51s = 28% of one core
+  before -> 1440p-window-before.png
+  after  -> 1440p-window-after.png
