@@ -16,6 +16,15 @@ on the next pass. The exception is the handful of scripts installed *outside* th
 `run_manually.sh --include-manual` came to be misread as a policy path on the box while the fixed
 copy sat in the worktree.
 
+**How a fenced-off file gets changed.** The tick's hard limits forbid editing `minimal/`, `tools/`,
+`experiments/` or the policy unless an item names that exact file, and the tick may not write
+itself that authorisation - that is what makes the limit mean anything. The route is an item
+written *here*, in the interactive session, naming the file. So when the tick finds that an item
+needs one, the answer is a line saying so and stopping, not a question put to a person: asking was
+never the mechanism, and on 2026-11-08 it put a one-line client change in front of the developer as
+though it were a product decision. Writing the item is the authorisation; a person can still veto
+it, which is the point of the plan being readable.
+
 ## 1. Next work
 
 * **60 fps is the goal, restated 2026-11-08 with the constraint and the caveat: "60fps is the goal,
