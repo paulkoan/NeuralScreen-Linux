@@ -10,6 +10,39 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
 
 ## 1. Next work
 
+* **Repeat the profile at 1080p twice, back to back - the 1080p/1440p pair contradicts itself and
+  the plan's newest conclusion rests on it.** The goal item below was blocked on the profile
+  comparison at two sizes; that pair has now run on one binary minutes apart and the smaller frame
+  came back dearer (`r2026-11-08-profile-1080p` **13.733 ms** against `r2026-11-08-profile-1440p`
+  **9.714 ms**). Two readings survive, and one controlled pair decides between them:
+  * the pass really carries a per-dispatch cost a smaller frame does not reduce - then the kernels
+    and the schedule are the target, and lever 2 below is the whole programme;
+  * the 1080p run carried a cold GPU clock - it waited **45.0 s** in the idle gate where the 1440p
+    run waited **0.0 s** - and every span in it is inflated, smallest kernels most. The pair's only
+    argument against this is the `400 trivial dispatches + barriers` probe agreeing (0.408 vs
+    0.411 ms), which is fixed cost by construction, not proof about the kernels.
+
+  Queued as one item, two runs of the same shape on the same entry (`port-profile 1920 1080`,
+  timeout 600): `r2026-11-08-profile-1080p-b` then `r2026-11-08-profile-1080p-c`. Same size twice is
+  the point - a first run after the card has been idle and a second on the heat the first left are
+  the two states that can explain 13.733, and nothing else differs between them. A profile run is
+  4.2 s and the route takes the per-dispatch minimum by design, so the pair costs the box nothing.
+
+  Read b against c, then both against 13.733:
+  * **b ~ c ~ 13.7** - the number is reproducible under this route's own conditions, so the pass is
+    genuinely not pixel-bound and the fixed-cost/per-kernel reading stands; strip the clock caveat
+    from the Learned entry and go at lever 2.
+  * **b ~ 13.7, c clearly lower** (toward the ~5.5 linear expectation) - the 1080p figure is the
+    cold-clock artifact, "a smaller frame is dearer" is withdrawn, and the original cross-size table
+    stands; the 9.9-vs-11.5 ms worker line is then the number to explain.
+  * **b itself clearly below 13.7** - the first pair's 1080p number was a one-off and the whole
+    fixed-cost reading needs redoing before any port work is chosen on it.
+
+  Nothing is built until this is read: every lever below is a port change, and this decides which
+  one is worth starting. Also read c's `gpu_before`/`idle_waited_s` - if the gate held again for c
+  as long as it did for b, both runs started cold and a b~c result weakens the clock reading
+  without killing it.
+
 * **60 fps is the goal, restated 2026-11-08 with the constraint and the caveat: "60fps is the goal,
   or as close as we can get to it, with 1440p output. I accept that it might not be achievable."**
   So: 1440p *output* is fixed, 60 is the target rather than a gate, and the task is to get as close
@@ -39,12 +72,13 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
   consistent with ~5 ms of the port's network being independent of resolution, which would make it
   the largest single item in the project - larger than the "close the NGX gap, ~2.6 ms" item this
   plan used to rank second.
-  `r2026-11-08-profile-1080p` is queued to settle it: the same per-dispatch profile at 1920x1080,
-  against the 1440p sum of 9.749 ms. Linear would be ~5.5. **Near 9 means the spans themselves carry
-  a fixed cost and the kernels are the target; near 5.5 means the arithmetic is fine and the 9.9 ms
-  wall clock is ~4.4 ms of CPU-side gap between dispatches, which is a different fix and makes the
-  kernel table a dead end.** Only one of those two is worth the next week, so nothing gets built
-  until this run answers it.
+  **The pair queued to settle it has run and answered neither branch.** `r2026-11-08-profile-1080p`
+  read **13.733 ms** at 1920x1080 against `r2026-11-08-profile-1440p`'s **9.714 ms** on the same
+  binary minutes apart - the smaller frame came back 1.41x dearer, which no pixel effect can
+  produce. Linear would have been ~5.5, the fixed-cost branch ~9; 13.7 is neither, so the
+  comparison as designed cannot decide spans-vs-gaps and the reading above has to be settled before
+  anything is built on it. That is the top item now (the repeat pair), and its outcome goes at the
+  head of Learned.
 
   Two further instructions came with it, and both change what is buildable:
 
@@ -60,6 +94,9 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
     Skynizz/optiscaler-dlss5 review (cards t_abbb86af, t_0a3913f0) was a one-off; this asks for it
     to recur. Set up as its own schedule rather than a ticker item, because a survey is not a
     measurement and does not belong in a queue that runs every two minutes.
+    **Not the ticker's to do (2026-11-08):** a recurring schedule is a Hermes cron job and this
+    tick is not allowed to create one, so the survey stays unbuilt until the developer adds it
+    (or says where it should live). Everything else in this item is the ticker's.
 
   **The ranked levers toward 16.7 ms, from measured numbers only:**
 
@@ -89,7 +126,8 @@ packages; never touch the developer's checkout at /home/paul/dev/NeuralScreen-Li
      sum says 9.749 against 7.1 (1.37x) - so chasing the network recovers at most ~2.6 ms at 1440p.
      Superseded in emphasis by the table at the top of this section, which says the same gap is
      **2.15x at 1080p** (9.9 against NGX's 4.6) because NGX scales with the frame and the port does
-     not. `r2026-11-08-profile-1080p` decides which half of that (spans or gaps) is the target. This
+     not. That run has landed and its pair contradicts itself (Learned), so which half - spans or
+     gaps - is the target is still open; the repeat pair at the top of this section closes it. This
      is the only lever that costs no picture quality at all, which is why it stays second.
   3. **The 31-block small network - 1.78x claimed at 1440p.** `model-small` is extracted and the
      claim is measured on NVIDIA's own runtime, but the port cannot use it as a swap: `kBlockCount`

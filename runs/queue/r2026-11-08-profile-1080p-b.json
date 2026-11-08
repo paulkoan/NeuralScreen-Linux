@@ -1,0 +1,7 @@
+{
+  "id": "r2026-11-08-profile-1080p-b",
+  "entry": "port-profile",
+  "args": ["1920", "1080"],
+  "timeout_s": 600,
+  "note": "The 1080p half of the profile pair repeated, first of two, because the pair contradicts itself. r2026-11-08-profile-1080p read 13.733 ms at 1920x1080 against r2026-11-08-profile-1440p's 9.714 ms on the same binary minutes apart: the smaller frame came back 1.41x dearer, which no pixel effect can produce, and the plan's newest conclusion ('the port is not pixel-bound', 'a smaller frame is dearer') rests on that one pair. Two readings survive - the pass really carries a per-dispatch cost a smaller frame does not reduce, or the 1080p run carried a cold GPU clock (it waited 45.0 s in the idle gate where the 1440p run waited 0.0 s) and its spans are inflated, smallest kernels most. r2026-11-08-profile-1080p-c is the same shape queued straight behind this one: b is the run after the card has been idle, c is the run on the heat b leaves, and those are the two states that can explain 13.733 with nothing else differing between them. Read b against c and both against 13.733. b ~ c ~ 13.7 means the number reproduces under this route's own conditions and the fixed-cost/per-kernel reading stands; b ~ 13.7 with c clearly lower (toward the ~5.5 the linear expectation gives) means 13.733 was the cold-clock artifact and the earlier cross-size table stands. Also carry gpu_before and idle_waited_s for both runs, since the gate's wait is what decides how cold b starts."
+}
