@@ -491,6 +491,14 @@ section asks only what is still being asked.
   create one, so that instruction waits on the developer. Nothing else was open: the queue held no
   unfinished run and the box has published nothing since 06:47Z.
 
+* **WITHDRAWN - the conclusion in this entry is wrong; the correction is in the entries above.**
+  The "a smaller frame is dearer" reading came from a cold card, not from the pass's shape: the
+  repeat pair at the same size read 6.494 ms and 6.522 ms, against this entry's single 13.733 ms,
+  and the discriminator was the 45.0 s the 13.733 run spent waiting in the idle gate. The
+  measurement below is what it was; the inference drawn from it is not available, and the
+  cross-size reading is 0.67 against a pixel ratio of 0.56 - roughly what area says. Kept rather
+  than deleted so that a single cold sample's reach is visible to the next reader.
+
 * learned: the port is not pixel-bound, and the profile says a SMALLER frame is dearer - same
   binary, same size, opposite of expectation (2026-11-08, `r2026-11-08-profile-1080p` and
   `r2026-11-08-profile-1440p`, both exit 0, both WARN card before and after). The pair is clean:
