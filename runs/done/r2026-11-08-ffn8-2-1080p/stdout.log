@@ -1,0 +1,6 @@
+binary: /opt/neuralscreen/port/build/dlss5vk
+model:  /opt/neuralscreen/model
+size:   1920x1080, minimum of 7 frames per dispatch
+
+maxComputeSharedMemorySize 49152 bytes
+400 trivial dispatches + barriers: 0.409 ms (1.02 us each)
