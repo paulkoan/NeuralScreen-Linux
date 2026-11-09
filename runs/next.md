@@ -60,8 +60,16 @@ anything there.
   history says a transport change is worth whole milliseconds rather than tenths - shared memory took
   that frame 39.7 -> 26.4 ms. `r2026-11-09-capture-transport-probe` runs the suite on the box and
   reports in one skip line what this machine can offer: `shmsink`/`shmsrc` from gst-plugins-bad,
-  `memfd_create`, the current `pipe-max-size`, and whether `gst-launch-1.0` is present. Read that
-  line before writing anything.
+  `memfd_create`, the current `pipe-max-size`, and whether `gst-launch-1.0` is present. **It has
+  now answered (2026-11-09 tick), and the item is blocked on one thing: an item naming the fenced
+  file.** The run exited **1** on `290c99526395` - the suite's known environment failures, not the
+  probe (8 failed / 586 passed / 22 skipped) - and its probe line printed: `capture transports -
+  shmsink yes; shmsrc yes; memfd_create yes; pipe-max-size 1024 KiB (at the cap already);
+  gst-launch-1.0 yes`. So the shared-memory capture chain is buildable and the pipe cannot be given
+  more headroom; what is left is an edit to `minimal/capture_wayland.py` (with its test,
+  `tests/test_capture_wayland.py`) - a fenced file this item does not name, and the tick may not
+  write itself that authorisation. **Write that item in the interactive session, naming the file,
+  and the next tick builds the change.**
 
 * learned: the FFN sweep's sixth pair came back **dead at both sizes** - a crash, not a number - so 80 against 64 on the C=256 R4 entry is unmeasured and the sweep is stopped pending one word from the developer (2026-11-08 tick, read of `r2026-11-08-ffn8-0-build`, `-1-720p` and `-2-1080p`). The build landed in sync (`25cf5f62fbc4`, 16 shader modules / 78 PTX kernels, `ffn_e4m3_C256_R4` and its `+proj` sibling both emitted), and both profiles are exit **1** on the same line: `error: vkQueueWaitIdle(queue_) failed: -4` (VK_ERROR_DEVICE_LOST), in 3.6 s and 3.9 s, immediately after the fixed-cost probe read its usual **0.421 ms** at 720p (1.05 us per dispatch) and **0.409** at 1080p - so the port dies at the first real dispatch and prints no kernel table at all, which is why this pair carries neither a total nor a row. `gpu_before` and `gpu_after` are WARN on both (signal-desktop 155.0 MiB, chromium 60.0 MiB, resident but not contending) and `idle_waited_s` 0.0, so neither sample fails the idle gate - the shape is a repeatable fault, not a contended card and not a cold one. **The signature is new**: every earlier `port-profile` run of this entry on `origin/results` exits 0, and `vkQueueWaitIdle` appears nowhere else in `runs/` but these two reports and their stderr logs (the only other hits are Wine DLLs inside `r2026-10-11-a`). The one build carrying the `.maxnreg 80` on the C=256 R4 entry is therefore the first to die this way, at both sizes minutes apart - the change is the prime suspect, and it is NOT proven to be the kernel rather than the card, because both samples are the same build and nothing here can re-run the previous one. What is needed is not another number: the revert of that emitter argument (in the patch and its source of truth at `/opt/data/tmp/odl-src`) is a fenced-file edit, and the item that named those two files was retired to a learned line by the previous tick while its own reading condition was still unmet, so this tick may not make the change. The last clean reading of the family stands as it was: `r2026-11-08-ffn7-1-720p` total **3.385 ms** (that row 0.310), `-ffn7-2-1080p` total **6.267** (row 0.607).
 
