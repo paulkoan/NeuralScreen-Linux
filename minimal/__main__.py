@@ -78,6 +78,16 @@ def build_parser() -> argparse.ArgumentParser:
                         "The risk is caps negotiation failing when the portal's "
                         "reported size and the stream's disagree (fractional "
                         "scaling), which is loud rather than silent")
+    p.add_argument("--capture-transport", choices=("pipe", "shm"), default="pipe",
+                   help="how the Wayland capture chain hands its frames to us: 'pipe' "
+                        "ends it in fdsink fd=1 and we read the frame through the "
+                        "subprocess pipe; 'shm' ends it in fdsink fd=<memfd> and we "
+                        "read it out of shared memory instead. The pipe is the "
+                        "default and is what every number to date was measured on; "
+                        "shm is the untested route (one pread of the whole frame "
+                        "rather than ~8 through a 1 MiB pipe). Only the Wayland "
+                        "portal sources (wayland, window) use it; every other source "
+                        "ignores it")
     p.add_argument("--size", metavar="WxH",
                    help="force the frame size for sources that can make one "
                         "(synthetic). Lets the 2560x1440 matrix be measured "
@@ -318,6 +328,7 @@ def main(argv: list[str] | None = None) -> int:
                               input_video=args.input_video,
                               width=force_w, height=force_h,
                               video_scale=not args.capture_no_scale,
+                              capture_transport=args.capture_transport,
                               bgra=args.bgra)
         if args.prefetch:
             # Wrap before the Pipeline sees it: the loop then reads a frame that
