@@ -33,31 +33,28 @@ anything there.
 
 ## 1. Next work
 
-* **Next: wire the transport to the flag, then queue its comparison run. This item names the files
-  it edits.** `PortalCapture` takes `transport=` and no caller passes it, so the option cannot be
-  selected today. **`minimal/__main__.py`**: a `--capture-transport {pipe,shm}` beside
-  `--capture-no-scale`, default `pipe`, whose help says the pipe is what every number to date was
-  measured on and that `shm` is the untested route - argparse's choices make an unknown value a
-  refusal rather than a run on the default. **`minimal/capture.py`**: `open_capture` gains a
-  `capture_transport: str = "pipe"` keyword and hands it to `PortalCapture` on both the `wayland`
-  and the `window` branches (every other source ignores it), and `minimal/__main__.py` passes
-  `args.capture_transport` through the `open_capture` call it already makes. **`tests/test_cli_params.py`**
-  holds the assertions: the default is `pipe`, `--capture-transport shm` reaches the capture object
-  as `transport == "shm"`, and `--capture-transport dma-buf` exits non-zero from argparse.
-  Then write and push the comparison request, because a flag nothing measures is not evidence:
-  `runs/queue/r2026-11-09-shm-window.json`, `"id": "r2026-11-09-shm-window"`, entry `minimal`, args
-  `["--frames", "120", "--source", "window", "--size", "1920x1080", "--shm",
-  "--capture-transport", "shm", "--save-before", "shm-window-before.png", "--save-after",
-  "shm-window-after.png", "--worker-log"]`, `"timeout_s": 900`, artifacts the two PNGs,
-  `"manual": true` - the window source wants a picker. Its argv is
-  `r2026-11-08-1080p-window-c`'s with `--capture-transport shm` added, so the pair is one variable
-  apart. What that run reads, and what the new one has to beat: **30.5 ms / 32.8 fps steady with
-  the capture split wait 0.5 / read 5.1 ms** - the reading is `read`, which should fall toward a
-  memory copy, while the frame time holds or improves; the `capture cpu:` line is the second
-  reading, since the chain was 25% of one core there. The caps do not move, so the before/after
-  PNG hashes are the check that the transport changed no pixel. If `read` does not fall, the
-  transport is settled as not the lever and the capture leg is closed for good - say so at the top
-  of Learned rather than queueing another shape.
+* learned: `--capture-transport {pipe,shm}` is wired to the CLI and the transport comparison is
+  queued one variable apart from its control (2026-11-09 tick, code change in `minimal/__main__.py`,
+  `minimal/capture.py` and `tests/test_cli_params.py`, commit `0d26324`, suite 582 passed / 9 failed
+  / 38 skipped - the same nine libGL/SDL2 environment failures this box always has; the 8 new tests
+  are among the passed). `open_capture` gained `capture_transport: str = "pipe"` and hands it to
+  `PortalCapture` on both the `wayland` and `window` branches (every other source ignores it), and
+  `--capture-transport` sits beside `--capture-no-scale` with argparse `choices=("pipe", "shm")`, so
+  an unknown value is a refusal at parse time and the default stays the pipe that every number on
+  the record was measured on. The four wiring tests read the transport off a recorder standing in
+  for `PortalCapture`, so no compositor and no dialog is needed: the default is `pipe` from either
+  portal source, `--capture-transport shm` arrives as `transport == "shm"`, `dma-buf` / `shmem` /
+  `PIPE` / empty all exit 2 from argparse, and a synthetic source has no `transport` attribute to
+  set. Queued and pushed behind it: `runs/queue/r2026-11-09-shm-window.json` (`manual: true` - the
+  window source wants a picker), `r2026-11-08-1080p-window-c`'s argv plus `--capture-transport shm`,
+  120 frames at `--size 1920x1080` with before/after PNGs. What it reads, and what it has to beat:
+  **30.5 ms / 32.8 fps steady, capture split wait 0.5 / read 5.1 ms**, chain 25% of one core - the
+  reading is `read`, which should fall toward a memory copy while the frame time holds or improves;
+  the before/after PNG hashes are the check that no pixel moved, and if `read` does not fall the
+  transport is settled as not the lever and the capture leg closes for good. NOT verified: no gst
+  and no compositor on this box (the suite skips the transport probe for want of `gst-launch-1.0`),
+  so the CLI was exercised only through the recorder and argparse - no `gst-launch` has run on the
+  memfd route, and the comparison is unmeasured until the window run lands.
 
 * learned: the shared-memory capture is built, and the route is the memfd; the pipe stays the
   default (2026-11-09 tick, code change in `minimal/capture_wayland.py` with
