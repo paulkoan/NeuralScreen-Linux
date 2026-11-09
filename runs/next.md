@@ -33,33 +33,60 @@ anything there.
 
 ## 1. Next work
 
-* **Next: build the shared-memory capture. This item names the files it edits, and that naming is
-  the whole reason it exists.** The box answered the probe - `shmsink yes; shmsrc yes;
-  memfd_create yes; pipe-max-size 1024 KiB (already at the cap); gst-launch-1.0 yes` - so the
-  transport can change and the pipe cannot be enlarged. The change is **`minimal/capture_wayland.py`**
-  (the pipeline built in `_pipeline_args`, and the frame read beside it) with
-  **`tests/test_capture_wayland.py`** for the pipeline assertion. Those two paths are the
-  authorisation; the previous item did not name them, and that is the only reason the loop stopped
-  there.
+* **Next: wire the transport to the flag, then queue its comparison run. This item names the files
+  it edits.** `PortalCapture` takes `transport=` and no caller passes it, so the option cannot be
+  selected today. **`minimal/__main__.py`**: a `--capture-transport {pipe,shm}` beside
+  `--capture-no-scale`, default `pipe`, whose help says the pipe is what every number to date was
+  measured on and that `shm` is the untested route - argparse's choices make an unknown value a
+  refusal rather than a run on the default. **`minimal/capture.py`**: `open_capture` gains a
+  `capture_transport: str = "pipe"` keyword and hands it to `PortalCapture` on both the `wayland`
+  and the `window` branches (every other source ignores it), and `minimal/__main__.py` passes
+  `args.capture_transport` through the `open_capture` call it already makes. **`tests/test_cli_params.py`**
+  holds the assertions: the default is `pipe`, `--capture-transport shm` reaches the capture object
+  as `transport == "shm"`, and `--capture-transport dma-buf` exits non-zero from argparse.
+  Then write and push the comparison request, because a flag nothing measures is not evidence:
+  `runs/queue/r2026-11-09-shm-window.json`, `"id": "r2026-11-09-shm-window"`, entry `minimal`, args
+  `["--frames", "120", "--source", "window", "--size", "1920x1080", "--shm",
+  "--capture-transport", "shm", "--save-before", "shm-window-before.png", "--save-after",
+  "shm-window-after.png", "--worker-log"]`, `"timeout_s": 900`, artifacts the two PNGs,
+  `"manual": true` - the window source wants a picker. Its argv is
+  `r2026-11-08-1080p-window-c`'s with `--capture-transport shm` added, so the pair is one variable
+  apart. What that run reads, and what the new one has to beat: **30.5 ms / 32.8 fps steady with
+  the capture split wait 0.5 / read 5.1 ms** - the reading is `read`, which should fall toward a
+  memory copy, while the frame time holds or improves; the `capture cpu:` line is the second
+  reading, since the chain was 25% of one core there. The caps do not move, so the before/after
+  PNG hashes are the check that the transport changed no pixel. If `read` does not fall, the
+  transport is settled as not the lever and the capture leg is closed for good - say so at the top
+  of Learned rather than queueing another shape.
 
-  Build it in the order that keeps the working path working. The pipe stays the default and the
-  shared-memory route is an option - `--capture-transport shm|pipe`, defaulting to `pipe` - until a
-  window run proves it, and a `shmsink` that fails to start falls back to the pipe with one line
-  saying so, because a silent fallback is worse than no fallback. The chain keeps its shape
-  (`pipewiresrc ! queue max-size-buffers=1 leaky=downstream ! videoconvert [! videoscale] ! <rgba
-  caps>`) and changes only its end: `shmsink socket-path=... sync=false wait-for-connection=false`
-  in place of `fdsink fd=1`. Two mechanisms are open and the choice is by what can be tested here -
-  `shmsink` with a `shmsrc` reader is the plugin-supported route and costs a second gst process; a
-  `memfd` the chain writes and the client maps is the single-process route and has to carry frame
-  boundaries explicitly. Either way the client must find each frame's start without an extra copy,
-  which is the entire point of the change.
+* learned: the shared-memory capture is built, and the route is the memfd; the pipe stays the
+  default (2026-11-09 tick, code change in `minimal/capture_wayland.py` with
+  `tests/test_capture_wayland.py`, commit `fc59861`, suite 574 passed / 9 failed / 38 skipped -
+  the same nine libGL/SDL2 environment failures this box always has). `PortalCapture` now takes
+  `transport=` (`pipe` default, `shm` the option): on `shm` the chain's end becomes
+  `fdsink fd=<memfd> sync=false` and the reader takes each frame with one `pread` at its own
+  offset, so a frame's boundaries are the reader's arithmetic instead of a byte count, and the
+  wait/read split the report prints survives intact. **`shmsink` was the item's named alternative
+  and is rejected for a reason worth keeping**: it hands the segment over its own socket protocol,
+  so a client would either reimplement that framing or run `shmsrc` as a second gst process whose
+  pipe re-adds exactly the copy the change exists to remove - and a hand-written protocol client
+  could not be tested here at all, because this box has no gst. The memfd is single-process and
+  its read path is testable without a compositor, which is the item's own testability rule.
+  Kernel behaviour verified here (6.12): sequential writes into a memfd at growing offsets, one
+  `pread` returns the whole frame, and `fallocate(PUNCH_HOLE|KEEP_SIZE)` frees the consumed pages
+  without moving the file's size - so the memfd does not accumulate 8.3 MB a frame for the length
+  of the run, and the punch cannot race a writer that only ever moves forward. A `memfd_create`
+  that fails, or a chain that will not start, falls back to the pipe with one line saying so.
+  Two things also fell out of it: `_start_pipeline` was leaking the `mkstemp` descriptor it keeps
+  the pipeline's stderr log open on (one per capture), and the transport defaults now live on the
+  class as well as in `__init__`, so a test double built without `__init__` is on the pipe route
+  rather than raising `AttributeError` - four existing pipe tests in `tests/test_capture_pipe.py`
+  and `tests/test_pipeline_mock.py` build exactly such objects, and they are what caught it.
+  NOT verified: no gst and no compositor here, so no `gst-launch` has ever written into one of
+  these memfds - the read path was driven against a writer that behaves as `fdsink` does, not
+  against `fdsink`. The option is also unreachable until it is wired to the CLI, which is the
+  item below.
 
-  What it is worth, and how to price it: **5.1 ms of the 30.5 ms frame** goes on moving 8.3 MB a
-  frame through a pipe, and the pixel channel's own precedent is that this kind of change took the
-  frame 39.7 -> 26.4 ms. The comparison is a window run against `r2026-11-08-1080p-window-c` (30.5 ms
-  / 32.8 fps steady, chain at 25% of one core); the client prints the capture split as `wait` and
-  `read`, and the reading is `read`, which should fall while the frame time holds or improves. Mark
-  the request `"manual": true`: the window source wants a picker.
 
 * learned: the FFN sweep's sixth pair came back **dead at both sizes** - a crash, not a number - so 80 against 64 on the C=256 R4 entry is unmeasured and the sweep is stopped pending one word from the developer (2026-11-08 tick, read of `r2026-11-08-ffn8-0-build`, `-1-720p` and `-2-1080p`). The build landed in sync (`25cf5f62fbc4`, 16 shader modules / 78 PTX kernels, `ffn_e4m3_C256_R4` and its `+proj` sibling both emitted), and both profiles are exit **1** on the same line: `error: vkQueueWaitIdle(queue_) failed: -4` (VK_ERROR_DEVICE_LOST), in 3.6 s and 3.9 s, immediately after the fixed-cost probe read its usual **0.421 ms** at 720p (1.05 us per dispatch) and **0.409** at 1080p - so the port dies at the first real dispatch and prints no kernel table at all, which is why this pair carries neither a total nor a row. `gpu_before` and `gpu_after` are WARN on both (signal-desktop 155.0 MiB, chromium 60.0 MiB, resident but not contending) and `idle_waited_s` 0.0, so neither sample fails the idle gate - the shape is a repeatable fault, not a contended card and not a cold one. **The signature is new**: every earlier `port-profile` run of this entry on `origin/results` exits 0, and `vkQueueWaitIdle` appears nowhere else in `runs/` but these two reports and their stderr logs (the only other hits are Wine DLLs inside `r2026-10-11-a`). The one build carrying the `.maxnreg 80` on the C=256 R4 entry is therefore the first to die this way, at both sizes minutes apart - the change is the prime suspect, and it is NOT proven to be the kernel rather than the card, because both samples are the same build and nothing here can re-run the previous one. What is needed is not another number: the revert of that emitter argument (in the patch and its source of truth at `/opt/data/tmp/odl-src`) is a fenced-file edit, and the item that named those two files was retired to a learned line by the previous tick while its own reading condition was still unmet, so this tick may not make the change. The last clean reading of the family stands as it was: `r2026-11-08-ffn7-1-720p` total **3.385 ms** (that row 0.310), `-ffn7-2-1080p` total **6.267** (row 0.607).
 
