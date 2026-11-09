@@ -33,39 +33,49 @@ anything there.
 
 ## 1. Next work
 
-* **Next: the fourth pair is read, `.maxnreg 80` on C=128 R4 is reverted, and the sweep continues
-  at 720p - which is now the reading, not a fallback.** The 1080p half never produced a usable
-  number: three attempts (**30.165**, **8.513**, **6.444** ms) and the third, though at baseline
-  scale, drifted **two rows the change does not touch** by 0.040 and 0.061 ms against the item's
-  0.02 bar, so its +0.103 on the changed row is not attributable. The clean **720p** sample is the
-  reading: `ffn_ptx 16128x128 e4 r4 +proj` **0.316** against `r2026-11-08-ffn4-1-720p`'s **0.250** -
-  worse by 0.066 ms, twice the noise bar - with every untouched row inside 0.005 and the probe
-  0.408 -> 0.409. So cap-80 is **reverted to 64**: `experiments/opendlss_port/linux-port.patch`, the
-  `ffn_e4m3.py` emitter list in its `scripts/build_linux.sh` section, the tuple `"128 4 80"` ->
-  `"128 4 64"`; the source of truth `/opt/data/tmp/odl-src/scripts/build_linux.sh` is amended and
-  re-cut with it, so the stamp is now **patch `5cbae49` at port `9d08f41`** and the box will say
-  OUT OF SYNC until it rebuilds.
+* **Next: read the FFN sweep's fifth pair back, and 720p is the reading.** The pair is
+  `r2026-11-08-ffn7-1-720p` and `-ffn7-2-1080p`, both on the binary
+  `r2026-11-08-ffn7-0-build` produces - the C=64 R4 entry at `.maxnreg 80`, stamp must read patch
+  `058df08` at port `9d08f41`, in sync, 16 shader modules / 78 PTX kernels. The rows the change
+  moves are the two C=64 R4 rows (`ffn_e4m3_C64_R4.ptx` and its `+proj` sibling); read them against
+  `r2026-11-08-ffn6-1-720p` (total 3.480 ms, probe 0.408, its own C=128 rows `e4 r4` 0.051 / `e4 r4
+  +proj` 0.316) and the last clean pre-change 720p table `r2026-11-08-ffn4-1-720p` (total 3.388,
+  probe 0.408), require every untouched row inside ~0.02 ms, and treat a move inside 0.03 ms as
+  noise. **720p is the reading and 1080p is corroboration only** - the fourth pair's three 1080p
+  attempts each read `gpu_before` BUSY, twice under a game, the third under the same two desktop
+  processes the clean samples read as WARN, and a 1080p sample counts only when its total is at
+  baseline scale AND its untouched rows are inside the bar. If the 720p sample says cap-80 pays
+  nothing on this entry - the bad direction beyond 0.03 ms with the untouched rows inside it -
+  revert `"64 4 80"` -> `"64 4 64"` in `experiments/opendlss_port/linux-port.patch` and its source
+  of truth `/opt/data/tmp/odl-src/scripts/build_linux.sh` and take the next candidate; if it lands
+  inside the bar the sweep moves on rather than reverting. Unspent after it: `.maxnreg 80` on the
+  C=256 R4 entry (its R3 sibling keeps 80), the `.maxntid` argument, and the `proj` emitter pair as
+  its own variable.
 
-  **The rule that was blocking the sweep, and it is the important half of this item.** The gate flag
-  is not the test. Three 1080p attempts all read `gpu_before` BUSY - twice under a game, the third
-  under nothing but `signal-desktop` and `chromium`, which are the *same two processes* the clean
-  720p and 1080p samples read as WARN. On a shared desktop the 1080p half of a pair may therefore
-  never be clean, and an item that stands waiting for one stands forever. **Take the 720p sample as
-  the reading and 1080p as corroboration only.** A 1080p sample counts when the total is at baseline
-  scale AND the untouched rows are inside the bar - which is exactly how the third attempt was
-  correctly refused, so this is a sharper rule, not a looser one.
+  **The ceiling, so the sweep is not mistaken for the road to 60.** Every change it can make moves
+  a few rows by 0.04-0.10 ms against a whole pass of 6.5 ms at 1080p and a 10.7 ms gap to 16.7,
+  while the instrument's noise bar is 0.03 ms and the shared card adds 0.04-0.06. It is a real
+  lever, and a small one: its entire span is a few tenths of a millisecond. If the candidates run
+  out without a win, what matters next is the pass's structure - the dispatch count and the gaps
+  between dispatches - not another register cap.
 
-  Next candidate, one change per build: `.maxnreg 80` on the **C=64 R4** entry, `"64 4 64"` ->
-  `"64 4 80"`, same file, same emitter list, then `r2026-11-08-ffn7-0-build`, `-ffn7-1-720p` and
-  `-ffn7-2-1080p`. Unspent after it: `.maxnreg 80` on the C=256 R4 entry (its R3 sibling keeps 80),
-  the `.maxntid` argument, and the `proj` emitter pair as its own variable.
-
-  **The ceiling, so the sweep is not mistaken for the road to 60.** Every change it can make moves a
-  few rows by 0.04-0.10 ms against a whole pass of 6.5 ms at 1080p and a 10.7 ms gap to 16.7, while
-  the instrument's noise bar is 0.03 ms and the shared card adds 0.04-0.06. It is a real lever, and a
-  small one: its entire span is a few tenths of a millisecond. If the candidates run out without a
-  win, what matters next is the pass's structure - the dispatch count and the gaps between
-  dispatches - not another register cap.
+* learned: the FFN sweep's fifth change is made and queued - `.maxnreg 80` on the C=64 R4 entry,
+  with the fourth change's C=128 R4 entry reverted to 64 in the same patch (2026-11-08 tick, no run
+  - no device here). `scripts/build_linux.sh`'s emitter list now reads `"64 4 80" "128 4 64"
+  "256 3 80" "256 4 64"`, one emitter argument moved and one change per build, and the entry feeds
+  both its emitter calls, so `ffn_e4m3_C64_R4.ptx` and `ffn_e4m3_C64_R4_proj.ptx` both move. Edited
+  at `/opt/data/tmp/odl-src`, the one commit amended (`5cbae49` -> `058df08`), the patch re-cut with
+  `git format-patch -1` into `experiments/opendlss_port/linux-port.patch` - exactly three lines
+  differ, the `From` sha, the `blob index` and the tuple - and pushed, so every port run stamps OUT
+  OF SYNC until `r2026-11-08-ffn7-0-build` lands and the stamp reads patch `058df08` at port
+  `9d08f41`. The build plus the same 720p / 1080p profile pair is queued behind it, the names
+  carrying their order. Suite 564 passed / 9 failed / 37 skipped, the same nine libGL/SDL2
+  environment failures this box always has; the PTX count stays 78, since only an emitter argument
+  moved. Why 80 on C=64 next: the C=128 R4 entry was the entry the third change moved at both sizes
+  but cap-80 read worse there on its clean 720p sample, so the entry with the most room left is the
+  C=64 R4 sibling, while C=256 R4 stays at 64 and the `.maxntid` argument and the `proj` pair stay
+  behind all of it. NOT verified: no device here, so no kernel has been re-timed - 80 against 64 on
+  this entry is unmeasured until `r2026-11-08-ffn7-1-720p` and `-2-1080p` land.
 
 * learned: the FFN sweep's fourth pair has landed - the 720p half reads the change as worse and the
   1080p half is contended, so one second identical run is queued under the item (2026-11-08 tick, read
