@@ -2021,3 +2021,61 @@ section asks only what is still being asked.
   slow input leg. Capture CPU 39% of one core (4.19 s over 10.82 s). gpu_before/after both WARN
   (resident, not contending), idle_waited_s 0.0. The "app case is unreal" hypothesis is refuted;
   the lever remains the worker's own frame, as recorded above.
+
+* learned: the 2026-11-09 ecosystem survey found **nothing to re-pull and one confirmation** - the
+  port's upstream is static, the model version the plan worried about has not moved, and the one
+  new thing is third-party evidence for a lever already extracted (2026-11-09, first run of the
+  `dlss5-ecosystem-survey` job; web search plus the GitHub REST API only, nothing built or run on
+  this box). **Upstream**: the port is a port of `maanHimself/OpenDLSS-NR` (MIT; cited at
+  `experiments/opendlss_port/README.md:67`), whose `pushed_at` is still **2026-09-21T16:16Z** - it
+  has published no commit since the day it appeared (1023 stars, 89 forks), so there is nothing new
+  to port and no divergence to reconcile. **Model version**: no `nvngx_dlssnr.dll` newer than
+  **310.9.16** is public; 310.9.16 (pulled from the NBA 2K27 update, mid-October 2026) is still the
+  newest NR DLL, the NVIDIA DLSS SDK releases page tops out at 310.7.0 and TechPowerUp's SR/FG DLLs
+  at 310.9.1. **The 310.9.16 small network is NVIDIA's own faster model, and lever 3's payoff is now
+  third-party**: `docs/small-network-layout.md`'s 31-block shape is that model, and NVIDIA bills it
+  ~24% smaller (~118M params) and ~20% less VRAM at 4K with "up to 2x" fewer neural-workload
+  milliseconds - figures independent reads agree with in direction. wccftech's NBA 2K27 test reads
+  310.8.2 **8.8 ms / 108 fps** -> 310.9.16 **5.4 ms / 150 fps** on an RTX 4080 SUPER at 4K path
+  tracing, and Borderless Gaming's SteamDB note reads **36-40% lower GPU time** at 960x960 on an RTX
+  3090 and an Intel Arc B580 under DX12. So the small-network lever is not an NVIDIA-only claim; the
+  artifact is already extracted to `/opt/neuralscreen/model-small` and the blocker stays the one the
+  plan names - `kBlockCount` compile-time and `nr_graph.cpp`'s hardcoded layout. **Foveated mods
+  (lever 4) are now two public projects, both Windows-only as code**: `maximedgoulet/FoveatedDLSS5`
+  (MIT, a fork of the RenoDX-DLSS5 add-on) adds **dual foveation** - a centre zone at full NR
+  resolution, a contour at reduced resolution, and an edge where NR is off entirely, per axis
+  centre+contour+edge = 100%, default 50/25/25, with presets that take the NR pixel count to 43%
+  (2.3x) default, 26% (3.8x) racing and 18% (5.5x) aggressive on 32:9; its own measured pairs are
+  **49 -> 81 fps** in The Witcher 3 and **15 -> 25 fps** in Forza Horizon at 7680x2160 with two
+  stacked NR passes; and `ClarkCheekyKent/CheekyFoveatedDLSS` (GPL-3.0, 206 stars). Neither is
+  Linux/Vulkan code - both are ReShade/RenoDX hooks into a game's command stream - but
+  FoveatedDLSS5 is the concrete answer lever 4 has been waiting on ("how do the foveated DLSS5 mods
+  do this": a zone mask over the pass's work area, a downscaled contour, an NR-off edge, and an
+  overlay that previews the saving before a frame time is spent). **Reduced-resolution-pass
+  precedents (levers 1/3) exist and are switchable**: `3zwr1/AMD-NR---OptiScaler` (GPL-3.0, 885
+  stars) ships an lmxxf runtime with a **"Fast mode"** that runs the network one size tier lower
+  (1080->900, 720->576) for **~29% less network time at 1080p** with softer fine detail, an "NR
+  resolution" control to 200%, **"Model interleave"** (network runs every second frame, the edit
+  carried by motion vectors) and a "Full network" toggle that runs all 71 blocks instead of skipping
+  42, 43 and 46 (+0.5 ms) - public designs for exactly the settings-shaped quality trades the plan
+  allows. **Async NR (lever 2) is a live technique**: `RedDukeDev/dlss5-nr-amd-custom` (runtime and
+  kernels MIT, OptiScaler fork GPL-3.0, on a ZLUDA fork) runs the network **asynchronously** instead
+  of waiting on it - its README reads RDNA3 at ~20 fps / 1440p when it waits and "almost no
+  performance loss" with async mode on. It is an AMD/HIP Windows DLL proxy, not portable, but the
+  idea (never block the present on the network) maps onto the worker's synchronous readback.
+  **Licences that block reuse**: `bmitch87/DLSS5VKLayer` (the Linux Vulkan layer that forwards
+  presented frames to a Windows NGX helper under Wine/Proton) is **AGPL-3.0** and drives NGX - the
+  path the port exists to avoid (the repo already cites its issue 18 at `docs/M0-FINDINGS.md:2140`);
+  CheekyFoveatedDLSS and AMD-NR's OptiScaler half are GPL-3.0; dlss5-nr-amd-custom's top level is
+  NOASSERTION (its folders are MIT). Told-no-lever, one line each: `NIGos/dlss5-bridge` (MIT, 320
+  stars) drives NR in DX11/Vulkan games and synthesises motion with NVIDIA Optical Flow where a game
+  has none; `faisalkindi/DLSS5oneclick` (MIT, 1295 stars) installs the leaked build in one click;
+  `Bandukids/DLSS-Runtimes` on Hugging Face hosts `nvngx_dlssnr.dll` 310.8.0.0 (~158 MB) as a weight
+  source; `quarkslab/nvidia-ngx-wrapper` (2021, no licence, unmaintained) runs NGX Image Super
+  Resolution on Linux, not NR. Portable spatial upscalers exist (FSR1's EASU/RCAS, NIS and Anime4K
+  are all MIT and all Vulkan-compute) but touch no lever as-is - the present's SDL stretch is
+  already free, so they would only be a switchable quality improvement if the 1080p present reads
+  soft on a 1440p panel. **Nothing here is directly linkable** (every mod is a Windows game-hook DLL
+  or copyleft) so no code was taken; the survey recorded precedent and one confirmation. **No run
+  queued**: every idea above becomes a measurement only after a port change, and the queue's open
+  item is the FFN sweep's 1080p repeat, which this tick does not disturb.
