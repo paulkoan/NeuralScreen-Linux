@@ -45,13 +45,21 @@ def test_help_exits_zero():
 
 
 def test_the_flag_is_not_read_as_a_policy_path(tmp_path):
-    """The reported failure, pinned: the message must name the default path, not the flag."""
+    """The reported failure, pinned: the flag must not be taken as the policy path.
+
+    Deliberately says nothing about whether the default policy exists. It does on the box and it
+    did not in the sandbox this was written in, and the first version of this test asserted the
+    sandbox's state - so it passed here and failed there, joining the box's red suite that blocks
+    every code change the loop wants to make.
+    """
     r = run("--include-manual")
     combined = r.stdout + r.stderr
     assert "no policy at --include-manual" not in combined, (
         "the flag is being taken as the policy path again - that is the 2026-11-08 report")
-    assert "no policy at /opt/neuralscreen/policy.toml" in combined, (
-        "with no policy argument the script must fall back to the default path")
+    # With no policy argument it uses the default: either that path is missing and the script says
+    # so, or the policy is installed and the run gets as far as the display check.
+    assert ("no policy at /opt/neuralscreen/policy.toml" in combined
+            or "no WAYLAND_DISPLAY or DISPLAY" in combined), combined
 
 
 def test_a_policy_argument_still_works(tmp_path):
