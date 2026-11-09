@@ -25,3 +25,15 @@ git fetch -q origin main results 2>/dev/null || exit 0
 # up. The commit message carries the run id and the commit time is what "newest" means.
 git log -1 --format=%s origin/results 2>/dev/null
 git show origin/main:runs/next.md 2>/dev/null | sed '/^## Learned/,$d' | sha256sum | cut -c1-12
+
+# What the last tick DID, which the two lines above cannot see. They change only when the loop
+# succeeds, so a tick that failed - or found its item needed a decision - left this output identical
+# and was never run again; the plan hash was supposed to prevent that, but it watches for the plan
+# *changing* rather than for the plan *having work*. Measured on 2026-11-08: 50 fires, 3 agent runs,
+# 47 suppressions, with a heartbeat reassuring the developer every 32 minutes. The tick now records
+# its outcome, and the attempts are capped in the line (not in the record) so the output stops
+# changing after a few retries and the loop settles instead of spinning.
+state_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ns-tick-state.py"
+if [ -f "$state_script" ] && command -v python3 >/dev/null 2>&1; then
+    python3 "$state_script" line 2>/dev/null
+fi

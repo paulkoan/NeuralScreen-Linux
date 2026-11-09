@@ -113,38 +113,29 @@ if [ -f "$errlog" ]; then
     fi
 fi
 
-# ---- heartbeat: silence should mean "nothing to say", not "maybe stopped" ----------------
-# While the plan has open work and no run has finished for half an hour, say so once every 30
-# minutes. This is the answer to "are you stopped?": the tick only speaks when it acts, and a
-# queued run plus its tick can be quiet for several minutes at a time.
-marker="$(dirname "$dir")/.heartbeat-last"
-repo="/opt/data/neuralscreen-linux"
-if [ -d "$repo/.git" ]; then
-    ( cd "$repo" && timeout 20 git fetch -q origin ) 2>/dev/null || true
-    last_result=$(cd "$repo" && git log -1 --format=%ct origin/results 2>/dev/null || echo 0)
-    now=$(date +%s)
-    idle=$(( now - ${last_result:-0} ))
-    plan=$(cd "$repo" && git show origin/main:runs/next.md 2>/dev/null)
-    # Only real work counts: a learned note in this section is history, not a queued item.
-    # Counting every bullet inflated the heartbeat to "12 open items" when the plan held one.
-    open=$(printf '%s\n' "$plan" | awk '/^## 1\. Next work/{f=1;next} /^## /{f=0} f && /^[[:space:]]*\* / && !/^[[:space:]]*\* learned:/' | wc -l)
-    # A manual request is waiting on a person, not stalled. Saying "still on it" every half hour
-    # while the developer is asleep is noise, not information: the queue is held, not stuck.
-    manual=""
-    for f in $(git -C "$repo" ls-tree --name-only origin/main runs/queue/ 2>/dev/null | sort | tail -15); do
-        if git -C "$repo" show "origin/main:$f" 2>/dev/null | grep -qE '"manual"[[:space:]]*:[[:space:]]*true'; then
-            manual="$f"; break
+# ---- what the loop is doing: one line when it cannot get on, then silence ------------------
+# This replaced a heartbeat that said "Still on it: N open item(s), last run finished N min ago"
+# every 30 minutes. Reassurance on a timer is the noise the developer actually complained about:
+# across 2026-11-08 the watchdog sent 13 messages, 7 of them that heartbeat, while the loop ran its
+# agent 3 times out of 50 fires. A heartbeat cannot answer "is it stopped", because it looks
+# identical whether the loop is working or wedged - and being told "still on it" every half hour
+# while nothing moves is worse than being told nothing.
+#
+# So the tick records what it did (ns-tick-state.py), and this speaks once per distinct record, and
+# only when the loop cannot get on by itself. Silence now means the loop is working, or is waiting
+# on something already reported once.
+state_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/ns-tick-state.py"
+smarker="$(dirname "$dir")/.stopped-notified"
+if [ -f "$state_script" ] && command -v python3 >/dev/null 2>&1; then
+    stopped=$(python3 "$state_script" report 2>/dev/null)
+    if [ -n "$stopped" ]; then
+        if [ ! -f "$smarker" ] || [ "$(cat "$smarker" 2>/dev/null)" != "$stopped" ]; then
+            printf '%s\n' "$stopped" > "$smarker" 2>/dev/null || true
+            echo "$stopped"
+            echo "Nothing is queued against it. This will be said again only if the situation changes."
         fi
-    done
-    if [ -n "$manual" ]; then
-        open=0
-    fi
-    last_hb=$(cat "$marker" 2>/dev/null || echo 0)
-    if [ "${open:-0}" -gt 0 ] && [ "$idle" -ge 1800 ] && [ $(( now - ${last_hb:-0} )) -ge 1800 ]; then
-        item=$(printf '%s\n' "$plan" | awk '/^## 1\. Next work/{f=1;next} /^## /{f=0} f && /^[[:space:]]*\* / && !/^[[:space:]]*\* learned:/{sub(/^[[:space:]]*\* /,""); print; exit}')
-        echo "Still on it: ${open} open item(s), last run finished $(( idle / 60 )) min ago."
-        echo "Next: ${item:0:220}"
-        echo "Full picture: python3 $repo/tools/status.py"
-        echo "$now" > "$marker"
+    else
+        # Not stopped: clear the marker, so a later stop is allowed to speak.
+        [ -f "$smarker" ] && rm -f "$smarker"
     fi
 fi
