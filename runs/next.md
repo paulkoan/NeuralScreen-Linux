@@ -33,6 +33,20 @@ anything there.
 
 ## 1. Next work
 
+* **Next: read `r2026-11-09-shm-window` and settle the capture leg. This item edits nothing but
+  `runs/next.md`.** The one-variable comparison is queued (`runs/queue/r2026-11-09-shm-window.json`,
+  `manual: true` - the window source wants a picker clicked, so it runs through
+  `run_manually.sh --include-manual` with someone at the screen, not on the box's timer) and its
+  control is already on the record: `r2026-11-08-1080p-window-c`, its argv character for character
+  without `--capture-transport`, 120 frames, `--source window --size 1920x1080 --shm`, both PNGs.
+  The reading is the capture split's `read`: control **wait 0.5 / read 5.1 ms** of a **30.5 ms /
+  32.8 fps** frame, chain 25% of one core. If `read` falls toward a memory copy while the median
+  holds or improves, the memfd is the lever and the next item is the port's `fullWidth != workWidth`
+  refusal, so `--work-scale` moves the 1080p resize off gst and into the pass; if `read` does not
+  fall, the transport is settled as not the lever, the capture leg closes for good, and that goes at
+  the top of Learned rather than into another shape. The caps are unchanged (RGBA 1920x1080), so the
+  before/after PNG hashes must match the control's - a changed hash is a defect, not a trade.
+
 * learned: `--capture-transport {pipe,shm}` is wired to the CLI and the transport comparison is
   queued one variable apart from its control (2026-11-09 tick, code change in `minimal/__main__.py`,
   `minimal/capture.py` and `tests/test_cli_params.py`, commit `0d26324`, suite 582 passed / 9 failed
