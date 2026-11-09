@@ -1,0 +1,17 @@
+{
+  "exit_code": 1,
+  "seconds": 520.714,
+  "argv": [
+    "uv",
+    "run",
+    "pytest",
+    "tests/",
+    "-q"
+  ],
+  "artifacts": [],
+  "runner": "005dd2c6ea9e",
+  "entry_env": [],
+  "gpu_before": "WARN (resident but not contending: signal-desktop (pid 18889, 155.0 MiB); resident but not contending: chromium (pid 18945, 60.0 MiB))",
+  "gpu_after": "WARN (resident but not contending: signal-desktop (pid 18889, 155.0 MiB); resident but not contending: chromium (pid 18945, 60.0 MiB))",
+  "idle_waited_s": 0.0
+}

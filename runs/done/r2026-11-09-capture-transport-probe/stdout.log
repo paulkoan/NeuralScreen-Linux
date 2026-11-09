@@ -1,0 +1,276 @@
+........................................................................ [ 11%]
+.......s.............................................s.s...sss......FFF. [ 23%]
+..............................................................F......... [ 35%]
+..........................F.F........................................... [ 46%]
+.sssssssssss..............................s...ss........................ [ 58%]
+......................s.s.........F..................................... [ 70%]
+........................................................................ [ 81%]
+............F........................................................... [ 93%]
+........................................                                 [100%]
+=================================== FAILURES ===================================
+______________________ test_cli_runs_and_writes_both_pngs ______________________
+
+cli_env = ':97'
+tmp_path = PosixPath('/tmp/pytest-of-paul/pytest-0/test_cli_runs_and_writes_both_0')
+capsys = <_pytest.capture.CaptureFixture object at 0x7ff995903fd0>
+
+    def test_cli_runs_and_writes_both_pngs(cli_env, tmp_path, capsys):
+        """`--frames 3 --save-before/--save-after` exits 0 and writes two PNGs."""
+        from minimal.__main__ import main
+    
+        before = tmp_path / "before.png"
+        after = tmp_path / "after.png"
+    
+        code = main(["--frames", "3", "--headless",
+                     "--save-before", str(before), "--save-after", str(after)])
+        out = capsys.readouterr().out
+    
+>       assert code == 0, f"the CLI exited {code}:\n{out}"
+E       AssertionError: the CLI exited 2:
+E           CreateSession
+E           session /org/freedesktop/portal/desktop/session/1_4161201/nsl_port
+E           SelectSources
+E           Start  (the compositor will ask you to choose a screen)
+E         
+E       assert 2 == 0
+
+tests/test_cli_end_to_end.py:44: AssertionError
+_______________________ test_cli_before_and_after_differ _______________________
+
+cli_env = ':97'
+tmp_path = PosixPath('/tmp/pytest-of-paul/pytest-0/test_cli_before_and_after_diff0')
+
+    def test_cli_before_and_after_differ(cli_env, tmp_path):
+        """The processed frame must not be identical to the captured one."""
+        from minimal.__main__ import main
+        import pygame
+    
+        before = tmp_path / "before.png"
+        after = tmp_path / "after.png"
+>       assert main(["--frames", "2", "--headless",
+                     "--save-before", str(before),
+                     "--save-after", str(after)]) == 0
+E       AssertionError: assert 2 == 0
+E        +  where 2 = <function main at 0x7ff9a50de020>(['--frames', '2', '--headless', '--save-before', '/tmp/pytest-of-paul/pytest-0/test_cli_before_and_after_diff0/before.png', '--save-after', ...])
+
+tests/test_cli_end_to_end.py:64: AssertionError
+----------------------------- Captured stdout call -----------------------------
+pygame 2.6.1 (SDL 2.28.4, Python 3.11.15)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+  CreateSession
+  session /org/freedesktop/portal/desktop/session/1_4164983/nsl_port
+  SelectSources
+  Start  (the compositor will ask you to choose a screen)
+----------------------------- Captured stderr call -----------------------------
+startup failed: the portal handshake failed (TimeoutError): 
+__________________ test_cli_pngs_match_the_capture_resolution __________________
+
+cli_env = ':97'
+tmp_path = PosixPath('/tmp/pytest-of-paul/pytest-0/test_cli_pngs_match_the_captur0')
+
+    def test_cli_pngs_match_the_capture_resolution(cli_env, tmp_path):
+        """The written frames are the size of the captured screen."""
+        from minimal.__main__ import main
+        import pygame
+        from minimal.capture import Capture
+    
+        with Capture(monitor_idx=0) as cap:
+            expect = cap.resolution
+    
+        after = tmp_path / "after.png"
+>       assert main(["--frames", "1", "--headless",
+                     "--save-after", str(after)]) == 0
+E       AssertionError: assert 2 == 0
+E        +  where 2 = <function main at 0x7ff9a50de020>(['--frames', '1', '--headless', '--save-after', '/tmp/pytest-of-paul/pytest-0/test_cli_pngs_match_the_captur0/after.png'])
+
+tests/test_cli_end_to_end.py:89: AssertionError
+----------------------------- Captured stdout call -----------------------------
+  CreateSession
+  session /org/freedesktop/portal/desktop/session/1_4168760/nsl_port
+  SelectSources
+  Start  (the compositor will ask you to choose a screen)
+----------------------------- Captured stderr call -----------------------------
+startup failed: the portal handshake failed (TimeoutError): 
+______________________ test_it_reads_the_bundled_runtime _______________________
+
+    def test_it_reads_the_bundled_runtime():
+        if not BUNDLED.is_file():
+            import pytest
+            pytest.skip("the bundled nvngx_dlssnr.dll is not present in this checkout")
+        done = run(BUNDLED)
+        assert done.returncode == 0, done.stderr
+>       assert f"sha256  {DOCUMENTED_SHA}" in done.stdout
+E       AssertionError: assert 'sha256  dcc0dc2414aedec4a8e084647070383be068554042587180c20c784d4772d36f' in 'file    /opt/neuralscreen/state/repo/native/nvngx_dlssnr.dll\nbytes   276,162,560\nsha256  cdfa6c1ec784867182164c7836f324f087b5c9f374d0c9fe46f54999feabf3ed\nversion 310.9.16.0\nproduct 310.9.16.0\n'
+E        +  where 'file    /opt/neuralscreen/state/repo/native/nvngx_dlssnr.dll\nbytes   276,162,560\nsha256  cdfa6c1ec784867182164c7836f324f087b5c9f374d0c9fe46f54999feabf3ed\nversion 310.9.16.0\nproduct 310.9.16.0\n' = CompletedProcess(args=['/opt/neuralscreen/state/repo/.venv/bin/python', '/opt/neuralscreen/state/repo/tools/dll_versio...cdfa6c1ec784867182164c7836f324f087b5c9f374d0c9fe46f54999feabf3ed\nversion 310.9.16.0\nproduct 310.9.16.0\n', stderr='').stdout
+
+tests/test_dll_version.py:33: AssertionError
+___________ test_the_history_sample_is_checked_against_the_original ____________
+
+    def test_the_history_sample_is_checked_against_the_original():
+        """Green, and it says what it read: the original, its files, and each claim as it goes."""
+        assert SCRIPT.exists(), "the definition's arithmetic is checked, not asserted"
+        source = SCRIPT.read_text()
+        assert "nr_common.glsl" in source and "velocity_unpack.comp" in source, "both sources, named"
+        assert "sha256" in source, "pinned: a shader that has moved is not the original"
+        assert "linux-port.patch" in source, "and what ships is read too, not restated"
+    
+        pytest.importorskip("numpy")
+        checkout = original()
+        if checkout is None:
+            pytest.skip("no checkout of the original on this machine")
+    
+        finished = run(checkout)
+>       assert finished.returncode == 0, finished.stdout + finished.stderr
+E       AssertionError: the definition, read from /opt/neuralscreen/port
+E           3 files, the pinned originals, each saying what is transliterated here
+E           shaders/composite_serve.comp: carries the reprojection and the filter; that side is check_composite.py's, from this definition  agree
+E         Traceback (most recent call last):
+E           File "/opt/neuralscreen/state/repo/experiments/opendlss_port/check_history_sample.py", line 474, in <module>
+E             raise SystemExit(main())
+E                              ^^^^^^
+E           File "/opt/neuralscreen/state/repo/experiments/opendlss_port/check_history_sample.py", line 364, in main
+E             w0, w1, w2, w3 = shader_weights(f)
+E                              ^^^^^^^^^^^^^^^^^
+E           File "/opt/neuralscreen/state/repo/experiments/opendlss_port/check_history_sample.py", line 195, in shader_weights
+E             w0 = fma32(f32(value + cube), -0.5, square)
+E                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/opt/neuralscreen/state/repo/experiments/opendlss_port/check_history_sample.py", line 170, in fma32
+E             return np.float32(math.fma(float(f32(a)), float(f32(b)), float(f32(c))))
+E                               ^^^^^^^^
+E         AttributeError: module 'math' has no attribute 'fma'
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/opt/neuralscreen/state/repo/.venv/bin/python', '/opt/neuralscreen/state/repo/experiments/open...(f32(b)), float(f32(c))))\n                      ^^^^^^^^\nAttributeError: module \'math\' has no attribute \'fma\'\n').returncode
+
+tests/test_history_sample.py:73: AssertionError
+_______________________ test_the_history_check_can_fail ________________________
+
+    def test_the_history_check_can_fail():
+        """And the arithmetic has to be able to disagree, or it is a checker that passes on anything.
+    
+        The definition is four weights and a grouping of them. Move one weight — the `w3` coefficient
+        by a factor of two — and the four stop being the kernel's, which is the first thing the check
+        claims, so it has to refuse with a DIFFER rather than pass over it.
+        """
+        checkout = original()
+        if checkout is None:
+            pytest.skip("no checkout of the original on this machine")
+        pytest.importorskip("numpy")
+    
+        source = SCRIPT.read_text()
+        coefficient = "w3 = f32(f32(cube - square) * f32(0.5))"
+        assert coefficient in source, "the w3 coefficient moved; update this test with it"
+        with tempfile.TemporaryDirectory() as tmp:
+            broken = Path(tmp) / "check_history_sample.py"
+            broken.write_text(source.replace(coefficient, "w3 = f32(f32(cube - square) * f32(0.25))"))
+            finished = subprocess.run([sys.executable, str(broken), str(checkout), str(PATCH)],
+                                      capture_output=True, text=True)
+        assert finished.returncode == 1, finished.stdout + finished.stderr
+>       assert "DIFFER" in finished.stdout, finished.stdout
+E       AssertionError: the definition, read from /opt/neuralscreen/port
+E           3 files, the pinned originals, each saying what is transliterated here
+E           shaders/composite_serve.comp: carries the reprojection and the filter; that side is check_composite.py's, from this definition  agree
+E         
+E       assert 'DIFFER' in "the definition, read from /opt/neuralscreen/port\n  3 files, the pinned originals, each saying what is transliterated..._serve.comp: carries the reprojection and the filter; that side is check_composite.py's, from this definition  agree\n"
+E        +  where "the definition, read from /opt/neuralscreen/port\n  3 files, the pinned originals, each saying what is transliterated..._serve.comp: carries the reprojection and the filter; that side is check_composite.py's, from this definition  agree\n" = CompletedProcess(args=['/opt/neuralscreen/state/repo/.venv/bin/python', '/tmp/tmphkxozmo2/check_history_sample.py', '/...(f32(b)), float(f32(c))))\n                      ^^^^^^^^\nAttributeError: module \'math\' has no attribute \'fma\'\n').stdout
+
+tests/test_history_sample.py:127: AssertionError
+____________ test_the_composite_is_checked_against_its_authorities _____________
+
+    def test_the_composite_is_checked_against_its_authorities():
+        """The composite has three things to match and they pull in different directions.
+    
+        With no history the published byte must not move, because that is what the parity gate
+        compares (src/main.cpp's `composed()`); with a history the value must be the demo's
+        `nr_composite.comp`, formula for formula; and the history sample itself must be the
+        demo's `nr_common.glsl` reprojection and five-tap Catmull-Rom, at zero motion the centre
+        tap the fixture's bytes depend on. check_composite.py transliterates all of it and
+        compares it on random input — the filter against an independent build of the same filter,
+        so that agreeing is not the transliteration agreeing with itself — reading the shader out
+        of the patch rather than out of a copy that can drift.
+        """
+        script = PORT / "check_composite.py"
+        assert script.exists(), "the composite's arithmetic is checked, not asserted"
+        pytest.importorskip("numpy")
+        source = script.read_text()
+        assert "linux-port.patch" in source, "it has to read the shader that ships"
+        assert "nr_composite.comp" in source and "composed()" in source, "both authorities, named"
+        assert "nr_common.glsl" in source and "historySample" in source, (
+            "the reprojection and the filter come from the demo's nr_common.glsl; the checker has "
+            "to say so rather than reinventing them")
+    
+        finished = subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
+>       assert finished.returncode == 0, finished.stdout + finished.stderr
+E       AssertionError: Traceback (most recent call last):
+E           File "/opt/neuralscreen/state/repo/experiments/opendlss_port/check_composite.py", line 501, in <module>
+E             raise SystemExit(main())
+E                              ^^^^^^
+E           File "/opt/neuralscreen/state/repo/experiments/opendlss_port/check_composite.py", line 382, in main
+E             old = main_old(head, proxy)
+E                   ^^^^^^^^^^^^^^^^^^^^^
+E           File "/opt/neuralscreen/state/repo/experiments/opendlss_port/check_composite.py", line 142, in main_old
+E             c = centred(proxy)
+E                 ^^^^^^^^^^^^^^
+E           File "/opt/neuralscreen/state/repo/experiments/opendlss_port/check_composite.py", line 137, in centred
+E             return [fma32(p, 0.125, -0.0625) for p in proxy_channels]
+E                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/opt/neuralscreen/state/repo/experiments/opendlss_port/check_composite.py", line 137, in <listcomp>
+E             return [fma32(p, 0.125, -0.0625) for p in proxy_channels]
+E                     ^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/opt/neuralscreen/state/repo/experiments/opendlss_port/check_composite.py", line 110, in fma32
+E             return np.float32(math.fma(float(np.float32(a)), float(np.float32(b)), float(np.float32(c))))
+E                               ^^^^^^^^
+E         AttributeError: module 'math' has no attribute 'fma'
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/opt/neuralscreen/state/repo/.venv/bin/python', '/opt/neuralscreen/state/repo/experiments/open...), float(np.float32(c))))\n                      ^^^^^^^^\nAttributeError: module \'math\' has no attribute \'fma\'\n').returncode
+
+tests/test_opendlss_port.py:215: AssertionError
+__________________ test_the_flag_is_not_read_as_a_policy_path __________________
+
+tmp_path = PosixPath('/tmp/pytest-of-paul/pytest-0/test_the_flag_is_not_read_as_a0')
+
+    def test_the_flag_is_not_read_as_a_policy_path(tmp_path):
+        """The reported failure, pinned: the message must name the default path, not the flag."""
+        r = run("--include-manual")
+        combined = r.stdout + r.stderr
+        assert "no policy at --include-manual" not in combined, (
+            "the flag is being taken as the policy path again - that is the 2026-11-08 report")
+>       assert "no policy at /opt/neuralscreen/policy.toml" in combined, (
+            "with no policy argument the script must fall back to the default path")
+E       AssertionError: with no policy argument the script must fall back to the default path
+E       assert 'no policy at /opt/neuralscreen/policy.toml' in 'no WAYLAND_DISPLAY or DISPLAY in this shell\n  run this from a terminal inside the graphical session\n'
+
+tests/test_run_manually.py:53: AssertionError
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_capture_transport.py:80: capture transports - shmsink yes; shmsrc yes; memfd_create yes; pipe-max-size 1024 KiB (at the cap already); gst-launch-1.0 yes
+SKIPPED [1] tests/test_check_model.py:139: no extraction on this box to check
+SKIPPED [1] tests/test_check_model.py:176: needs a C++ compiler and the port's src/sha256.h
+SKIPPED [1] tests/test_check_model.py:264: needs the extraction and the DLL on this box
+SKIPPED [1] tests/test_check_model.py:274: needs the extraction and the DLL on this box
+SKIPPED [1] tests/test_check_model.py:290: needs the extraction and the DLL on this box
+SKIPPED [1] tests/test_m0_env_gate.py:40: M0 runs on the GPU box only; set NX_RUN_M0=1 to enable
+SKIPPED [1] tests/test_m0_env_gate.py:45: M0 runs on the GPU box only; set NX_RUN_M0=1 to enable
+SKIPPED [1] tests/test_m0_env_gate.py:50: M0 runs on the GPU box only; set NX_RUN_M0=1 to enable
+SKIPPED [1] tests/test_m0_env_gate.py:56: M0 runs on the GPU box only; set NX_RUN_M0=1 to enable
+SKIPPED [1] tests/test_m0_env_gate.py:102: M0 runs on the GPU box only; set NX_RUN_M0=1 to enable
+SKIPPED [1] tests/test_m0_env_gate.py:112: M0 runs on the GPU box only; set NX_RUN_M0=1 to enable
+SKIPPED [1] tests/test_m0_env_gate.py:122: M0 runs on the GPU box only; set NX_RUN_M0=1 to enable
+SKIPPED [1] tests/test_m0_env_gate.py:133: M0 runs on the GPU box only; set NX_RUN_M0=1 to enable
+SKIPPED [1] tests/test_m0_env_gate.py:141: M0 runs on the GPU box only; set NX_RUN_M0=1 to enable
+SKIPPED [1] tests/test_m0_env_gate.py:153: M0 runs on the GPU box only; set NX_RUN_M0=1 to enable
+SKIPPED [1] tests/test_m0_env_gate.py:162: M0 runs on the GPU box only; set NX_RUN_M0=1 to enable
+SKIPPED [1] tests/test_native_serve.py:113: set NS_ODL_NATIVE_BIN to a built dlss5vk to drive the real mode
+SKIPPED [1] tests/test_native_serve_shm.py:54: set NS_ODL_NATIVE_BIN to a built dlss5vk to drive the real mode
+SKIPPED [1] tests/test_native_serve_shm.py:119: set NS_ODL_NATIVE_BIN to a built dlss5vk to drive the real mode
+SKIPPED [1] tests/test_nr_schedule.py:121: needs the extracted 310.9.16 networks
+SKIPPED [1] tests/test_nr_schedule.py:160: needs the extracted 310.9.16 networks
+FAILED tests/test_cli_end_to_end.py::test_cli_runs_and_writes_both_pngs - Ass...
+FAILED tests/test_cli_end_to_end.py::test_cli_before_and_after_differ - Asser...
+FAILED tests/test_cli_end_to_end.py::test_cli_pngs_match_the_capture_resolution
+FAILED tests/test_dll_version.py::test_it_reads_the_bundled_runtime - Asserti...
+FAILED tests/test_history_sample.py::test_the_history_sample_is_checked_against_the_original
+FAILED tests/test_history_sample.py::test_the_history_check_can_fail - Assert...
+FAILED tests/test_opendlss_port.py::test_the_composite_is_checked_against_its_authorities
+FAILED tests/test_run_manually.py::test_the_flag_is_not_read_as_a_policy_path
+8 failed, 586 passed, 22 skipped in 520.20s (0:08:40)
