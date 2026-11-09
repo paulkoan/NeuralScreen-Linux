@@ -33,73 +33,39 @@ anything there.
 
 ## 1. Next work
 
-* **Next: read the FFN sweep's fourth pair back.** It is queued with the order in the names -
-  `r2026-11-08-ffn6-0-build`, then `-ffn6-1-720p`, then `-ffn6-2-1080p` - and the change it builds is
-  the C=128 R4 entry's register cap, `.maxnreg 64 -> 80`, in `scripts/build_linux.sh`'s emitter list
-  (inside the patch), one change per build; the C=64 and the C=256 R4 entries stay at 64, and the
-  `.maxntid` argument and the `proj` emitter pair stay behind both. Read the C=128 rows against
-  `r2026-11-08-ffn5-0-1080p` at 1080p (`ffn_ptx 34560x128 e4 r4 +proj` **0.418**, `e4 r4` **0.076**,
-  controls `ffn_ptx 8640x256 e8 r4` 0.607, total 6.315, probe 0.407) and against
-  `r2026-11-08-ffn4-1-720p` at 720p (`ffn_ptx 16128x128 e4 r4 +proj` **0.250**, `e4 r4` **0.043**,
-  total 3.388, probe 0.408). A move inside 0.03 ms on a row is noise and the direction is the
-  reading; every row the change does not touch must come back inside ~0.02 ms of its baseline, and
-  the `400 trivial dispatches + barriers` probe (0.406-0.409 ms in every sample since 2026-11-03)
-  with `gpu_before` WARN and `idle_waited_s` 0.0 is part of the reading - a BUSY *before* invalidates
-  the sample. The 1080p figure is quoted only at baseline scale (~6.3-6.6 ms total, not 30); the item
-  wanted two 1080p samples because one of the third change's pair lost its card, so **a second
-  identical `port-profile 1920 1080` run may be queued under this item** if the first comes back
-  inflated - if both do, that is a box-level problem and the item stops there for a human. If the pair
-  has not landed when this is read, do nothing this tick and leave the item standing. The knobs the
-  sweep has not spent when this is done: `.maxnreg 80` on the C=64 R4 entry and on the C=256 R4 entry
-  (its R3 sibling keeps 80), the `.maxntid` argument, and the `proj` emitter pair as a separate
-  variable; if 80 on C=128 comes back worse than 64, revert that entry and take the next candidate.
+* **Next: the fourth pair is read, `.maxnreg 80` on C=128 R4 is reverted, and the sweep continues
+  at 720p - which is now the reading, not a fallback.** The 1080p half never produced a usable
+  number: three attempts (**30.165**, **8.513**, **6.444** ms) and the third, though at baseline
+  scale, drifted **two rows the change does not touch** by 0.040 and 0.061 ms against the item's
+  0.02 bar, so its +0.103 on the changed row is not attributable. The clean **720p** sample is the
+  reading: `ffn_ptx 16128x128 e4 r4 +proj` **0.316** against `r2026-11-08-ffn4-1-720p`'s **0.250** -
+  worse by 0.066 ms, twice the noise bar - with every untouched row inside 0.005 and the probe
+  0.408 -> 0.409. So cap-80 is **reverted to 64**: `experiments/opendlss_port/linux-port.patch`, the
+  `ffn_e4m3.py` emitter list in its `scripts/build_linux.sh` section, the tuple `"128 4 80"` ->
+  `"128 4 64"`; the source of truth `/opt/data/tmp/odl-src/scripts/build_linux.sh` is amended and
+  re-cut with it, so the stamp is now **patch `5cbae49` at port `9d08f41`** and the box will say
+  OUT OF SYNC until it rebuilds.
 
-* learned: the FFN sweep's fourth pair was read a third time and the 1080p half is still not a number -
-  the third sample fails the gate too, on a card BUSY at a low utilisation this time rather than under a
-  game, so the item stays standing for a human (2026-11-08 tick, read of `r2026-11-08-ffn6-2-1080p-c`,
-  exit 0, entry `port-profile 1920 1080`, box revision `f3d439efee06`, queued by `f3d439e` after the card
-  was believed freed at 18:45Z). The gate: `gpu_before` **BUSY** at **37%** - not a game, only
-  `signal-desktop` (155 MiB) and `chromium` (60 MiB), the same processes the clean `ffn5-0-1080p` and
-  `ffn6-1-720p` samples read as WARN - and `idle_waited_s` **298.1**, so it waited the idle window out and
-  ran under the contention anyway, `gpu_after` BUSY at 33%. By the item's own rule that is the whole
-  reading, so nothing below is quoted: total **6.444 ms** against `r2026-11-08-ffn5-0-1080p`'s **6.315**
-  (+0.129, 2%), but the excess is **not** confined to the change's own row - `ffn_ptx 34560x128 e4 r4
-  +proj` **0.521** against **0.418** (+0.103, the direction 720p and `-b` both read) sits beside two rows
-  the change does not touch and which are over the item's ~0.02 ms bar for untouched rows: `ffn_ptx
-  8640x256 e8 r4` **0.668** against 0.607 (+0.061) and `ffn_ptx 138240x64 e2 r4 +proj` **0.352** against
-  0.312 (+0.040), while `block32_ptx 34560w f74` 0.347 against 0.351 and `ffn_ptx 138240x64 e2 r4` 0.100
-  against 0.101 are flat and the fixed-cost probe reads 0.410 against 0.407. So this is the mildest of the
-  three attempts and still not a single-variable sample. Three 1080p attempts (**30.165**, **8.513**,
-  **6.444** ms) and no usable 1080p number: the pair stops for a person there, and what is wanted is not
-  another run - the card is shared and `require_idle` is the policy's, both of which are the box's
-  configuration. The decision on offer: either say a 1080p sample is wanted and get the card quiet, or take
-  the clean 720p reading on its own - cap-80 worse by 0.066 ms, twice the noise bar, every untouched row
-  inside 0.005, probe 0.408 -> 0.409 - as sufficient to revert the C=128 R4 entry to 64. Nothing was
-  reverted this tick, because the item ties that decision to the pair's 1080p number and the sample that
-  would carry it is not clean. NOT verified: no device here, so nothing was re-timed.
+  **The rule that was blocking the sweep, and it is the important half of this item.** The gate flag
+  is not the test. Three 1080p attempts all read `gpu_before` BUSY - twice under a game, the third
+  under nothing but `signal-desktop` and `chromium`, which are the *same two processes* the clean
+  720p and 1080p samples read as WARN. On a shared desktop the 1080p half of a pair may therefore
+  never be clean, and an item that stands waiting for one stands forever. **Take the 720p sample as
+  the reading and 1080p as corroboration only.** A 1080p sample counts when the total is at baseline
+  scale AND the untouched rows are inside the bar - which is exactly how the third attempt was
+  correctly refused, so this is a sharper rule, not a looser one.
 
-* learned: the FFN sweep's fourth pair has no 1080p number - the repeat is contended too, so that
-  half of the read is a person's call and the item stays standing (2026-11-08 tick, read of
-  `r2026-11-08-ffn6-2-1080p-b`, exit 0, entry `port-profile 1920 1080`, box revision
-  `eb6db2668edb`). The run's gate is the whole of it: `gpu_before` **BUSY** at 90% with
-  `DyingLightGame_TheBeast_x64_rwdi.exe` resident at 6184 MiB and `idle_waited_s` **297.6** (it
-  waited the idle window out and then ran under the contention anyway), so by the plan's own rule
-  the sample is invalid before a single row is read - where the first run of this pair,
-  `r2026-11-08-ffn6-2-1080p`, read WARN before and after with `idle_waited_s` 0.0 and was rejected
-  on its 30.165 ms inflation instead. The table agrees with the gate: total **8.513 ms** against
-  `r2026-11-08-ffn5-0-1080p`'s **6.315**, and all 2.2 ms of the excess sits in two rows -
-  `block32_ptx 34945w f48` **1.508** against 0.337 (4.5x) and `ffn_ptx 138240x64 e2 r4 +proj`
-  **1.482** against 0.312 (4.7x), the pair `r2026-11-08-ffn4-2-1080p` inflated in the same
-  direction - while every other row lands at baseline (`ffn_ptx 8640x256 e8 r4` 0.571 against
-  0.607, `block32_ptx 34560w f74` 0.352 against 0.351, `ffn_ptx 138240x64 e2 r4` 0.084 against
-  0.101) and the fixed-cost barrier probe reads 0.386 against 0.407. The change's own row reads
-  `ffn_ptx 34560x128 e4 r4 +proj` **0.519** against **0.418** - worse, the same direction the
-  720p half read - but on a BUSY card it is quoted nowhere, so the revert that reading implies is
-  not taken yet. So the item's own clause fires: both 1080p samples are unusable, the pair has no
-  1080p number, and the item stops there for a human. The box-level fact a person needs: the card
-  is held by a running game (6.2 GiB resident), which is what took both samples, and `require_idle`
-  in the policy is the box's config, not this tick's. NOT verified: no device here, so nothing was
-  re-timed.
+  Next candidate, one change per build: `.maxnreg 80` on the **C=64 R4** entry, `"64 4 64"` ->
+  `"64 4 80"`, same file, same emitter list, then `r2026-11-08-ffn7-0-build`, `-ffn7-1-720p` and
+  `-ffn7-2-1080p`. Unspent after it: `.maxnreg 80` on the C=256 R4 entry (its R3 sibling keeps 80),
+  the `.maxntid` argument, and the `proj` emitter pair as its own variable.
+
+  **The ceiling, so the sweep is not mistaken for the road to 60.** Every change it can make moves a
+  few rows by 0.04-0.10 ms against a whole pass of 6.5 ms at 1080p and a 10.7 ms gap to 16.7, while
+  the instrument's noise bar is 0.03 ms and the shared card adds 0.04-0.06. It is a real lever, and a
+  small one: its entire span is a few tenths of a millisecond. If the candidates run out without a
+  win, what matters next is the pass's structure - the dispatch count and the gaps between
+  dispatches - not another register cap.
 
 * learned: the FFN sweep's fourth pair has landed - the 720p half reads the change as worse and the
   1080p half is contended, so one second identical run is queued under the item (2026-11-08 tick, read
