@@ -33,43 +33,33 @@ anything there.
 
 ## 1. Next work
 
-* **Next: the sweep is closed and reverted, and the capture is the thing to read.** The sixth
-  change (`.maxnreg 80` on the C=256 R4 entry) **lost the device** at both sizes - `error:
-  vkQueueWaitIdle(queue_) failed: -4`, `VK_ERROR_DEVICE_LOST`, each run dead in under 4 s straight
-  after the fixed-cost probe. The gate clears the card of blame: `gpu_before` and `gpu_after` read
-  **WARN** on both, with only `signal-desktop` and `chromium` resident and neither contending, so
-  this was a clean card and a kernel fault. **A change that loses the device on a clean card, at
-  both sizes, is reverted, not escalated.** The item was left standing for a word from the
-  developer, which is right when a reading is ambiguous and wrong here: no reading makes a
-  clean-card device loss worth keeping, and the cost is not abstract - a lost device disrupts
-  whatever else is using the card, which on this box is someone's desktop. The fifth change
-  (`.maxnreg 80` on the C=64 R4 entry) came back **flat**, so it is reverted too rather than left in
-  the tree as drift. The emitter list is back to `"64 4 64" "128 4 64" "256 3 80" "256 4 64"`, the
-  blob is byte-identical to the last measured-good state (`index 0000000..3aad1ca`), and the stamp is
-  **patch `a522cd3` at port `9d08f41`**.
+* **Next: build the shared-memory capture. This item names the files it edits, and that naming is
+  the whole reason it exists.** The box answered the probe - `shmsink yes; shmsrc yes;
+  memfd_create yes; pipe-max-size 1024 KiB (already at the cap); gst-launch-1.0 yes` - so the
+  transport can change and the pipe cannot be enlarged. The change is **`minimal/capture_wayland.py`**
+  (the pipeline built in `_pipeline_args`, and the frame read beside it) with
+  **`tests/test_capture_wayland.py`** for the pipeline assertion. Those two paths are the
+  authorisation; the previous item did not name them, and that is the only reason the loop stopped
+  there.
 
-  **The sweep is closed on its own record.** Four candidates: `.maxnreg 48` on C=256 cost 0.354 ms
-  and was reverted; `80` on C=128 cost 0.066 ms at 720p and was reverted; `80` on C=64 came back
-  flat; `80` on C=256 loses the device. Its whole remaining span was a few tenths of a millisecond,
-  against a 0.03 ms noise bar and a 10.7 ms gap between 30.5 ms and 16.7. The two knobs never spent -
-  `.maxntid` and the `proj` emitter pair - are the same kind of change, carry the same risk of
-  another device loss, and would be read against the same noise floor.
+  Build it in the order that keeps the working path working. The pipe stays the default and the
+  shared-memory route is an option - `--capture-transport shm|pipe`, defaulting to `pipe` - until a
+  window run proves it, and a `shmsink` that fails to start falls back to the pipe with one line
+  saying so, because a silent fallback is worse than no fallback. The chain keeps its shape
+  (`pipewiresrc ! queue max-size-buffers=1 leaky=downstream ! videoconvert [! videoscale] ! <rgba
+  caps>`) and changes only its end: `shmsink socket-path=... sync=false wait-for-connection=false`
+  in place of `fdsink fd=1`. Two mechanisms are open and the choice is by what can be tested here -
+  `shmsink` with a `shmsrc` reader is the plugin-supported route and costs a second gst process; a
+  `memfd` the chain writes and the client maps is the single-process route and has to carry frame
+  boundaries explicitly. Either way the client must find each frame's start without an extra copy,
+  which is the entire point of the change.
 
-  The next work is elsewhere and the capture is first: **5.1 ms of the 30.5 ms frame** goes on moving
-  8.3 MB a frame through a 1 MiB pipe that is already at Linux's cap, while the pixel channel's own
-  history says a transport change is worth whole milliseconds rather than tenths - shared memory took
-  that frame 39.7 -> 26.4 ms. `r2026-11-09-capture-transport-probe` runs the suite on the box and
-  reports in one skip line what this machine can offer: `shmsink`/`shmsrc` from gst-plugins-bad,
-  `memfd_create`, the current `pipe-max-size`, and whether `gst-launch-1.0` is present. **It has
-  now answered (2026-11-09 tick), and the item is blocked on one thing: an item naming the fenced
-  file.** The run exited **1** on `290c99526395` - the suite's known environment failures, not the
-  probe (8 failed / 586 passed / 22 skipped) - and its probe line printed: `capture transports -
-  shmsink yes; shmsrc yes; memfd_create yes; pipe-max-size 1024 KiB (at the cap already);
-  gst-launch-1.0 yes`. So the shared-memory capture chain is buildable and the pipe cannot be given
-  more headroom; what is left is an edit to `minimal/capture_wayland.py` (with its test,
-  `tests/test_capture_wayland.py`) - a fenced file this item does not name, and the tick may not
-  write itself that authorisation. **Write that item in the interactive session, naming the file,
-  and the next tick builds the change.**
+  What it is worth, and how to price it: **5.1 ms of the 30.5 ms frame** goes on moving 8.3 MB a
+  frame through a pipe, and the pixel channel's own precedent is that this kind of change took the
+  frame 39.7 -> 26.4 ms. The comparison is a window run against `r2026-11-08-1080p-window-c` (30.5 ms
+  / 32.8 fps steady, chain at 25% of one core); the client prints the capture split as `wait` and
+  `read`, and the reading is `read`, which should fall while the frame time holds or improves. Mark
+  the request `"manual": true`: the window source wants a picker.
 
 * learned: the FFN sweep's sixth pair came back **dead at both sizes** - a crash, not a number - so 80 against 64 on the C=256 R4 entry is unmeasured and the sweep is stopped pending one word from the developer (2026-11-08 tick, read of `r2026-11-08-ffn8-0-build`, `-1-720p` and `-2-1080p`). The build landed in sync (`25cf5f62fbc4`, 16 shader modules / 78 PTX kernels, `ffn_e4m3_C256_R4` and its `+proj` sibling both emitted), and both profiles are exit **1** on the same line: `error: vkQueueWaitIdle(queue_) failed: -4` (VK_ERROR_DEVICE_LOST), in 3.6 s and 3.9 s, immediately after the fixed-cost probe read its usual **0.421 ms** at 720p (1.05 us per dispatch) and **0.409** at 1080p - so the port dies at the first real dispatch and prints no kernel table at all, which is why this pair carries neither a total nor a row. `gpu_before` and `gpu_after` are WARN on both (signal-desktop 155.0 MiB, chromium 60.0 MiB, resident but not contending) and `idle_waited_s` 0.0, so neither sample fails the idle gate - the shape is a repeatable fault, not a contended card and not a cold one. **The signature is new**: every earlier `port-profile` run of this entry on `origin/results` exits 0, and `vkQueueWaitIdle` appears nowhere else in `runs/` but these two reports and their stderr logs (the only other hits are Wine DLLs inside `r2026-10-11-a`). The one build carrying the `.maxnreg 80` on the C=256 R4 entry is therefore the first to die this way, at both sizes minutes apart - the change is the prime suspect, and it is NOT proven to be the kernel rather than the card, because both samples are the same build and nothing here can re-run the previous one. What is needed is not another number: the revert of that emitter argument (in the patch and its source of truth at `/opt/data/tmp/odl-src`) is a fenced-file edit, and the item that named those two files was retired to a learned line by the previous tick while its own reading condition was still unmet, so this tick may not make the change. The last clean reading of the family stands as it was: `r2026-11-08-ffn7-1-720p` total **3.385 ms** (that row 0.310), `-ffn7-2-1080p` total **6.267** (row 0.607).
 
