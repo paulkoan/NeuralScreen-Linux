@@ -54,6 +54,30 @@ anything there.
   (its R3 sibling keeps 80), the `.maxntid` argument, and the `proj` emitter pair as a separate
   variable; if 80 on C=128 comes back worse than 64, revert that entry and take the next candidate.
 
+* learned: the FFN sweep's fourth pair was read a third time and the 1080p half is still not a number -
+  the third sample fails the gate too, on a card BUSY at a low utilisation this time rather than under a
+  game, so the item stays standing for a human (2026-11-08 tick, read of `r2026-11-08-ffn6-2-1080p-c`,
+  exit 0, entry `port-profile 1920 1080`, box revision `f3d439efee06`, queued by `f3d439e` after the card
+  was believed freed at 18:45Z). The gate: `gpu_before` **BUSY** at **37%** - not a game, only
+  `signal-desktop` (155 MiB) and `chromium` (60 MiB), the same processes the clean `ffn5-0-1080p` and
+  `ffn6-1-720p` samples read as WARN - and `idle_waited_s` **298.1**, so it waited the idle window out and
+  ran under the contention anyway, `gpu_after` BUSY at 33%. By the item's own rule that is the whole
+  reading, so nothing below is quoted: total **6.444 ms** against `r2026-11-08-ffn5-0-1080p`'s **6.315**
+  (+0.129, 2%), but the excess is **not** confined to the change's own row - `ffn_ptx 34560x128 e4 r4
+  +proj` **0.521** against **0.418** (+0.103, the direction 720p and `-b` both read) sits beside two rows
+  the change does not touch and which are over the item's ~0.02 ms bar for untouched rows: `ffn_ptx
+  8640x256 e8 r4` **0.668** against 0.607 (+0.061) and `ffn_ptx 138240x64 e2 r4 +proj` **0.352** against
+  0.312 (+0.040), while `block32_ptx 34560w f74` 0.347 against 0.351 and `ffn_ptx 138240x64 e2 r4` 0.100
+  against 0.101 are flat and the fixed-cost probe reads 0.410 against 0.407. So this is the mildest of the
+  three attempts and still not a single-variable sample. Three 1080p attempts (**30.165**, **8.513**,
+  **6.444** ms) and no usable 1080p number: the pair stops for a person there, and what is wanted is not
+  another run - the card is shared and `require_idle` is the policy's, both of which are the box's
+  configuration. The decision on offer: either say a 1080p sample is wanted and get the card quiet, or take
+  the clean 720p reading on its own - cap-80 worse by 0.066 ms, twice the noise bar, every untouched row
+  inside 0.005, probe 0.408 -> 0.409 - as sufficient to revert the C=128 R4 entry to 64. Nothing was
+  reverted this tick, because the item ties that decision to the pair's 1080p number and the sample that
+  would carry it is not clean. NOT verified: no device here, so nothing was re-timed.
+
 * learned: the FFN sweep's fourth pair has no 1080p number - the repeat is contended too, so that
   half of the read is a person's call and the item stays standing (2026-11-08 tick, read of
   `r2026-11-08-ffn6-2-1080p-b`, exit 0, entry `port-profile 1920 1080`, box revision
