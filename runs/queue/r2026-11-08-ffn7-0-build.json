@@ -1,0 +1,8 @@
+{
+  "id": "r2026-11-08-ffn7-0-build",
+  "entry": "port-build",
+  "args": [],
+  "timeout_s": 900,
+  "artifacts": [],
+  "note": "Build for the FFN sweep's FIFTH change, queued explicitly BEFORE the profiles that measure it. Order is the name: tools/auto_runner.py:446 sorts runs/queue/*.json, so 'ffn7-0-build' < 'ffn7-1-720p' < 'ffn7-2-1080p'. The change: scripts/build_linux.sh's emitter list now reads \"64 4 80\" \"128 4 64\" \"256 3 80\" \"256 4 64\" - the C=64 R4 entry's .maxnreg goes 64 -> 80, and one entry feeds both emitter calls (ffn_e4m3_C64_R4.ptx and ffn_e4m3_C64_R4_proj.ptx), so both kernels move. It is the next candidate after the FOURTH change (C=128 R4 at 80) was read and reverted to 64 on its clean 720p sample - ffn_ptx 16128x128 e4 r4 +proj 0.316 against r2026-11-08-ffn4-1-720p's 0.250, worse by 0.066 against a 0.03 noise bar, every untouched row inside 0.005 and the probe 0.408 -> 0.409. One change per build: the C=128 R4 entry is back at 64 in this same patch, and the C=256 R4 entry stays 64 while its R3 sibling keeps 80; the .maxntid argument and the proj emitter pair stay behind both. Read the stamp (must name patch 058df08 at port 9d08f41, and say in sync) and the counts (16 shader modules / 78 PTX kernels - only an emitter argument moved, no kernel is added or dropped). This run replaces the OUT OF SYNC state the fourth change's revert left behind."
+}
