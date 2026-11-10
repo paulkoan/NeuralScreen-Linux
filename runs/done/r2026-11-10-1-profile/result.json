@@ -1,0 +1,16 @@
+{
+  "exit_code": 0,
+  "seconds": 4.284,
+  "argv": [
+    "bash",
+    "tools/port_profile.sh",
+    "1920",
+    "1080"
+  ],
+  "artifacts": [],
+  "runner": "005dd2c6ea9e",
+  "entry_env": [],
+  "gpu_before": "BUSY (utilization 46%; signal-desktop (pid 18889, 155.0 MiB); chromium (pid 18945, 85.0 MiB); msedge (pid 1300500, 356.0 MiB))",
+  "gpu_after": "WARN (resident but not contending: signal-desktop (pid 18889, 155.0 MiB); resident but not contending: chromium (pid 18945, 85.0 MiB); resident but not contending: msedge (pid 1300500, 354.0 MiB))",
+  "idle_waited_s": 297.9
+}
