@@ -79,6 +79,13 @@ def git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProce
     return result
 
 
+# The published copy is redacted, so its own digest is not the deployed file's. The deployed hash
+# therefore travels in the publishing commit's subject, and the helper that reads it back lives
+# outside this repository - so the format is shared rather than private, and tests/test_box_state.py
+# pins the two against each other.
+POLICY_COMMIT_SUBJECT = "policy {digest}: the file the box is running under"
+
+
 def redact_policy(text: str) -> str:
     """The deployed policy, with anything that looks like a credential taken out.
 
@@ -484,7 +491,7 @@ def publish_policy(policy: dict, worktree: Path, dry_run: bool = False) -> None:
     made = git(worktree, "-c", "user.name=neuralscreen-runner",
                "-c", "user.email=runner@localhost", "commit-tree", tree,
                *[arg for parent in parents for arg in ("-p", parent)],
-               "-m", f"policy {digest[:12]}: the file the box is running under")
+               "-m", POLICY_COMMIT_SUBJECT.format(digest=digest[:12]))
     commit = made.stdout.strip()
     push = git(worktree, "push", "origin", f"{commit}:refs/heads/{results}", check=False)
     if push.returncode != 0:

@@ -1,0 +1,22 @@
+{
+  "exit_code": 0,
+  "seconds": 10.098,
+  "argv": [
+    "bash",
+    "tools/port_profile.sh",
+    "2560",
+    "1440"
+  ],
+  "artifacts": [],
+  "runner": "415e2181914a",
+  "entry_env": [
+    "NEURALSCREEN_MODEL_DIR"
+  ],
+  "policy": {
+    "path": "/opt/neuralscreen/policy.toml",
+    "sha256": "92cc2c01922f9c548eacef313d94c12886c9dd6daee00715c02e5333b8dedf7a"
+  },
+  "gpu_before": "WARN [util 20% of the 25% bar] (resident but not contending: Telegram (pid 16290, 30.0 MiB); resident but not contending: signal-desktop (pid 18889, 155.0 MiB); resident but not contending: msedge (pid 1300500, 293.0 MiB); resident but not contending: chromium (pid 3132450, 258.0 MiB); resident but not contending: fossilize_replay (pid 235861, 40.0 MiB); resident but not contending: fossilize_replay (pid 236120, 38.0 MiB); resident but not contending: fossilize_replay (pid 236438, 38.0 MiB); resident but not contending: fossilize_replay (pid 236440, 38.0 MiB); resident but not contending: fossilize_replay (pid 237866, 34.0 MiB))",
+  "gpu_after": "WARN [util 9% of the 25% bar] (resident but not contending: Telegram (pid 16290, 30.0 MiB); resident but not contending: signal-desktop (pid 18889, 155.0 MiB); resident but not contending: msedge (pid 1300500, 293.0 MiB); resident but not contending: chromium (pid 3132450, 253.0 MiB); resident but not contending: fossilize_replay (pid 235861, 40.0 MiB); resident but not contending: fossilize_replay (pid 237866, 34.0 MiB); resident but not contending: fossilize_replay (pid 238867, 34.0 MiB); resident but not contending: fossilize_replay (pid 239008, 34.0 MiB); resident but not contending: fossilize_replay (pid 239250, 34.0 MiB))",
+  "idle_waited_s": 0.0
+}
