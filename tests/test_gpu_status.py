@@ -3,8 +3,12 @@
 A skewed timing run is expensive to notice after the fact (two 1440p runs of the same config read
 29.1 and 35.3 ms an hour apart). A game holding 5.6 GiB at 7% utilisation does not slow a frame -
 it takes no compute time - but it can wake up mid-run, so it is a warning rather than a stop. A
-card at a low clock is neither: clocks drop when nothing runs.
+card at a low clock is neither: clocks drop when nothing runs. The bar itself is the machine's
+(25% here, raised from 15% so a browser held open as a live capture source is not called
+contention), and it is settable from the command line so the runner can take it from the policy.
 """
+import json
+
 import tools.gpu_status as gs
 
 
@@ -121,3 +125,32 @@ def test_a_resident_game_is_a_warning_not_a_stop(monkeypatch):
     state, why = gs.verdict(gpu)
     assert state == "WARN", why
     assert any("resident" in w for w in why)
+
+
+def test_a_browser_between_the_old_bar_and_the_new_one_is_a_warning(monkeypatch):
+    """The reason the bar moved: a browser playing video is the source, not a contender.
+
+    At the old 15% this read BUSY, which refused exactly the runs that need a live window on
+    screen - the closest thing to a GeForce Now stream this box can be pointed at. At 25% it reads
+    WARN, so the run happens, and the report records how close to the bar it sat.
+    """
+    with_smi(monkeypatch, "18", apps="9001, chromium, 9000")
+    assert gs.verdict(gs.nvidia_smi(), 15)[0] == "BUSY", "the old bar would have refused this run"
+    state, why = gs.verdict(gs.nvidia_smi())
+    assert state == "WARN", why
+    assert any("chromium" in w for w in why)
+
+
+def test_the_bar_can_be_moved_without_editing_the_file(monkeypatch):
+    with_smi(monkeypatch, "18", apps="9001, chromium, 9000")
+    assert gs.verdict(gs.nvidia_smi(), 10)[0] == "BUSY"
+    assert gs.verdict(gs.nvidia_smi(), 25)[0] == "WARN"
+
+
+def test_the_flag_sets_the_bar_and_the_json_reports_it(monkeypatch, capsys):
+    with_smi(monkeypatch, "18")
+    monkeypatch.setattr(gs.sys, "argv", ["gpu_status.py", "--json", "--busy-util", "10"])
+    assert gs.main() == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["verdict"] == "BUSY"
+    assert payload["busy_util"] == 10.0

@@ -33,6 +33,12 @@ pause_file = "/opt/neuralscreen/PAUSE"           # touch this and nothing runs
 require_idle = true
 idle_wait_s = 300
 idle_poll_s = 15
+# Where BUSY starts, in per cent. Raised 15 -> 25 on 2026-11-10: a browser held open as a live
+# capture source costs real decode time on the card, and it is the thing under test rather than a
+# contender with it, so a 15% bar refused exactly the runs that matter. A sample taken between 15
+# and 25 is contended: its number is comparable with other samples taken under the same browser,
+# and not with the quiet baseline. The gate reports the utilisation either way.
+busy_util = 25
 
 # Runs happen directly as you, inside the user unit's sandbox - no sudo, no system files, no
 # container. That is the default because the container needs nvidia-container-toolkit, which

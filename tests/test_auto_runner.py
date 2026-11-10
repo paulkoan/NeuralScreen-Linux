@@ -230,6 +230,48 @@ def test_a_changed_policy_is_published_without_a_run(world: World):
     assert world.log() != before, "a changed policy was not published"
 
 
+def test_the_gate_bar_the_runner_uses_comes_from_the_policy(tmp_path, monkeypatch):
+    """Where BUSY starts is a property of the machine, so it lives in the machine's file.
+
+    The probe's own default is the box's current answer, but the runner hands it the policy's value
+    so the bar can be moved without editing this repository and reinstalling the runner.
+    """
+    spec = importlib.util.spec_from_file_location("auto_runner_under_test", RUNNER)
+    assert spec is not None and spec.loader is not None, f"cannot load {RUNNER}"
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen["command"] = command
+        return subprocess.CompletedProcess(command, 0, '{"verdict": "IDLE"}', "")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    worktree = tmp_path / "wt"
+    (worktree / "tools").mkdir(parents=True)
+    (worktree / "tools" / "gpu_status.py").write_text("")
+
+    assert runner.gpu_probe(worktree, busy_util=25) == {"verdict": "IDLE"}
+    assert "--busy-util" in seen["command"], seen["command"]
+    assert seen["command"][seen["command"].index("--busy-util") + 1] == "25"
+
+
+def test_a_report_line_says_how_close_to_the_bar_it_sat(tmp_path, monkeypatch):
+    """A pass at 3% and a pass at 24% are different numbers, and "WARN" hides which one it was."""
+    spec = importlib.util.spec_from_file_location("auto_runner_under_test", RUNNER)
+    assert spec is not None and spec.loader is not None, f"cannot load {RUNNER}"
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+
+    line = runner.describe_gpu({"verdict": "WARN", "reasons": ["resident: chromium"],
+                                "busy_util": 25, "gpu": {"util_percent": 18.0}})
+    assert line == "WARN [util 18% of the 25% bar] (resident: chromium)", line
+    # A reading that predates the bar carries no bar, and must still describe itself.
+    assert "util 4%" in runner.describe_gpu(
+        {"verdict": "IDLE", "reasons": [], "gpu": {"util_percent": 4.0}})
+
+
 def test_a_manual_request_waits_for_a_human_run(world: World):
     """A request that needs someone at the screen must not be eaten by the timer.
 

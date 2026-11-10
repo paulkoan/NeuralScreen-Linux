@@ -38,6 +38,13 @@ pause_file = "/opt/neuralscreen/PAUSE"           # touch this and nothing runs
 #   require_idle = true
 #   idle_wait_s = 300
 #   idle_poll_s = 15
+#   busy_util = 25
+# busy_util is where BUSY starts, in per cent, and it is a property of this machine rather than
+# of the code: it has to sit above whatever is deliberately running on the card. A browser held
+# open as a live capture source costs real decode time, so the bar is above that - a sample taken
+# between the old 15 and this 25 is contended, and its number is comparable with other samples
+# taken under the same browser and not with the quiet baseline. WARN reports the utilisation, so
+# how close a sample sat to the bar is visible in the result rather than inferred from it.
 # The wait sits outside the run's own timeout: worst case is idle_wait_s + timeout_s of wall clock.
 
 # Runs happen directly as you, inside the user unit's sandbox - no sudo, no system files, no

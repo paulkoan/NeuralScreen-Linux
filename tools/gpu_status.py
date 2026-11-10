@@ -8,6 +8,7 @@ This prints the card's state, the clocks it is actually running at, and any proc
     tools/gpu_status.py                 # one reading, human readable
     tools/gpu_status.py --json          # the same, machine readable
     tools/gpu_status.py --watch 20      # sample for 20s, report the worst, for bracketing a run
+    tools/gpu_status.py --busy-util 25  # the bar, in per cent; the runner takes it from the policy
     tools/gpu_status.py --require-idle  # exit 1 when busy, so a harness can refuse the run
 
 It reads nvidia-smi (the usual case here), falls back to rocm-smi, and says UNKNOWN rather than
@@ -23,8 +24,13 @@ import sys
 import time
 
 # Above this, someone else is working on the card. Idle desktops sit at 0-5%: the compositor
-# blips, and a Wayland session blips more, so the bar is a few percent above the noise.
-BUSY_UTIL = 15.0
+# blips, and a Wayland session blips more. It was 15% until a live source was wanted: a browser
+# playing video - the closest thing to a GeForce Now stream this box can be pointed at - costs
+# real decode time on the card and is the thing under test rather than a contender with it, so a
+# bar at 15% would have refused the runs that matter most. 25% is the level the human judged
+# noise; a sample taken between 15 and 25 is contended, so its number is comparable with other
+# samples taken under the same browser and not with the quiet baseline.
+BUSY_UTIL = 25.0
 # VRAM held by anything other than the desktop counts even at 0% utilisation - it is a claim
 # on the card that a benchmark will contend with.
 DESKTOP_PROCESSES = ("Xorg", "Xwayland", "kwin", "kwin_wayland", "plasmashell", "gnome-shell",
@@ -126,26 +132,30 @@ def _num(text):
         return None
 
 
-def verdict(gpu: dict | None) -> tuple[str, list[str]]:
+def verdict(gpu: dict | None, busy_util: float = BUSY_UTIL) -> tuple[str, list[str]]:
     """IDLE, WARN or BUSY, with the reasons that led there.
 
     BUSY means something is taking compute time now, and a timing run beside it is worthless.
     WARN means another process is *resident* - holding VRAM without contending - which does not
     slow a frame by itself, but can wake up mid-run. A card sitting at a low SM clock is neither:
     clocks drop when nothing runs, so that is reported as a note, not a verdict.
+
+    `busy_util` is the bar, in per cent. WARN carries the utilisation too, because "passes the
+    gate" and "passes it by 20 points" are different kinds of number and only one of them is
+    comparable with a run taken on a quiet card.
     """
     if gpu is None:
         return "UNKNOWN", ["no nvidia-smi or rocm-smi on this machine"]
     busy, resident = [], []
     util = gpu.get("util_percent")
-    if util is not None and util >= BUSY_UTIL:
+    if util is not None and util >= busy_util:
         busy.append(f"utilization {util:.0f}%")
     for app in gpu.get("compute_apps") or []:
         name = app.get("name") or ""
         if any(d in name for d in DESKTOP_PROCESSES):
             continue
         label = f"{name} (pid {app.get('pid')}, {app.get('mem_mib')} MiB)"
-        (busy if util is not None and util >= BUSY_UTIL else resident).append(label)
+        (busy if util is not None and util >= busy_util else resident).append(label)
     if busy:
         return "BUSY", busy + ([f"also resident: {r}" for r in resident])
     if resident:
@@ -173,12 +183,18 @@ def main() -> int:
     seconds = 0
     if "--watch" in args:
         seconds = int(args[args.index("--watch") + 1])
+    # The bar is a property of the machine and of what is meant to be running on it, so it is
+    # settable rather than compiled in: the runner passes the policy's value, and a person can
+    # ask the question "would this have passed at 15%" without editing the file.
+    busy_util = BUSY_UTIL
+    if "--busy-util" in args:
+        busy_util = float(args[args.index("--busy-util") + 1])
     gpu = sample(seconds) if seconds > 0 else (nvidia_smi() or rocm_smi())
-    state, why = verdict(gpu)
+    state, why = verdict(gpu, busy_util)
 
     if "--json" in args:
         print(json.dumps({"verdict": state, "reasons": why, "samples_seconds": seconds,
-                          "gpu": gpu}, indent=2))
+                          "busy_util": busy_util, "gpu": gpu}, indent=2))
     elif gpu is None:
         print("GPU status: UNKNOWN - no nvidia-smi or rocm-smi on this machine")
     else:
