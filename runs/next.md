@@ -33,20 +33,24 @@ anything there.
 
 ## 1. Next work
 
-* The small network's internal-size curve is missing its 1.0 point, and that is the one that prices the resize:
-  queue `runs/queue/r2026-11-10-8-small-ws100.json` (entry `minimal-small`, `r2026-11-10-6-small-video`'s argv with
-  `--work-scale 0.75` -> `--work-scale 1.0` and `--save-after small-ws100-after.png`, 900 s), and this item waits on
-  its reading and nothing else. What the run has to show, in order: the worker banner's model line reads
-  `/opt/neuralscreen/model-small` and carries **no** work-scale line (at 1.0 the port records no resize at all, so a
-  work-scale line naming 2560x1440 means the argument did not take); the median / steady rate against 0.75's
-  **24.1 ms / 41.6 fps** and 0.5's **31.3 ms / 31.9 fps** on this exact shape - if 1.0 lands within ~1 ms of 0.75
-  the resize is a wash and `--work-scale` should be dropped (no quality loss, one less setting), while a 1.0 that is
-  clearly worse says the resize is doing real work and 0.75 is the optimum; the worker's own line and its component
-  split (proxy, network+composite, readback, reply) against 0.75's 14.48 mean and 2.5-3.9 / 5.1-8.7 / 2.7-3.6 /
-  1.2-1.7, which is what says whether the two resize dispatches are the ~1 ms the 0.5 sample implies; and
-  `small-ws100-after.png` at 2560x1440 RGBA, **different** from both `small-ws-after.png` and `small-ws50-after.png`.
-  No code change: `--work-scale 1.0` is the existing switch and the port's `fullWidth == workWidth` path records no
-  resize. The other parked lever is unchanged: the FFN sweep's cap-80 question waits on a word.
+* The small network's internal-size curve is missing its 1.0 point, and the first attempt at it landed on a busy
+  card: `r2026-11-10-8-small-ws100` (exit 0, 22.3 s) read median **48.1 ms / 20.8 fps steady** against 0.75's
+  24.1 / 41.6, but `gpu_before` was **BUSY at 86%** with `DyingLightGame_TheBeast_x64_rwdi.exe` holding 5518 MiB,
+  `gpu_after` BUSY at 98%, and `idle_waited_s` **297.9** - so by the standing gate rule the number is quoted
+  nowhere. The worker's own line carries the same mud: **29.62 ms mean** against 0.75's 14.48, with every component
+  up by its own ~2x factor (proxy 5.1-7.2 against 2.5-3.9, network+composite 15.3-18.7 against 5.1-8.7, readback
+  3.3-6.3 against 2.7-3.6, reply 1.4-3.8 against 1.2-1.7), which is the contended-card signature and not a reading
+  of the resize. The banner check does pass: `serve: 2560x1440, model /opt/neuralscreen/model-small` with **no**
+  work-scale line, so `--work-scale 1.0` took and the port recorded no resize. What is needed is the same run on a
+  quiet card: queue `runs/queue/r2026-11-10-9-small-ws100.json` (entry `minimal-small`,
+  `r2026-11-10-8-small-ws100`'s argv character for character, 900 s) **once the box is free** - the runner's idle
+  gate waits only 300 s and then runs anyway, so a requeue while the game is up just buys another BUSY sample.
+  Read it exactly as the 8 run's note says: median / steady against 0.75's **24.1 ms / 41.6 fps** and 0.5's
+  **31.3 / 31.9**, the worker's own line and component split against 14.48 ms and 2.5-3.9 / 5.1-8.7 / 2.7-3.6 /
+  1.2-1.7, and `small-ws100-after.png` at 2560x1440 RGBA **different** from both `small-ws-after.png` and
+  `small-ws50-after.png`. Within ~1 ms of 0.75 means the resize is a wash and `--work-scale` should be dropped;
+  clearly worse means 0.75 is the optimum. No code change. The other parked lever is unchanged: the FFN sweep's
+  cap-80 question waits on a word.
 
 * learned: the internal-size lever is spent - 0.5 reads **worse** than 0.75 and the network does not get cheaper
   (2026-11-10 tick, read of `r2026-11-10-7-small-ws50`, exit 0 in 15.4 s, entry `minimal-small`, 300 frames,
