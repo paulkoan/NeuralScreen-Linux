@@ -33,40 +33,23 @@ anything there.
 
 ## 1. Next work
 
-* **Next: rebuild the box's worker, prove it on a profile run, then re-run the shared-memory capture
-  comparison. This item is three runs and it names the three files it will write:
-  `runs/queue/r2026-11-10-0-rebuild.json`, `runs/queue/r2026-11-10-1-profile.json` and
-  `runs/queue/r2026-11-10-2-shm-window.json`, in that order - the runner sorts `runs/queue/*.json`
-  (`tools/auto_runner.py:446`), so the names carry the order and the numeric prefixes are what keep a
-  rebuild ahead of the thing that reads it.**
-  The box's worker is still built from patch `25cf5f62fbc4` - the `.maxnreg 80` on the C=256 R4 entry
-  that loses the device - and `8b6fc8f` reverted it in the repo (stamp `a522cd3` at port `9d08f41`)
-  with nothing rebuilding the box since, so every GPU run on the box dies at frame 0 before it prints
-  a timing. That is what killed `r2026-11-09-shm-window` at exit 3 and it will kill anything else
-  queued until the binary is replaced. The three requests:
-  1. `runs/queue/r2026-11-10-0-rebuild.json` - entry `port-build`, `args: []`, `timeout_s: 900`, no
-     artifacts. Read the stamp: it must name patch `a522cd3` at port `9d08f41` and say in sync, with
-     16 shader modules / 78 PTX kernels. This is the whole point of the item.
-  2. `runs/queue/r2026-11-10-1-profile.json` - entry `port-profile`, `args: ["1920", "1080"]`,
-     `timeout_s: 600`. The smoke test that a fresh binary from a reverted patch survives a real
-     dispatch, and it runs on the box's own timer, so it answers without anyone at the screen: exit 0
-     at ~6.5 ms (`r2026-11-08-profile-1080p-b`/`-c` read 6.494 / 6.522), card WARN and
-     `idle_waited_s` recorded.
-  3. `runs/queue/r2026-11-10-2-shm-window.json` - `r2026-11-09-shm-window`'s argv character for
-     character: `--frames 120 --source window --size 1920x1080 --shm --capture-transport shm
-     --save-before shm-window-before.png --save-after shm-window-after.png --worker-log`, plus
-     `manual: true` (the window source wants a picker clicked) and the same two PNGs as artifacts. Its
-     control is `r2026-11-08-1080p-window-c`: **30.5 ms / 32.8 fps steady, capture split wait 0.5 /
-     read 5.1 ms**, gst chain 25% of one core. The reading is `read` - it should fall toward a memory
-     copy while the frame time holds or improves, with the `capture cpu:` line as the second reading.
-     The caps are unchanged (RGBA 1920x1080), so the before/after PNG hashes must match the control's;
-     a changed hash is a defect, not a trade. If `read` falls, the memfd is the lever and the next
-     item is the port's `fullWidth != workWidth` refusal so `--work-scale` moves the 1080p resize off
-     gst and into the pass; if it does not fall, the transport is settled as not the lever and the
-     capture leg closes for good.
-  If the rebuilt worker dies with the same `vkQueueWaitIdle(queue_) failed: -4`, stop queuing: the
-  same signature on a fresh binary from a reverted patch is the card or the driver, not a code
-  question, and it needs the developer.
+* learned: the rebuild is queued and the capture comparison is aimed at a fresh binary (2026-11-10 tick,
+  no run - no device here). The box's worker is still built from patch `25cf5f62fbc4`, the `.maxnreg 80`
+  that loses the device, and `8b6fc8f` reverted it in the repo with nothing rebuilding since - so every
+  GPU run dies at frame 0 and `r2026-11-09-shm-window` was one of them. Three requests queued behind that
+  diagnosis, the names carrying the order (`tools/auto_runner.py:446` sorts `runs/queue/*.json`):
+  `runs/queue/r2026-11-10-0-rebuild.json` (`port-build`, args `[]`, 900 s - read the stamp: it must name
+  patch `a522cd3` at port `9d08f41`, in sync, 16 shader modules / 78 PTX kernels), 
+  `runs/queue/r2026-11-10-1-profile.json` (`port-profile 1920 1080`, 600 s - the dispatch smoke test, exit
+  0 at ~6.5 ms against b / c's 6.494 / 6.522), and `runs/queue/r2026-11-10-2-shm-window.json`
+  (`r2026-11-09-shm-window`'s argv character for character plus the same two PNGs, `manual: true`). The
+  reading for the last one is `read` against `r2026-11-08-1080p-window-c`'s **30.5 ms / 32.8 fps steady,
+  capture split wait 0.5 / read 5.1 ms, chain 25% of one core**, with the unchanged caps (RGBA 1920x1080)
+  meaning the before / after PNG hashes must match the control's; if read falls the next move is the
+  port's `fullWidth != workWidth` refusal, if it does not fall the capture leg closes for good. If the
+  rebuilt worker dies with the same `vkQueueWaitIdle(queue_) failed: -4`, stop queuing: that is the card
+  or the driver, not a code question, and it needs the developer. NOT verified: no device here, so no
+  rebuild and no profile has actually run - the stamp is unread until `r2026-11-10-0-rebuild` lands.
 
 * learned: the shared-memory capture comparison could not be read - the box is still running the
   binary that loses the device, so the run died before its first frame (2026-11-09 tick, read of
