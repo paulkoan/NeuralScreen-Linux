@@ -1,8 +1,0 @@
-{
-  "id": "r2026-11-01-av",
-  "entry": "gpu-status",
-  "args": ["--watch", "20"],
-  "timeout_s": 120,
-  "artifacts": [],
-  "note": "Baseline card state with nothing running. --watch 20 samples for twenty seconds and reports the worst reading. This is the reference every later measurement is compared against: if the probe reads BUSY or UNKNOWN, no timing number from that window is comparable with the 29-36 ms 1440p figures on record."
-}

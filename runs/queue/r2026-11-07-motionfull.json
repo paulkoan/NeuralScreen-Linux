@@ -1,9 +1,0 @@
-{
-  "id": "r2026-11-07-motionfull",
-  "entry": "minimal",
-  "args": ["--source", "synthetic", "--size", "2560x1440", "--headless", "--frames", "120",
-           "--shm", "--motion-guides", "--worker-log", "--save-after", "motionfull-after.png"],
-  "timeout_s": 600,
-  "artifacts": ["motionfull-after.png"],
-  "note": "Arm A of a two-run comparison: the motion field at FULL work resolution. `emit_small` follows --motion-small, so without that flag guides.py hands back a 2560x1440 float16 two-component field - 14.7 MB a frame, the same as the colour frame it accompanies. On the live portal run (20261107-064738) that showed up as send +3.5ms and a doubled proxy copy against the no-motion run 063012, for about 10ms a frame: 17.3 fps steady against 20.9. This arm is the baseline the small-field arm is measured against. Read the worker's own 'serve frame 30..' lines for proxy [copy] and network+composite, and hash motionfull-after.png against motionsmall-after.png - on a synthetic card the frame order is fixed and frame 0 resets history, so the two arms must produce the same picture if the smaller field is merely a cheaper way to say the same thing."
-}

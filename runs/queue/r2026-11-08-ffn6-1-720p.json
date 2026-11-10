@@ -1,8 +1,0 @@
-{
-  "id": "r2026-11-08-ffn6-1-720p",
-  "entry": "port-profile",
-  "args": ["1280", "720"],
-  "timeout_s": 600,
-  "artifacts": [],
-  "note": "The 720p half of the FFN sweep's fourth pair, on the binary r2026-11-08-ffn6-0-build produces (C=128 R4 entry at .maxnreg 80; C=64 and C=256 R4 still 64). Read the two C=128 rows against r2026-11-08-ffn4-1-720p, the same-build sample that last landed at baseline scale: ffn_ptx 16128x128 e4 r4 +proj 0.250 and e4 r4 0.043, with its total 3.388 ms and barrier probe 0.408. A cap change on a kernel that is ~16% of the pass is worth a fraction of a millisecond, so a move inside 0.03 ms on a row is noise and the direction is the reading; every row the change does not touch must come back inside ~0.02 ms of that baseline. Quote only if this run's rows land at baseline scale at all (ffn3-1-720p's did; the 720p samples on 2026-11-08 otherwise read 1.7-3x on every row with the fixed-cost probe held, which is a contaminated card and carries no number), and quote the '400 trivial dispatches + barriers' probe (0.406-0.409 ms in every sample since 2026-11-03) with gpu_before WARN and idle_waited_s 0.0 as part of the reading."
-}

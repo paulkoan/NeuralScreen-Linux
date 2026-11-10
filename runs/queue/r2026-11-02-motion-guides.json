@@ -1,9 +1,0 @@
-{
-  "id": "r2026-11-02-motion-guides",
-  "entry": "minimal",
-  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
-           "--shm", "--motion-guides", "--save-after", "guides-1440p.png", "--worker-log"],
-  "timeout_s": 300,
-  "artifacts": ["guides-1440p.png"],
-  "note": "The real motion-vector run, re-queued under a distinctive id because the tick overwrote r2026-11-02-bh with its own 1440p no-pixel benchmark before the timer read it. guides.py was on main since 807d852 and never imported; --motion-guides now sends DIS-estimated flow (320x180, 0.5px noise floor) and turns the no-motion default off for the run. Read against be (1440p, pixels, shm, zero field, 26.4 ms / 37.9 fps) for the estimator's cost and against be's picture (28292742c88b8e01) for whether the field reaches the composite - a real field must change the output."
-}

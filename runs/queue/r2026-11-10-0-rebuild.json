@@ -1,8 +1,0 @@
-{
-  "id": "r2026-11-10-0-rebuild",
-  "entry": "port-build",
-  "args": [],
-  "timeout_s": 900,
-  "artifacts": [],
-  "note": "Rebuild the box's worker, which is still built from patch 25cf5f62fbc4 - the `.maxnreg 80` on the C=256 R4 entry that loses the device. The repo reverted it at 8b6fc8f (stamp a522cd3 at port 9d08f41) and nothing has rebuilt the box since, so every GPU run on the box dies at frame 0 before it prints a timing - it is what killed r2026-11-09-shm-window at exit 3. No arguments - rebuild.sh defaults to /opt/neuralscreen/port, which is what NS_WORKER_CMD points at. Read the stamp: it must name patch a522cd3 at port 9d08f41 and say in sync (NOT 25cf5f62fbc4, which is what the box carries now), with 16 shader modules / 78 PTX kernels. A module count other than 16/78 means something else moved. This build sorts first (numeric prefix), so the profile smoke run and the shared-memory capture comparison behind it read the new binary, not the old one."
-}

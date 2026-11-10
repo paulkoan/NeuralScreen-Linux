@@ -1,8 +1,0 @@
-{
-  "id": "r2026-11-08-midslot-build",
-  "entry": "port-build",
-  "args": [],
-  "timeout_s": 900,
-  "artifacts": [],
-  "note": "Rebuild the staged port from the current patch: the linux-port patch now carries the generated mid-frame (shaders/mid_warp.comp, Kernels::midWarpToRgba8, and serve's second pixel slot for it), and the staged binary is the previous patch (088280e62d50, 15 shaders) until this lands. No arguments - rebuild.sh defaults to /opt/neuralscreen/port, which is what NS_WORKER_CMD points at. Two lines to read: the stamp (it must name the current patch, NOT 088280e62d50) and the module count - 16 shader modules / 78 PTX kernels, because mid_warp.comp is new. If glslang rejects the new shader the build stops there and names the file: there is no glslang on the box that wrote this change, so this run IS the shader's first compile, and a shader that does not compile is the one failure this build can catch that nothing else can. Do not queue a timing run against a binary that stamps the old patch."
-}

@@ -1,8 +1,0 @@
-{
-  "id": "r2026-11-08-ffn7-1-720p",
-  "entry": "port-profile",
-  "args": ["1280", "720"],
-  "timeout_s": 600,
-  "artifacts": [],
-  "note": "The 720p half of the FFN sweep's FIFTH pair, on the binary r2026-11-08-ffn7-0-build produces (C=64 R4 entry at .maxnreg 80; C=128 and C=256 R4 at 64, C=256 R3 at 80). By the rule the plan now carries, THIS is the reading and the 1080p half is corroboration only: three 1080p attempts on the fourth pair each read gpu_before BUSY, twice under a game and the third under the same two desktop processes the clean samples read as WARN, so on a shared desktop the 1080p half of a pair may never be clean. Read the two C=64 R4 rows (ffn_e4m3_C64_R4.ptx and its +proj sibling, i.e. the ffn_ptx rows with 64 channels and r4) against the same-build sample that last landed at baseline scale, r2026-11-08-ffn6-1-720p (total 3.480 ms, probe 0.408, and its own C=128 rows e4 r4 0.051 / e4 r4 +proj 0.316), and against r2026-11-08-ffn4-1-720p (total 3.388, probe 0.408, the last clean pre-change 720p table). A cap change on a kernel that is a few percent of the pass is worth a fraction of a millisecond, so a move inside 0.03 ms on a row is noise and the direction is the reading; every row the change does not touch must come back inside ~0.02-0.005 ms of the baseline. Quote only if this run's rows land at baseline scale at all (the 720p samples on 2026-11-08 otherwise read 1.7-3x on every row with the fixed-cost probe held, which is a contaminated card and carries no number), and quote the '400 trivial dispatches + barriers' probe (0.406-0.409 ms in every sample since 2026-11-03) with gpu_before WARN and idle_waited_s 0.0 as part of the reading."
-}

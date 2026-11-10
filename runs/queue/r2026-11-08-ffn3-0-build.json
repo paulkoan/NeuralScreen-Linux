@@ -1,8 +1,0 @@
-{
-  "id": "r2026-11-08-ffn3-0-build",
-  "entry": "port-build",
-  "args": [],
-  "timeout_s": 900,
-  "artifacts": [],
-  "note": "Build for the FFN sweep's SECOND change, queued explicitly BEFORE the profiles that measure it. The order is the name: tools/auto_runner.py:446 sorts runs/queue/*.json, so 'ffn3-0-build' < 'ffn3-1-720p' < 'ffn3-2-1080p' - the same discipline the first pair needed after 'ffn-build' sorted last and both profiles profiled the old code. The change: scripts/build_linux.sh's emitter list now emits the C=256 R4 expert FFN at .maxnreg 48, where it emitted .maxnreg 64 - the first knob the sweep had not spent, chosen because the reading of the first change came back neutral-to-better and not worse (r2026-11-08-ffn-2-1080p: ffn_ptx 8640x256 e8 r4 0.613 ms against r2026-11-08-profile-1080p-b's r3 0.694, total 6.550 against 6.494/6.522). Read the stamp (must name 2c263a21 and say in sync) and the counts (16 shader modules / 78 PTX kernels - the PTX count does not move, only one emitter argument did). The R3 variant keeps .maxnreg 80: \"256 3 80\" is untouched, so this build still carries both."
-}

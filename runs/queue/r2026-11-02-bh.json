@@ -1,9 +1,0 @@
-{
-  "id": "r2026-11-02-bh",
-  "entry": "minimal",
-  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
-           "--shm", "--motion-guides", "--save-after", "bh-1440p.png", "--worker-log"],
-  "timeout_s": 300,
-  "artifacts": ["bh-1440p.png"],
-  "note": "First run with real motion vectors. guides.py (TemporalGuideGenerator, DIS optical flow at 320x180 with a 0.5px noise floor) was on main and never imported; it is now wired behind --motion-guides, which also turns the no-motion default off for the run. Compare against be (1440p, pixels, shm, zero field): 26.4 ms / 37.9 fps. Two things to read: the estimator's own cost (it runs on the CPU between capture and send, so it should show in send or as extra frame time), and whether bh's picture differs from be's - if the field is real the composite reprojects history and the output must change. The synthetic card moves a 320px bar with the grab index, so there is genuine motion to find. bh-1440p.png is the artifact; compare with be-1440p.png (28292742c88b8e01)."
-}

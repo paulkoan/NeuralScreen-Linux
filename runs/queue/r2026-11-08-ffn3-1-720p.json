@@ -1,7 +1,0 @@
-{
-  "id": "r2026-11-08-ffn3-1-720p",
-  "entry": "port-profile",
-  "args": ["1280", "720"],
-  "timeout_s": 600,
-  "note": "The 720p half of the FFN sweep's second measurement pair, on the binary r2026-11-08-ffn3-0-build produces (C=256 R4 at .maxnreg 48, where the first change left it at 64). Two references, and they disagree, so quote both and say which one it lands on. (a) r2026-11-08-profile-720p, the pre-change baseline on the old binary: total 3.620 ms, FFN family 0.461 + 0.314 + 0.160 + 0.053 + 0.051 = 1.04 ms (28.7%), ffn_ptx 4032x256 e8 r3 0.461, barrier probe 0.409 ms. (b) r2026-11-08-ffn-1-720p, the same size on the first-change binary: total 6.191 ms, ffn_ptx 4032x256 e8 r4 0.542, barrier probe 0.407 ms - 1.7x the baseline's total with EVERY kernel row inflated and the fixed-cost probe unmoved, which is a slow-card sample and not a property of the change. So the C=256 row here is comparable to (b) kernel-to-kernel (0.542 at cap 64; does 48 beat it?) but the total is only comparable to (a) if this run's rows come back at the baseline's scale, and the barrier probe plus gpu_before/gpu_after/idle_waited_s are what say whether they do. A BUSY before invalidates the sample by this plan's own rule."
-}

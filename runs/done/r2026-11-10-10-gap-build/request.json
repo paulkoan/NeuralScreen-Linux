@@ -1,0 +1,7 @@
+{
+  "id": "r2026-11-10-10-gap-build",
+  "entry": "port-build",
+  "args": [],
+  "timeout_s": 900,
+  "note": "Rebuild dlss5vk from the re-cut patch (b609638dda05, cut from odl-src commit b609638). Only src/main.cpp moved in it: the profile command now times the production schedule too, so nothing in the shaders or the emitters changed and the build must still report 17 shader modules and 78 PTX kernels - a different count means the patch did not apply cleanly, and a compile error would name src/main.cpp because that is the only file this patch touched. Quote the final stamp line: it must read port 9d08f41 at patch b609638dda05. Before this build every port run stamps OUT OF SYNC (the last landed build is patch f1908586c80c), and the profile pair queued behind this (r2026-11-10-11-gap-720p, its numeric prefix sorts after this one) must read the new binary - if the stamp names the old patch, do not read the profile, report that instead."
+}

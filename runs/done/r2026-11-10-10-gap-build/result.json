@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "seconds": 14.746,
+  "argv": [
+    "bash",
+    "experiments/opendlss_port/rebuild.sh"
+  ],
+  "artifacts": [],
+  "runner": "415e2181914a",
+  "entry_env": [],
+  "policy": {
+    "path": "/opt/neuralscreen/policy.toml",
+    "sha256": "92cc2c01922f9c548eacef313d94c12886c9dd6daee00715c02e5333b8dedf7a"
+  },
+  "gpu_before": "WARN [util 9% of the 25% bar] (resident but not contending: Telegram (pid 16290, 30.0 MiB); resident but not contending: signal-desktop (pid 18889, 155.0 MiB); resident but not contending: msedge (pid 1300500, 293.0 MiB); resident but not contending: chromium (pid 3132450, 252.0 MiB); resident but not contending: fossilize_replay (pid 4156721, 68.0 MiB); resident but not contending: fossilize_replay (pid 32859, 68.0 MiB); resident but not contending: fossilize_replay (pid 71365, 68.0 MiB); resident but not contending: fossilize_replay (pid 123003, 34.0 MiB); resident but not contending: fossilize_replay (pid 123020, 34.0 MiB))",
+  "gpu_after": "WARN [util 10% of the 25% bar] (resident but not contending: Telegram (pid 16290, 30.0 MiB); resident but not contending: signal-desktop (pid 18889, 155.0 MiB); resident but not contending: msedge (pid 1300500, 293.0 MiB); resident but not contending: chromium (pid 3132450, 257.0 MiB); resident but not contending: fossilize_replay (pid 4156721, 68.0 MiB); resident but not contending: fossilize_replay (pid 32859, 68.0 MiB); resident but not contending: fossilize_replay (pid 71365, 68.0 MiB); resident but not contending: fossilize_replay (pid 123003, 38.0 MiB); resident but not contending: fossilize_replay (pid 123020, 40.0 MiB))",
+  "idle_waited_s": 30.0
+}

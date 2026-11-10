@@ -1,9 +1,0 @@
-{
-  "id": "r2026-10-31-ap",
-  "entry": "minimal",
-  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
-           "--worker-log"],
-  "timeout_s": 300,
-  "artifacts": [],
-  "note": "Verify the flipped default: no motion flag at all, 1440p, reference model. The tick changed minimal/__main__.py so no_motion defaults to True (b4bee54) and noted it was never exercised by a run. Expect ~21.8 ms / 45.9 fps (af's no-motion number) rather than 29.1 ms. If it reads 29.1 the default did not take effect for this entry and the flag is being overridden by the policy."
-}
