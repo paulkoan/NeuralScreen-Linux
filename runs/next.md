@@ -33,58 +33,33 @@ anything there.
 
 ## 1. Next work
 
-* The small network's fps and pixel-parity half is the next lever, and it needs one line in the box's
-  policy before anything can queue: a `minimal`-shaped entry in `/opt/neuralscreen/policy.toml`,
-  beside `port-profile-small`, whose `NS_WORKER_CMD` names `serve --model
-  /opt/neuralscreen/model-small`. Requests carry no env and the runner builds the worker's env from
-  the policy entry alone - which is exactly why `port-profile-small` was the only way to re-measure
-  the port, and the same fence applies here. What the pair would read: the small network's fps and
-  its before/after PNGs against the large network's on the same shape (`r2026-11-10-5-ws-video`'s
-  30.2 ms / 33.2 fps steady at 1080p-internal and `r2026-11-08-1440p-window`'s 48.3 ms / 20.7 fps at
-  1440p), plus the pixel-parity check between the two models' published frames. It is worth the
-  entry, because at profile scale the small network is **1.88x** the large one (learned, below).
-  Nothing is queued off this until that entry exists; the file is the box's, so this is the
-  developer's line. The other parked lever is unchanged: the FFN sweep's cap-80 question waits on a
-  word rather than a file.
+* The small network's fps and pixel-parity pair is **queued**, and this item waits on its reading and nothing else:
+  `runs/queue/r2026-11-10-6-small-video.json` (entry `minimal-small`, `r2026-11-10-5-ws-video`'s argv character for
+  character - `--source video --input-video fixtures/stream-1440p-2s.mp4 --size 2560x1440 --work-scale 0.75 --headless
+  --frames 300 --shm --worker-log --save-after small-ws-after.png`, 900 s). The blocker this item spent four ticks on is
+  gone: the box policy now carries a plain `minimal-small` (`uv run python -m minimal`, no `xvfb-run`) with
+  `NS_WORKER_CMD` on `serve --model /opt/neuralscreen/model-small`, so the pair differs from the large network's own
+  sample only in the model. The proof is the runner's published copy, `runs/policy.toml` at digest `28b387ec388f`, which is
+  `ops/policy.toml` (`ed69c43`) byte for byte (`sha256 28b387ec388f6f5f...`). What the run has to show, in order: the
+  worker banner's model line reads `/opt/neuralscreen/model-small` (if it reads `/opt/neuralscreen/model`, nothing below
+  counts); the median / steady rate against `r2026-11-10-5-ws-video`'s 30.2 ms / 33.2 fps on the same shape (reference:
+  `r2026-11-08-1440p-window`'s 48.3 ms / 20.7 fps at 1440p internal); `small-ws-after.png` at 2560x1440 RGBA; and the
+  parity reading against that run's `ws-video-after.png` - the weights differ, so the pixels must differ, and
+  byte-identical PNGs mean the model never swapped. The port pass is 1.88x cheaper on the small network at profile scale
+  (`r2026-11-10-profile-small-c` 3.446 ms against b / c's 6.494 / 6.522), so an fps gain far short of that says the client
+  chain, not the network, is the frame. The other parked lever is unchanged: the FFN sweep's cap-80 question waits on a word.
 
-  **The policy now travels with every result, which is how the entries above get checked from here.**
-  `tools/auto_runner.py` copies the deployed `/opt/neuralscreen/policy.toml` beside each run as
-  `runs/done/<id>/policy.toml` - verbatim, with anything credential-shaped redacted - and names its
-  digest in the report. Until now that file was invisible from the repository, and that is why three
-  runs were spent establishing that `port-profile-small` sets `NS_WORKER_CMD` (a name
-  `tools/port_profile.sh` never reads) while the ordinary `port-profile` had been pointed at
-  `model-small`. So the rule is: **read `runs/done/<id>/policy.toml` from the results branch to see
-  what the box is actually running**, and when a policy change is requested, the next run's copy is
-  the proof it landed. The three entries known wrong on 2026-11-10: `port-profile` must not point at
-  `model-small`; `port-profile-small` needs `NEURALSCREEN_MODEL_DIR`, not `NS_WORKER_CMD`; and
-  `minimal-small` is defined twice, where the `xvfb-run` copy is the one that wins.
-
-  **2026-11-10 tick, and the ask is now checkable because the policy travels with every result:**
-  in `runs/done/r2026-11-10-profile-large-1080p/policy.toml` (digest `e735408303da`, the copy the
-  runner pushes beside each report) the ordinary `port-profile` entry carries
-  `NEURALSCREEN_MODEL_DIR = "/opt/neuralscreen/model"`, so the swap named above is fixed and the 6.5 ms
-  baseline means the large network again. The only client entry that points at the small network is
-  `minimal-small`, and its argv is `xvfb-run -a uv run python -m minimal` (defined twice, the
-  `xvfb-run` copy winning). What is still needed is a plain `minimal`-shaped entry beside
-  `port-profile-small` whose `NS_WORKER_CMD` names `serve --model /opt/neuralscreen/model-small`, so
-  a headless 1080p run reaches the small network under the same client argv the large network's
-  numbers were taken on - one line in `/opt/neuralscreen/policy.toml`, and that file is the box's.
-
-  **2026-11-10 tick, and the obstacle is now one file and one word.** The box's deployed policy is
-  unchanged in behaviour: `ops/policy.toml` (`f1473eb`) is the reviewed copy, taken from
-  `r2026-11-10-profile-large-1080p`'s own published `policy.toml`, and its one edit - deleting the
-  shadowed duplicate `minimal-small` - cannot change what runs, because the runner keys entries in a
-  dict and the last block wins. So the entry this item asks for still exists nowhere: the surviving
-  `minimal-small` is `xvfb-run -a uv run python -m minimal` with `NS_WORKER_CMD` naming `serve --model
-  /opt/neuralscreen/model-small`, while the fps / pixel-parity pair needs the plain client argv the
-  large network's numbers were taken on (`minimal` carries no wrapper and `r2026-11-10-5-ws-video` ran
-  it `--headless` at exit 0, so the wrapper is the only thing between the two). The change is one line
-  in `ops/policy.toml`: drop `xvfb-run -a` from `minimal-small`, or add a plain sibling beside it. A
-  tick may not authorise a policy edit for itself, so this waits on the developer: either write it and
-  install it, or name `ops/policy.toml` in this item and the next tick can write it - with
-  `install -m 0644 /opt/neuralscreen/state/repo/ops/policy.toml /opt/neuralscreen/policy.toml` still a
-  person's act, and the next run's published copy the proof it landed. Nothing is queued off it either
-  way. The other parked lever is unchanged: the FFN sweep's cap-80 question waits on a word.
+* learned: the box's policy carries the plain `minimal-small` at last, so the small network's fps / parity half is unblocked
+  and queued in the same tick (2026-11-10 tick, no device here - nothing measured). `ops/policy.toml` (`ed69c43`) drops the
+  `xvfb-run` wrapper that made `minimal-small` unusable as a comparison, with `tests/test_policy_copy.py` asserting the two
+  argvs are equal so the pair cannot drift apart again; and the runner's new policy publish (`2b1f636`, which exists for
+  exactly this: with an empty queue nothing published, so "never installed" and "installed, nothing has run since" looked
+  identical from here) has put the deployed file in the repository as `runs/policy.toml`. Its digest `28b387ec388f` is the
+  sha256 of `ops/policy.toml` to the byte, so the file the box runs is the reviewed copy and the entry the last four ticks
+  asked for is live. The rule this settles for the next tick: read `runs/policy.toml` (or `runs/done/<id>/policy.toml`) to
+  see what may be queued - a policy edit nobody can see is an edit a tick cannot act on, which is the circle `2b1f636`
+  closes. NOT verified: no device here, so no small-network frame has been measured; the pair's numbers are unread until
+  `r2026-11-10-6-small-video` lands.
 
 * learned: the ordinary profile runs the large network again and its own sample dates the card rather
   than the code - `r2026-11-10-profile-large-1080p` (2026-11-10 tick, exit 0 in 4.5 s, 4.46 s wall,
