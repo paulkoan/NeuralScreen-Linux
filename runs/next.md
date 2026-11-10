@@ -33,23 +33,51 @@ anything there.
 
 ## 1. Next work
 
-* **The port's pass is the next thing to attack, and it needs this file named to be touched.**
-  `experiments/opendlss_port/linux-port.patch` is authorised by this item and by nothing else.
-  Where the time is: the pass costs **3.446 ms** at 1080p on the small network and **6.296 ms** on
-  the large one, against NGX's 4.6 - so the small network is already past NGX, and the ~2.6 ms gap
-  the plan has been quoting is the large network's. Both are the same code with a different graph,
-  so a structural win helps both, and the small network is what the best frame is built on
-  (24.1 ms / 41.6 fps at work-scale 0.75). The FFN sweep is closed - four changes, one cost time,
-  one was worse, one did nothing, one crashed the device - so the next target is **dispatch count
-  and the gaps between dispatches**, not another register cap. Start by reading the per-dispatch
-  table in `r2026-11-08-profile-1080p-b`: 120 kernels, and the question is whether the cost is in
-  the kernels' own spans or in the space between them, because a barrier or a fence per dispatch
-  shows up as a gap and is fixable without touching a kernel. Then make **one** change, rebuild,
-  and read it at 720p (`port-profile 1280 720`); 1080p is corroboration and counts only at baseline
-  scale with its untouched rows inside the bar. Revert anything that kills the device on a clean
-  card rather than escalating it. Amend the patch's single commit and re-cut with
-  `git format-patch -1`, and make the same change in `/opt/data/tmp/odl-src/scripts/build_linux.sh`
-  - a change made only in the patch is lost the next time it is regenerated.
+* **The pass's two routes are timed side by side now; read `r2026-11-10-11-gap-720p` and make the
+  one change its comparison picks.** The item's file: `experiments/opendlss_port/linux-port.patch`
+  (source of truth `/opt/data/tmp/odl-src`, amend its one commit and re-cut with
+  `git format-patch -1` - a change made only in the patch is lost the next time it is regenerated),
+  and inside it **one** file: `src/kernels.cpp` if the reading puts the cost in the space between
+  dispatches, or `src/nr_graph.cpp` if it puts it in the schedule's own work. No shader, no emitter
+  and no `src/serve.cpp` change in this item. What the run prints is two lines on one size and one
+  card: `total T ms (sum of per-dispatch spans, 1280x720), N dispatches, a barrier after every
+  launch` and `production schedule (counter chaining): N dispatches, GPU X ms (min of 7, no client
+  in the loop)`. T is the instrument's old number and should land near `r2026-11-08-profile-720p`'s
+  **3.620 ms**; **X is what the shipping route's pass costs**, which until now only a live frame's
+  own `network+composite` line could say (~9.9 ms at 1080p on the large network - and that line
+  also carries the pre-network dispatches the profile never counts). **T - X is the barrier per
+  dispatch**, the quantity the 120-kernel table cannot show, because the profile forces chaining
+  off and the worker ships it on. Above ~0.3 ms the launch path is the lever and the change is in
+  `src/kernels.cpp`; inside the 0.03 ms noise bar the dispatches' own work is the whole cost and
+  the change is in `src/nr_graph.cpp`'s schedule. Either way: one change, one `port-build`, one
+  720p read, and revert anything that kills the device on a clean card rather than escalating it.
+
+* learned: the per-dispatch table cannot separate a dispatch's own span from the gap after it, and
+  that is measurable in one run now (2026-11-10 tick, code change in the patch's `src/main.cpp` -
+  no device here). Read of the table in `r2026-11-08-profile-1080p-b` as the item asked: **120
+  kernels**, and the shape is a flat tail - the top row is `ffn_ptx 8640x256 e8 r3` at **0.694 ms
+  (10.7%)**, `ffn_ptx 34560x128 e4 r4 +proj` 0.548, then ~110 rows between 0.016 and 0.353 ms whose
+  sum is the remaining ~80%, so no single dispatch is the target. The fixed-cost probe in the same
+  run reads **0.411 ms for 400 trivial dispatches + barriers (1.03 us each)**, and the size curve is
+  3.620 / 6.494 / 9.714 ms at 720p / 1080p / 1440p - fitting T = N*F + A*pixels to those three gives
+  F ~ 11-13 us per dispatch, i.e. **~1.3-1.6 ms of the 1080p pass is a per-dispatch constant** - but
+  the three points do not fit that two-parameter model to better than 8% and they are different
+  days, so that is a direction, not a number. What blocks the item's own question is the
+  instrument: the profile route forces chaining off (`main.cpp`: `setChainEnabled(false)` before the
+  graph is built, "per-dispatch timings need the barriers") while the worker ships counter
+  chaining, so the 6.494 ms table is the barrier route and nothing on the box times the shipping
+  route outside a live frame (`parity` does, and it has no policy entry, which is why a queue
+  request cannot reach it). The change: `runProfile` now runs the same graph and size on the
+  production schedule through `runGraph` and prints `production schedule (counter chaining): N
+  dispatches, GPU X ms`, with the dispatch count and the route named in the `total` line - so
+  T - X, what a barrier after every launch costs, is readable at 720p. Patch re-cut: id moves
+  `f1908586c80c` -> `b609638dda05` (odl-src's one commit amended; exactly the `From` header, the two
+  stat lines, the blob index and the two hunks differ), so every port run stamps OUT OF SYNC until
+  `r2026-11-10-10-gap-build` lands. Verified here: `g++ -fsyntax-only -std=c++20
+  -DVK_ENABLE_BETA_EXTENSIONS` clean on `main.cpp`; suite **596 passed / 9 failed / 38 skipped**,
+  the same nine libGL/SDL2 import failures this box always has. Queued behind the build:
+  `runs/queue/r2026-11-10-11-gap-720p`. NOT verified: no device, so neither number has been printed
+  and the barrier's cost is still unmeasured.
 
 * learned: the policy is now readable from here, and both installs landed (2026-11-10, interactive).
   `tools/auto_runner.py` publishes the deployed file to `runs/policy.toml` on the results branch
