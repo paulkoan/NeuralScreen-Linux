@@ -193,3 +193,77 @@ def test_a_bad_size_is_rejected_before_a_screen_opens(bad):
                           cwd=REPO, capture_output=True, text=True, timeout=120)
     assert proc.returncode == 2, f"--size {bad} gave {proc.returncode}"
     assert "bad --size" in proc.stderr
+
+
+# --- --capture-transport ---------------------------------------------------
+
+def test_capture_transport_defaults_to_pipe():
+    """The default has to be the route every number on the record used."""
+    from minimal.__main__ import build_parser
+    assert build_parser().parse_args([]).capture_transport == "pipe"
+
+
+def test_help_documents_the_capture_transport_flag():
+    proc = subprocess.run([sys.executable, "-m", "minimal", "--help"],
+                          cwd=REPO, capture_output=True, text=True, timeout=120)
+    assert proc.returncode == 0, proc.stderr
+    assert "--capture-transport" in proc.stdout
+
+
+def test_the_transport_flag_reaches_the_portal_capture(monkeypatch):
+    """`--capture-transport shm` must arrive at PortalCapture as `transport`.
+
+    The portal is never opened: the class is replaced with a recorder, so this
+    runs with no compositor and no dialog - which is the point of pinning the
+    wiring here, since the only other place it shows is a window run that needs
+    someone to click a picker. Both portal sources are checked, because the flag
+    was unreachable from either until the `open_capture` keyword was added.
+    """
+    from minimal.__main__ import build_parser
+    from minimal.capture import open_capture
+    from minimal import capture_wayland
+
+    seen = {}
+
+    class _Recorder:
+        def __init__(self, *args, **kwargs):
+            seen.update(kwargs)
+
+    monkeypatch.setattr(capture_wayland, "PortalCapture", _Recorder)
+
+    for source in ("wayland", "window"):
+        seen.clear()
+        args = build_parser().parse_args(["--source", source])
+        open_capture(args.source, capture_transport=args.capture_transport)
+        assert seen.get("transport") == "pipe", f"{source} default should be pipe"
+
+    seen.clear()
+    args = build_parser().parse_args(["--source", "window",
+                                      "--capture-transport", "shm"])
+    open_capture(args.source, capture_transport=args.capture_transport)
+    assert seen.get("transport") == "shm"
+
+
+def test_a_non_portal_source_has_no_transport_to_set():
+    """A synthetic card has no gst chain, so the flag must not reach it."""
+    from minimal.__main__ import build_parser
+    from minimal.capture import open_capture
+
+    args = build_parser().parse_args(["--source", "synthetic",
+                                      "--capture-transport", "shm"])
+    cap = open_capture(args.source, capture_transport=args.capture_transport)
+    assert cap.resolution == (1280, 720)
+    assert not hasattr(cap, "transport"), (
+        "only the portal sources own a transport; a synthetic card must ignore it")
+
+
+@pytest.mark.parametrize("bad", ["dma-buf", "shmem", "PIPE", ""])
+def test_an_unknown_capture_transport_is_refused_by_argparse(bad):
+    """argparse's choices make an unknown value a refusal, not a silent default."""
+    proc = subprocess.run([sys.executable, "-m", "minimal",
+                           "--capture-transport", bad, "--source", "synthetic",
+                           "--frames", "1", "--headless"],
+                          cwd=REPO, capture_output=True, text=True, timeout=120)
+    assert proc.returncode == 2, f"--capture-transport {bad!r} gave {proc.returncode}"
+    assert "invalid choice" in proc.stderr
+    assert "capture-transport" in proc.stderr

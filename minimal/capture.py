@@ -301,7 +301,8 @@ class VideoCapture:
 
 def open_capture(source: str, *, monitor: int = 0, input_image=None, input_video=None,
                  width: int | None = None, height: int | None = None,
-                 video_scale: bool = True, bgra: bool = False):
+                 video_scale: bool = True, bgra: bool = False,
+                 capture_transport: str = "pipe"):
     """Build the frame source named by --source.
 
     "auto" picks per session: Wayland desktops get the portal (mss would hand
@@ -309,6 +310,13 @@ def open_capture(source: str, *, monitor: int = 0, input_image=None, input_video
     is the portal asking for a single window rather than a screen — the user
     picks it — which is both cheaper and what a game stream wants. "synthetic"
     and "image" exist so the pass can be exercised without any real capture.
+
+    `capture_transport` (`pipe` or `shm`) only reaches the two portal sources,
+    `wayland` and `window`: it decides how the gst chain hands each frame back
+    (a stdout pipe, or a memfd). Every other source ignores it - a synthetic
+    card, a file and the X11 grab have no gst chain to choose a transport for.
+    The value is validated by `PortalCapture`, so an unknown one fails there
+    with the list of real ones rather than being dropped silently.
     """
     if source == "auto":
         source = "wayland" if os.environ.get("XDG_SESSION_TYPE") == "wayland" else "screen"
@@ -329,7 +337,8 @@ def open_capture(source: str, *, monitor: int = 0, input_image=None, input_video
         # working on machines where that is not installed.
         from minimal.capture_wayland import PortalCapture
         return PortalCapture(monitor_idx=monitor, video_scale=video_scale,
-                             width=width, height=height)
+                             width=width, height=height,
+                             transport=capture_transport)
     if source == "window":
         # One window instead of a whole screen. The compositor's capture cost
         # scales with the pixels, and a game stream only needs the game — which is also
@@ -342,7 +351,8 @@ def open_capture(source: str, *, monitor: int = 0, input_image=None, input_video
         from minimal.capture_wayland import PortalCapture
         from minimal.portal import SOURCE_WINDOW
         return PortalCapture(monitor_idx=monitor, source=SOURCE_WINDOW,
-                             video_scale=video_scale, width=width, height=height)
+                             video_scale=video_scale, width=width, height=height,
+                             transport=capture_transport)
     if source == "synthetic":
         return SyntheticCapture(width or 1280, height or 720, bgra=bgra)
     if source == "image":

@@ -1,0 +1,46 @@
+warning: The `native-tls` setting is deprecated and will be removed in a future release. Use `system-certs` instead.
+[worker] serve: 1920x1080, model /opt/neuralscreen/model, shaders /opt/neuralscreen/port/build/shaders, seed 0
+[worker] serve: built from port 9d08f41 (18 modified) patch 25cf5f62fbc4c875e5b017bd33306dabf96b720f
+[worker] serve: frame channel open (16.6 MB, NeuralScreen_2798266_c7de5637)
+[worker] serve: pixel channel open (1920x1080, 8.3 MB, NeuralScreenOut_2798266_92705e)
+[worker] serve: mid-frame channel open (8.3 MB, NeuralScreenOut_2798266_92705em)
+[main] shared memory: frames in and pixels out through /dev/shm (frame 16.6MB, pixels 8.3MB)
+[worker] serve: the caller declared no motion field: the reprojection is the identity
+[worker] serve: and the five-tap history filter is the centre tap, which is the pixel
+[worker] serve: itself - so no published byte can move for it
+[worker] serve: device NVIDIA GeForce RTX 4080 SUPER
+[worker] serve: blend scale 0.7397 (block70.layer0.blend_scale)
+[worker] serve: graph fused (DLSS5VK_UNFUSED not set)
+[worker] serve: warming up (the PTX modules are JIT-compiled on first use)
+[worker] serve: vkQueueWaitIdle(queue_) failed: -4
+pipeline failed: the worker stopped after 0 of 4 reply bytes
+Traceback (most recent call last):
+  File "/opt/neuralscreen/state/repo/minimal/__main__.py", line 399, in main
+    summary = pipe.run(frames=args.frames,
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/neuralscreen/state/repo/minimal/loop.py", line 583, in run
+    pair_before, last_after, index = self._serial_loop(frames, on_frame)
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/neuralscreen/state/repo/minimal/loop.py", line 720, in _serial_loop
+    after = self.process_one(index, present=True)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/neuralscreen/state/repo/minimal/loop.py", line 345, in process_one
+    return self._one_frame(index, timeout=timeout, present=present)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/neuralscreen/state/repo/minimal/loop.py", line 400, in _one_frame
+    result = self._timed("recv", self.worker.recv, index, timeout)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/neuralscreen/state/repo/minimal/loop.py", line 299, in _timed
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/neuralscreen/state/repo/minimal/worker.py", line 429, in recv
+    return self.reader.recv(index, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/neuralscreen/state/repo/protocol.py", line 1037, in recv
+    raise payload
+  File "/opt/neuralscreen/state/repo/protocol.py", line 696, in _run
+    magic_raw = _read_exact(self._worker.stdout, 4)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/neuralscreen/state/repo/protocol.py", line 441, in _read_exact
+    raise EOFError(f"the worker stopped after {len(chunks)} of {size} reply bytes")
+EOFError: the worker stopped after 0 of 4 reply bytes

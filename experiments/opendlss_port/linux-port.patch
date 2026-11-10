@@ -1,4 +1,4 @@
-From 25cf5f62fbc4c875e5b017bd33306dabf96b720f Mon Sep 17 00:00:00 2001
+From a522cd30bbb2cb65c0f9ee46053c25aa3b2a9c23 Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -160,7 +160,7 @@ both, and the hold the client pays to present the mid).
 
 diff --git a/scripts/build_linux.sh b/scripts/build_linux.sh
 new file mode 100755
-index 0000000..7d25127
+index 0000000..3aad1ca
 --- /dev/null
 +++ b/scripts/build_linux.sh
 @@ -0,0 +1,161 @@
@@ -238,7 +238,7 @@ index 0000000..7d25127
 +    gen gemm2_e4m3.py "$k" "$f" "build/ptx/gemm2_e4m3_K${k}_f$f.ptx"
 +  done
 +done
-+for cfg in "64 4 80" "128 4 64" "256 3 80" "256 4 80"; do
++for cfg in "64 4 64" "128 4 64" "256 3 80" "256 4 64"; do
 +  set -- $cfg
 +  gen ffn_e4m3.py "$1" "$2" "build/ptx/ffn_e4m3_C$1_R$2.ptx" "$3"
 +  gen ffn_e4m3.py "$1" "$2" "build/ptx/ffn_e4m3_C$1_R$2_proj.ptx" "$3" 1

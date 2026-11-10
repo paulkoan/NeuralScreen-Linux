@@ -23,7 +23,7 @@ from minimal.capture import CaptureError  # noqa: E402
 from minimal.portal import ScreenCast  # noqa: E402
 
 
-def _capture(width=1920, height=1080, fd=None, serial=991, node_id=42):
+def _capture(width=1920, height=1080, fd=None, serial=991, node_id=42, transport=cw.PIPE):
     """A PortalCapture with the handshake bypassed, so only the pipeline is exercised.
 
     The fd is real (a devnull descriptor) rather than a made-up number: close()
@@ -37,10 +37,16 @@ def _capture(width=1920, height=1080, fd=None, serial=991, node_id=42):
     cap.monitor_idx = 0
     cap.source = cw.SOURCE_MONITOR
     cap.video_scale = True
+    cap.transport = transport
+    cap.shm_poll = 0.0002
+    cap.shm_timeout = 30.0
     cap._log = lambda *_: None
     cap._gst = "gst-launch-1.0"
     cap._proc = None
     cap._stderr = None
+    cap._shm_fd = None
+    cap._frame_offset = 0
+    cap._punch_failed = False
     cap._sc = ScreenCast(fd=fd, node_id=node_id, serial=serial, width=width,
                          height=height, restore_token=None, session_path="/x")
     cap.width, cap.height = width, height
@@ -350,3 +356,178 @@ def test_the_reported_size_is_the_default_when_nothing_is_named(monkeypatch):
     _stub_portal(monkeypatch, session)
     cap = cw.PortalCapture()
     assert (cap.width, cap.height) == (1280, 720)
+
+
+# --- the frame transport ---------------------------------------------------
+
+def test_the_pipe_is_the_default_transport():
+    """Every number in the plan was measured on this route, so it stays the default."""
+    args = _capture()._pipeline_args()
+    assert args[-2:] == ["fdsink", "fd=1"]
+    assert "shmsink" not in args
+
+
+def test_the_shared_memory_transport_writes_into_the_memfd_not_the_pipe():
+    """The chain changes only its end: one sink swapped for another, same caps, same queue.
+
+    At 1080p the pipe moved 8.3 MB a frame for 5.1 ms of a 30.5 ms frame (1.6 GB/s, pipe speed)
+    and it has been at /proc/sys/fs/pipe-max-size since the capture leg was priced, so the sink
+    is the only thing on this leg with headroom left. Asserted on the argument list, because the
+    difference is not visible in any frame - the two routes produce identical pixels.
+    """
+    cap = _capture(transport=cw.SHM)
+    cap._shm_fd = 7                 # the builder only formats the number; nothing here uses it
+    args = cap._pipeline_args()
+    assert args[-3:] == ["fdsink", "fd=7", "sync=false"]
+    assert "fd=1" not in args
+    assert "shmsink" not in args, (
+        "shmsink hands the segment over its own socket protocol, which a Python client would "
+        "have to reimplement; the memfd is the route that can be read from here")
+    # One variable apart, so a run of each is comparable: everything upstream is identical.
+    # The PipeWire fd and the frame fds are the two numbers that legitimately differ.
+    def _without_fds(rest):
+        return [a for a in rest if not a.startswith("fd=")]
+
+    assert _without_fds(args[:-3]) == _without_fds(_capture()._pipeline_args()[:-2])
+
+
+def test_a_shared_memory_pipeline_without_a_memfd_refuses_to_be_built():
+    """A missing memfd must not silently leave `fdsink fd=1` in an shm run's argument list."""
+    cap = _capture(transport=cw.SHM)
+    with pytest.raises(CaptureError, match="memfd"):
+        cap._pipeline_args()
+
+
+def test_an_unknown_transport_is_refused_by_name():
+    """--capture-transport dma-buf must be a refusal, not a run on the default."""
+    with pytest.raises(CaptureError, match="capture transport"):
+        cw.PortalCapture(transport="dma-buf")
+
+
+def test_a_shared_memory_frame_is_read_at_the_writers_offsets():
+    """The chain writes sequentially, so frame N starts at N * frame_size - that is the framing.
+
+    A pipe hands a reader a byte stream with no boundaries in it; a memory file the writer only
+    ever appends to has them, as long as the reader keeps its own offset. This drives the read
+    path against a real memfd written exactly the way fdsink writes one.
+    """
+    cap = _capture(width=4, height=4, transport=cw.SHM)      # a frame is 64 bytes
+    cap._shm_fd = os.memfd_create("nsl-test", 0)
+    first = bytes(range(64))
+    second = bytes(range(64, 128))
+    os.write(cap._shm_fd, first)
+    os.write(cap._shm_fd, second)
+
+    a = cap.grab()
+    b = cap.grab()
+
+    assert a.tobytes() == first and b.tobytes() == second, "each frame comes from its own offset"
+    assert cap._frame_offset == 128, "the reader's offset is what marks the next frame"
+    assert cap.last_wait is not None and cap.last_read is not None, (
+        "the wait/read split the report prints has to exist on this route too")
+    cap.close()
+    assert cap._shm_fd is None
+
+
+def test_a_shared_memory_frame_smaller_than_a_page_is_still_read():
+    """The release is page-granular; a frame that cannot fill one must not be released away."""
+    cap = _capture(width=2, height=2, transport=cw.SHM)      # 16 bytes
+    cap._shm_fd = os.memfd_create("nsl-test", 0)
+    payload = bytes(range(16))
+    os.write(cap._shm_fd, payload)
+    assert cap.grab().tobytes() == payload
+    assert cap._punch_failed is False, "nothing to punch is not a punch that failed"
+    cap.close()
+
+
+def test_a_shared_memory_frame_that_never_arrives_says_so(tmp_path):
+    """A chain that dies mid-run must not leave grab() waiting: the deadline ends it, with
+    GStreamer's own words, the way the pipe route reports a truncated frame."""
+    cap = _capture(width=4, height=4, transport=cw.SHM)
+    cap.shm_timeout = 0.05
+    cap._shm_fd = os.memfd_create("nsl-test", 0)
+    err = tmp_path / "gst.log"
+    err.write_text('WARNING: erroneous pipeline: no element "fdsink"\n')
+    cap._stderr = err
+
+    with pytest.raises(CaptureError) as exc:
+        cap.grab()
+    msg = str(exc.value)
+    assert "no whole frame into shared memory" in msg
+    assert "0 of 64 bytes" in msg
+    assert "no element" in msg, "the pipeline's stderr must come through"
+    cap.close()
+
+
+class _FakeProc:
+    def __init__(self):
+        self.pid = 4242
+        self.stdout = None          # the shm spawn sends stdout to /dev/null
+
+
+def test_a_memfd_that_cannot_be_created_falls_back_to_the_pipe(monkeypatch):
+    """One line, then the route that works - and never silently.
+
+    A shared-memory chain that cannot start must not cost the run, but a fallback nobody is told
+    about is worse than none: the frame times would be read as the new transport's.
+    """
+    cap = _capture(transport=cw.SHM)
+    logged: list[str] = []
+    cap._log = logged.append
+    seen: list[list[str]] = []
+
+    def _popen(args, **kw):
+        seen.append(list(args))
+        return _FakeProc()
+
+    def _no_memfd(*_a, **_k):
+        raise OSError(38, "Function not implemented")
+
+    monkeypatch.setattr(cw.subprocess, "Popen", _popen)
+    monkeypatch.setattr(cw.os, "memfd_create", _no_memfd)
+    cap._start_pipeline()
+
+    assert cap.transport == cw.PIPE
+    assert seen[-1][-2:] == ["fdsink", "fd=1"]
+    assert sum("falling back to the pipe" in line for line in logged) == 1, (
+        "once, not once per attempt and not never")
+    cap.close()
+
+
+def test_a_shared_memory_chain_that_cannot_start_falls_back_to_the_pipe(monkeypatch):
+    """Popen failing on the memfd route: the memfd is dropped and the pipe chain is started."""
+    cap = _capture(transport=cw.SHM)
+    logged: list[str] = []
+    cap._log = logged.append
+    seen: list[list[str]] = []
+
+    def _popen(args, **kw):
+        seen.append(list(args))
+        if len(seen) == 1:
+            raise OSError(13, "Permission denied")
+        return _FakeProc()
+
+    monkeypatch.setattr(cw.subprocess, "Popen", _popen)
+    cap._start_pipeline()
+
+    assert cap.transport == cw.PIPE
+    assert seen[0][-1] == "sync=false", "the first attempt was the memfd chain"
+    assert seen[-1][-2:] == ["fdsink", "fd=1"]
+    assert cap._shm_fd is None, "the memfd of the chain that did not start is closed"
+    assert any("falling back to the pipe" in line for line in logged)
+    cap.close()
+
+
+def test_a_shared_memory_run_says_which_transport_it_is_on(monkeypatch):
+    """The report has to name the route, or a comparison of the two is guesswork."""
+    cap = _capture(transport=cw.SHM)
+    logged: list[str] = []
+    cap._log = logged.append
+    monkeypatch.setattr(cw.subprocess, "Popen", lambda args, **kw: _FakeProc())
+    cap._start_pipeline()
+
+    assert cap.transport == cw.SHM
+    assert any("shared memory (memfd fd=" in line for line in logged)
+    assert not any("pipe buffer" in line for line in logged), (
+        "there is no pipe to size on this route")
+    cap.close()

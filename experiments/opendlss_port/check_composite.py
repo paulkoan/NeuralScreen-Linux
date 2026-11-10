@@ -106,8 +106,19 @@ def clamp32(x, low=0.0, high=1.0):
 
 
 def fma32(a, b, c) -> np.float32:
-    """Exactly-rounded f32 fused multiply-add (python's fma is exact for f32 inputs)."""
-    return np.float32(math.fma(float(np.float32(a)), float(np.float32(b)), float(np.float32(c))))
+    """f32 fused multiply-add, matching what the shaders' `fma()` computes.
+
+    Written without `math.fma`, which arrived in Python 3.13: this repo is developed on 3.13 and the
+    GPU box runs 3.11, so the parity check passed here and died there with "module 'math' has no
+    attribute 'fma'". The multiply and add are done in Python floats, which are doubles, and for f32
+    inputs the product is exact there - a 24-bit significand times a 24-bit significand needs at most
+    48 bits, and a double carries 53 - so the sum rounds exactly once, which is the fused rounding.
+    That makes this the identical value `math.fma(a, b, c)` returns for these inputs, not an
+    approximation of it; libm's `fmaf` is NOT the same thing, because it rounds to f32 and skips the
+    double, and the two disagree on nearly every triple.
+    """
+    a, b, c = float(np.float32(a)), float(np.float32(b)), float(np.float32(c))
+    return np.float32(a * b + c)
 
 
 def truncate_half(value) -> np.float32:
