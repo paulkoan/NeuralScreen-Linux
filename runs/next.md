@@ -33,26 +33,29 @@ anything there.
 
 ## 1. Next work
 
-* Read `runs/done/r2026-11-10-9-small-ws100` when it lands and settle the small network's
-  `--work-scale` question with it - the last open point on the internal-size curve, so by this item's own
-  branches the curve is then decided whole (2026-11-10 tick queued the run; nothing is left to run for it).
-  It is `r2026-11-10-8-small-ws100`'s argv on a card that is quiet again - entry `minimal-small`, 300
-  frames, `--size 2560x1440 --work-scale 1.0 --headless --shm --worker-log --save-after
-  small-ws100-after.png` - and it reads, in this order: the gate lines out of its own report (`gpu_before` /
-  `gpu_after` / `idle_waited_s`; a BUSY on either side discards it exactly as the 8 run was discarded);
-  the worker banner (`serve: 2560x1440, model /opt/neuralscreen/model-small`, and **no** work-scale line - at
-  1.0 the port records no resize at all, so a work-scale line naming 2560x1440 means the argument did not
-  take and the run is void); median and steady rate against 0.75's **24.1 ms / 41.6 fps**
-  (`r2026-11-10-6-small-video`) and 0.5's **31.3 / 31.9** (`r2026-11-10-7-small-ws50`) on this exact shape;
-  the worker's own line and component split against 0.75's 14.48 ms mean and 2.5-3.9 / 5.1-8.7 / 2.7-3.6 /
-  1.2-1.7; and the artifact `small-ws100-after.png` (2560x1440 RGBA, colortype 6, and different from both
-  `small-ws-after.png` and `small-ws50-after.png` - report the mean absolute difference per channel and the
-  share of pixels moved). Within ~1 ms of 0.75 means the two bilinear resizes are a wash and the lever is
-  retired: **that branch needs no code change** - `minimal`'s `--work-scale` already defaults to 1.0 and
-  `config.v1.json` already sits at `"work_scale": 1.0` - so it writes the learned line here and stops.
-  Clearly worse means 0.75 is the optimum and the setting stays where it is, which is again a learned line
-  only. The exact file this item writes is this plan's own learned line; it queues no run, and if this
-  sample is BUSY too the answer is 'the box is not free' rather than a third attempt.
+* learned: the internal-size curve is decided whole and **0.75 is the optimum** - 1.0 is clearly worse, so
+  the setting stays where it is and no code changes (2026-11-10 tick, read of `r2026-11-10-9-small-ws100`,
+  exit 0 in 16.8 s, entry `minimal-small`, 300 frames, `--size 2560x1440 --work-scale 1.0 --headless --shm
+  --worker-log`, repo `f660b9a` (+63 uncommitted), worker in sync on patch `f1908586c80c` at port `9d08f41`,
+  policy `28b387ec388f`, card WARN before and after, `idle_waited_s` 60.0, so it passes the gate). Median
+  **32.9 ms / 30.4 fps steady** (headline 20.67; the 47.7 ms mean is frame 0's 4033.3 ms recv) against
+  0.75's **24.1 / 41.6** (`r2026-11-10-6-small-video`) and 0.5's **31.3 / 31.9** (`r2026-11-10-7-small-ws50`)
+  on the identical shape - **8.8 ms worse than 0.75**, and 1.6 ms worse than 0.5, so the curve is monotone
+  the wrong way past 0.75 and the two bilinear resizes are not a wash: they are cheaper than the network
+  running at full 1440p. The banner reads `serve: 2560x1440, model /opt/neuralscreen/model-small` with **no**
+  work-scale line, so the argument took and no resize ran. The worker's own line says where the 8.8 ms went:
+  **20.93 ms mean** against 0.75's 14.48, and its component split puts it in `network+composite`
+  **10.2-14.1** against 5.1-8.7, while proxy (2.5-3.5), readback (3.0-5.7) and reply (1.6-2.5) stay near
+  0.75's 2.5-3.9 / 2.7-3.6 / 1.2-1.7 - i.e. the pass is area-bound and the work size is what buys the frame,
+  which is the same reading the 0.5 sample gave from the other side. Artifact check passes:
+  `small-ws100-after.png` is **2560x1440 RGBA** (colortype 6, 4,449,392 bytes, sha256 `8931179a`), different
+  from both 0.75's `small-ws-after.png` (`7e6e13de`) and 0.5's `small-ws50-after.png` (`ae2afdca`) - MAD
+  **2.469 / 2.341 / 2.542** per channel (alpha 0), 62.83% of pixels moved >2, 5.77% >8, max 145 against 0.75;
+  against 0.5 MAD 2.691 / 2.257 / 2.498, 53.94% >2. One flag of record only: the capture spread's max
+  **37.7 ms at frame 87** against a 5.0 ms median, outside the warm-up - the same frame-43/87 one-off shape
+  the earlier 1440p runs carry, and it does not enter the median. NOT verified: the 0.75 baseline is a
+  different run ~40 min earlier, so the 8.8 ms delta crosses a card state; the direction is corroborated by
+  the worker's own line and by 0.5 reading worse still, which is why the setting stays at 0.75.
 
 * learned: the missing 1.0 point is queued, and the only thing that was blocking it was the card
   (2026-11-10 tick, no run - no device here). `runs/queue/r2026-11-10-9-small-ws100.json` (entry
