@@ -33,24 +33,57 @@ anything there.
 
 ## 1. Next work
 
-* The small network's internal-size curve is missing its 1.0 point, and the first attempt at it landed on a busy
-  card: `r2026-11-10-8-small-ws100` (exit 0, 22.3 s) read median **48.1 ms / 20.8 fps steady** against 0.75's
-  24.1 / 41.6, but `gpu_before` was **BUSY at 86%** with `DyingLightGame_TheBeast_x64_rwdi.exe` holding 5518 MiB,
-  `gpu_after` BUSY at 98%, and `idle_waited_s` **297.9** - so by the standing gate rule the number is quoted
-  nowhere. The worker's own line carries the same mud: **29.62 ms mean** against 0.75's 14.48, with every component
-  up by its own ~2x factor (proxy 5.1-7.2 against 2.5-3.9, network+composite 15.3-18.7 against 5.1-8.7, readback
-  3.3-6.3 against 2.7-3.6, reply 1.4-3.8 against 1.2-1.7), which is the contended-card signature and not a reading
-  of the resize. The banner check does pass: `serve: 2560x1440, model /opt/neuralscreen/model-small` with **no**
-  work-scale line, so `--work-scale 1.0` took and the port recorded no resize. What is needed is the same run on a
-  quiet card: queue `runs/queue/r2026-11-10-9-small-ws100.json` (entry `minimal-small`,
-  `r2026-11-10-8-small-ws100`'s argv character for character, 900 s) **once the box is free** - the runner's idle
-  gate waits only 300 s and then runs anyway, so a requeue while the game is up just buys another BUSY sample.
-  Read it exactly as the 8 run's note says: median / steady against 0.75's **24.1 ms / 41.6 fps** and 0.5's
-  **31.3 / 31.9**, the worker's own line and component split against 14.48 ms and 2.5-3.9 / 5.1-8.7 / 2.7-3.6 /
-  1.2-1.7, and `small-ws100-after.png` at 2560x1440 RGBA **different** from both `small-ws-after.png` and
-  `small-ws50-after.png`. Within ~1 ms of 0.75 means the resize is a wash and `--work-scale` should be dropped;
-  clearly worse means 0.75 is the optimum. No code change. The other parked lever is unchanged: the FFN sweep's
-  cap-80 question waits on a word.
+* Read `runs/done/r2026-11-10-9-small-ws100` when it lands and settle the small network's
+  `--work-scale` question with it - the last open point on the internal-size curve, so by this item's own
+  branches the curve is then decided whole (2026-11-10 tick queued the run; nothing is left to run for it).
+  It is `r2026-11-10-8-small-ws100`'s argv on a card that is quiet again - entry `minimal-small`, 300
+  frames, `--size 2560x1440 --work-scale 1.0 --headless --shm --worker-log --save-after
+  small-ws100-after.png` - and it reads, in this order: the gate lines out of its own report (`gpu_before` /
+  `gpu_after` / `idle_waited_s`; a BUSY on either side discards it exactly as the 8 run was discarded);
+  the worker banner (`serve: 2560x1440, model /opt/neuralscreen/model-small`, and **no** work-scale line - at
+  1.0 the port records no resize at all, so a work-scale line naming 2560x1440 means the argument did not
+  take and the run is void); median and steady rate against 0.75's **24.1 ms / 41.6 fps**
+  (`r2026-11-10-6-small-video`) and 0.5's **31.3 / 31.9** (`r2026-11-10-7-small-ws50`) on this exact shape;
+  the worker's own line and component split against 0.75's 14.48 ms mean and 2.5-3.9 / 5.1-8.7 / 2.7-3.6 /
+  1.2-1.7; and the artifact `small-ws100-after.png` (2560x1440 RGBA, colortype 6, and different from both
+  `small-ws-after.png` and `small-ws50-after.png` - report the mean absolute difference per channel and the
+  share of pixels moved). Within ~1 ms of 0.75 means the two bilinear resizes are a wash and the lever is
+  retired: **that branch needs no code change** - `minimal`'s `--work-scale` already defaults to 1.0 and
+  `config.v1.json` already sits at `"work_scale": 1.0` - so it writes the learned line here and stops.
+  Clearly worse means 0.75 is the optimum and the setting stays where it is, which is again a learned line
+  only. The exact file this item writes is this plan's own learned line; it queues no run, and if this
+  sample is BUSY too the answer is 'the box is not free' rather than a third attempt.
+
+* learned: the missing 1.0 point is queued, and the only thing that was blocking it was the card
+  (2026-11-10 tick, no run - no device here). `runs/queue/r2026-11-10-9-small-ws100.json` (entry
+  `minimal-small`, `r2026-11-10-8-small-ws100`'s argv character for character, 900 s) is the same request as
+  the BUSY sample, so the pair differs only in the card, and the evidence that the game has gone is the
+  newest landed run's own gate: `r2026-11-10-6-ws-window-b` (20:31Z) read `gpu_before` **WARN** with
+  Telegram / signal-desktop / msedge / chromium resident and **no** `DyingLightGame_TheBeast_x64_rwdi.exe`,
+  where the game had held the card at 86-98% from 19:47 on. Checked before queueing, because the entry had
+  to exist: the deployed policy (`runs/policy.toml` on results, digest `28b387ec388f`) carries
+  `minimal-small` **once and plain** - `argv = ["uv","run","python","-m","minimal"]` with `NS_WORKER_CMD`
+  pointing at `/opt/neuralscreen/model-small` - so the run will exercise the 31-block network and not the
+  `xvfb-run` copy. One drift for the next editor, not fixable from here: `ops/policy.toml` has since gained
+  a `busy_util = 25` line (with the comment about a browser held open as a live capture source) that the
+  deployed file does not carry, so the box is still running the default 15% BUSY bar and a 17-24% reading
+  still goes out as BUSY there; reinstalling the policy is a hand step at the box. NOT verified: the queue
+  file is unread until the box picks it up, and the card can be taken again before it does.
+
+* learned: the repeated window run could not run at all - it died at the portal handshake with no picker
+  clicked, so the window leg still has no second sample and the video leg stays the sample of record
+  (2026-11-10 tick, read of `r2026-11-10-6-ws-window-b`, exit **2** after 121.8 s, entry `minimal`,
+  `--source window --size 2560x1440 --work-scale 0.75 --shm`, `manual: true`, repo `a2fe26b`, policy
+  `28b387ec388f`, `gpu_before` WARN with no game resident, `gpu_after` BUSY 17%, `idle_waited_s` 30.0). Its
+  stdout ends at `CreateSession / SelectSources / Start (the compositor will ask you to choose a screen)` and
+  its stderr reads `startup failed: the portal handshake failed (TimeoutError)`: the dialog went unanswered,
+  so there is no frame, no median and no PNG. It is the second time this shape has failed this way
+  (`r2026-11-08-1080p-window` is the first), and it is the item's own `manual: true` doing its job - the box
+  was free, the human was not at the picker. Nothing is requeued off it: the window leg was already read as
+  a wash and closed (`r2026-11-10-4-ws-window`), and this repeat existed only because that one was muddied
+  by the same busy card. If the window leg is wanted again it needs a person at the box for the couple of
+  seconds the dialog is up, and that is the one thing this loop cannot supply.
+
 
 * learned: the internal-size lever is spent - 0.5 reads **worse** than 0.75 and the network does not get cheaper
   (2026-11-10 tick, read of `r2026-11-10-7-small-ws50`, exit 0 in 15.4 s, entry `minimal-small`, 300 frames,
