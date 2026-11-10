@@ -61,6 +61,17 @@ anything there.
   * If the profile has landed cleanly and the shm-window request is still sitting in `runs/queue`, it
     is waiting on a person at the picker: say that in one line and stop.
 
+* learned: the rebuilt worker is fixed - the 1080p smoke test landed **exit 0 at 6.296 ms** against
+  `-profile-1080p-b` / `-c`'s 6.494 / 6.522, so the patch `a522cd3` build at port `9d08f41` is the one
+  the box runs and the `vkQueueWaitIdle ... -4` signature is gone (2026-11-10 tick, read of
+  `r2026-11-10-1-profile`, entry `port-profile 1920 1080`, 4.3 s). The fixed-cost probe reads 0.411 ms
+  against the usual 0.406-0.409 window and no row is out by its own factor, so the sample is at baseline
+  scale; it carries one caveat of record only: `idle_waited_s` 297.9 s and `gpu_before` still **BUSY**
+  (46%) when the gate gave up, with `gpu_after` WARN, so by the standing rule this number is not compared
+  against earlier runs. The other half of the item is what stays open: `runs/queue/r2026-11-10-2-shm-window.json`
+  is still in the queue as `manual: true`, so the shm-window read waits on a person clicking the portal
+  picker on the box - nothing on this side can move it.
+
 * learned: the rebuild is queued and the capture comparison is aimed at a fresh binary (2026-11-10 tick,
   no run - no device here). The box's worker is still built from patch `25cf5f62fbc4`, the `.maxnreg 80`
   that loses the device, and `8b6fc8f` reverted it in the repo with nothing rebuilding since - so every
