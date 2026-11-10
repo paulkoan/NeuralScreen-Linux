@@ -33,26 +33,56 @@ anything there.
 
 ## 1. Next work
 
-* **Next: make the port accept `fullWidth != workWidth`, so `--work-scale` moves the 1080p pass' resize
-  off gst and into the pass. The one file this item authorises editing is
-  `experiments/opendlss_port/linux-port.patch`; its source of truth is `/opt/data/tmp/odl-src`, where
-  `src/serve.cpp` holds the refusal (edit the source, amend its one commit, `git format-patch -1`
-  back into the patch), plus the emitter list in `scripts/build_linux.sh` only if the port needs
-  another entry - and nothing else.**
-  What the item stands on, so it is not mistaken for the transport branch: the transport settled as
-  no lever (see the learned line below), so this does *not* ride on it. It rides on lever 1's own
-  measured half - the client now runs the pass at 1080p and presents it stretched into 1440p
-  (`r2026-11-08-1080p-window-c` **30.5 ms / 32.8 fps steady** against `r2026-11-08-1440p-window`'s
-  48.3 ms / 20.7 fps, same patch `f2cd1f27`) - and the price that route still pays is the
-  capture-side `videoscale`, ~2.3 ms (`r2026-11-08-1080p-video`: capture 6.4 -> 8.7 ms). `serve.cpp`
-  refuses the mismatch outright ("No NGX upscaling"), so the resize cannot move inside the pass
-  today. The change is a real upscale path (accept fullWidth, work at workWidth, output scaled back
-  to fullWidth) and it needs a device to verify - which the box has again, since
-  `r2026-11-10-1-profile` and `r2026-11-10-2-shm-window` both landed exit 0 on the rebuilt worker.
-  Verification: queue `port-build`, then the same window run at `--size 2560x1440 --work-scale 0.75`,
-  reading the median fps against `r2026-11-08-1440p-window`'s 48.3 ms / 20.7 fps and the capture
-  split's `read` against its 9.0 ms - if the resize leaves gst, `read` falls and the frame holds or
-  improves; if it does not, the port refusal is settled as not the lever and the item retires there.
+* **Next: queue the picker-free half of the work-scale measurement, so the change gets a device
+  number without the portal. This item is a run request and it edits nothing else: it writes
+  `runs/queue/r2026-11-10-5-ws-video.json` with the file tool and pushes it (entry `minimal`, args
+  `--source video --input-video fixtures/stream-1440p-2s.mp4 --size 2560x1440 --work-scale 0.75
+  --headless --frames 300 --shm --worker-log --save-after ws-video-after.png`, `timeout_s` 900,
+  artifact `ws-video-after.png`), then deletes this item and leaves a learned line in its place.**
+  It is `r2026-11-08-1080p-video`'s fixture and shape with the resize moved out of `--size` and into
+  `--work-scale 0.75`, and it needs no picker, so the box can run it unattended while
+  `r2026-11-10-4-ws-window` waits for one. What it reads: the **median and steady rate against
+  `r2026-11-08-1080p-video`'s 27.4 ms / 36.5 fps** (1080p internal, the resize done by gst's
+  `videoscale`, capture 8.7 ms) and against `r2026-11-07-video-b`'s **35.2 ms / 28.4 fps** (1440p
+  internal, no resize anywhere); then the **capture line against video-b's 6.4 ms**, because the pass
+  does the resize now and the capture should be back at the no-scale figure. `ws-video-after.png`
+  must come back **2560x1440**. How to read it: at ~27 ms with capture ~6.4 the resize has moved into
+  the pass for nothing and the work-scale shape is the cheaper 1080p route; at ~35 ms the two
+  dispatches over 11M pixels cost what gst's stage did, and the `--size 1920x1080` route stays the
+  better one. One prerequisite: `r2026-11-10-3-ws-build` must have landed - until it does, runs stamp
+  OUT OF SYNC and a number from the old binary means nothing. If that build failed, this item waits
+  and says so rather than queueing a run against the stale worker.
+
+* learned: the port takes `fullWidth != workWidth` now, so `--work-scale` no longer needs the
+  capture chain to do the resize - the change is made, the patch re-cut to `f1908586c80c` and pushed
+  (`8e22ffe` on main), and both verification runs are queued (2026-11-10 tick, code change - no
+  device here). Inside the patch: `src/serve.cpp` takes the client's frame at the display size, does
+  **one bilinear resize down to the work size** before the proxy expand (`shaders/resize_rgba8.comp`,
+  new: RGBA8 in, RGBA8 out, in/out sizes as push constants, texel-centre mapping so a 1:1 call is the
+  identity to the byte), runs the network, the composite and the history exactly as before, and
+  resizes the composite's output **back up to the frame size** before the readback, the pixel channel
+  and the reply (the mid-frame too); `Kernels::resizeRgba8` in `src/kernels.{h,cpp}`, and
+  `"resize_rgba8"` added to `Kernels`' fixed module list - a shader that is not in that list is not
+  dispatchable, which is what `tests/test_opendlss_port.py` pins and what would have thrown at the
+  first scaled frame. What is deliberately unchanged: fullWidth 0 or equal records no resize at all,
+  so every earlier run's code path is byte-for-byte what it was, and in the scaled case the two
+  resizes are extra dispatches and nothing else; a frame *smaller* than the work size is still refused, with a line
+  that names both sizes; and the colour is now the frame size while the motion field stays the work
+  size, which is how the client already sends them (protocol.py sizes the colour channel for the full
+  frame, loop.py's `work_size` gives the field). Suite **582 passed / 9 failed / 38 skipped**, the
+  same nine libGL/SDL2 environment failures this box always has; `g++ -fsyntax-only` clean on
+  `serve.cpp` and `kernels.cpp`. **NOT verified: no glslang on this box and no device, so the new
+  shader has never been compiled or dispatched** - its first compile is the box's build, which is why
+  `runs/queue/r2026-11-10-3-ws-build` says to read the module count as **17** (it was 16) and to
+  treat a compile error naming `resize_rgba8` as this change's fault. Queued behind the build:
+  `runs/queue/r2026-11-10-4-ws-window.json`, the retired item's own window run (`--size 2560x1440
+  --work-scale 0.75`, `manual: true` for the picker), reading the median against
+  `r2026-11-08-1440p-window`'s 48.3 ms / 20.7 fps and the capture split against its read 9.0 ms, with
+  both PNGs required at 2560x1440. Also of record, because it is a trap for the next editor: the
+  repo's own `experiments/opendlss_port/build_linux.sh` is a stale copy whose emitter list reads
+  `"64 4 0" "128 4 0"`, where the source of truth `/opt/data/tmp/odl-src/scripts/build_linux.sh`
+  reads `"64 4 64" "128 4 64"`; the box builds from the patch, so odl-src is the copy that counts.
+
 
 * learned: the shm-window reading closes the capture leg - the memfd's read is not cheaper than the
   pipe's (2026-11-10 tick, read of `r2026-11-10-2-shm-window`, exit 0, 120 frames, entry `minimal`,
