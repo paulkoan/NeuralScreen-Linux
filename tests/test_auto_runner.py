@@ -205,6 +205,31 @@ def test_a_credential_in_the_policy_is_not_published(world: World):
         "an ordinary value must survive, or the file stops being evidence"
 
 
+def test_the_policy_is_published_even_when_nothing_runs(world: World):
+    """A policy change is news on its own, and the tick reads it to decide what it may queue.
+
+    Publishing only beside a run made "never installed" and "installed, nothing has run since" the
+    same observation from outside. The tick reads the published copy, so a policy edit nobody can
+    see is an edit the tick will not act on - and the queue stays empty because the tick is waiting
+    for the file to change. That is a circle; publishing on the hash is the way out of it.
+    """
+    assert world.run().returncode == 0
+    assert "runs/policy.toml" in world.results_tree(), "an empty queue published nothing"
+    first = world.log()
+
+    assert world.run().returncode == 0
+    assert world.log() == first, "an unchanged policy was published again"
+
+
+def test_a_changed_policy_is_published_without_a_run(world: World):
+    assert world.run().returncode == 0
+    before = world.log()
+
+    world.policy.write_text(world.policy.read_text() + "\n# a change, and no request to run\n")
+    assert world.run().returncode == 0
+    assert world.log() != before, "a changed policy was not published"
+
+
 def test_a_manual_request_waits_for_a_human_run(world: World):
     """A request that needs someone at the screen must not be eaten by the timer.
 
