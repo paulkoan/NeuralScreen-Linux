@@ -33,27 +33,57 @@ anything there.
 
 ## 1. Next work
 
-* **Read the chain-narrowing pair and say whether the expert-stage chain was the 1440p penalty.**
-  The reading is queued: `runs/queue/r2026-11-10-13-gap2-1-1440p` and `-2-720p`, behind the build
-  `runs/queue/r2026-11-10-13-gap2-0-build` (all three queued 2026-11-10), and lands as
-  `runs/done/<id>`. The change they measure is
-  one line of `src/nr_graph.cpp` inside `experiments/opendlss_port/linux-port.patch` (source of
-  truth `/opt/data/tmp/odl-src`, amend its one commit and re-cut with `git format-patch -1`), where
-  `routesFromEnvironment`'s `chainMask` default goes 3 -> 2: **that file is what any further move on
-  this edits** - 2 -> 0 (chaining off altogether) if X is still at or above T at 1440p, or back to 3
-  if the 720p half reads the change as a wash. What each size prints is `total T ms (sum of
-  per-dispatch spans, <size>), N dispatches, a barrier after every launch` and `production schedule
-  (counter chaining): N dispatches, GPU X ms (min of 7, same graph and size, no client in the
-  loop)`. The numbers to read against are the run before the change: 1440p T **9.380** /
-  X **10.074** and 720p T **3.393** / X **3.277**, both **249** dispatches - i.e. chaining was
-  0.694 ms dearer than barriers at the shipping size and 0.116 ms cheaper at 720p. So the pair
-  decides two things: whether X falls below T at 2560x1440 (the expert chain was the penalty and the
-  change stands) and whether the 720p 0.116 ms survives (it does not, and the change is a wash to
-  revert). Quote the gate lines with the numbers (`gpu_before`, `gpu_after`, `idle_waited_s`) and
-  the fixed-cost probe (0.406-0.421 ms on a clean card) as the control that says the card was at
-  baseline scale; a BUSY before or a non-zero idle wait and neither number is compared. If a run
-  dies with `vkQueueWaitIdle(queue_) failed: -4`, stop queueing and report the card rather than
-  escalating.
+* **Read the chainMask-0 pair: was the c32 chain the rest of the 1440p penalty, and does the small
+  size ever prefer chaining?** The reading is queued: `runs/queue/r2026-11-10-14-gap3-1-1440p` and
+  `-2-720p`, behind the build `runs/queue/r2026-11-10-14-gap3-0-build` (all three queued 2026-11-10),
+  and lands as `runs/done/<id>`. The change they measure is one line of `src/nr_graph.cpp` inside
+  `experiments/opendlss_port/linux-port.patch` (source of truth `/opt/data/tmp/odl-src`, amend its one
+  commit and re-cut with `git format-patch -1`), where `routesFromEnvironment`'s `chainMask` default
+  went 2 -> 0: **that file is what any further move on this edits** - back to 2, or to 3, if the pair
+  reads chaining as the cheaper route at either size again. What each size prints is `total T ms (sum
+  of per-dispatch spans, <size>), N dispatches, a barrier after every launch` and `production
+  schedule (counter chaining): N dispatches, GPU X ms (min of 7, same graph and size, no client in
+  the loop)`. The numbers to read against are the two samples already on the record, both **249**
+  dispatches: 1440p T **9.397** / X **9.525** with chainMask 2 (`r2026-11-10-13-gap2-1-1440p`) and
+  T **9.380** / X **10.074** with chaining fully on (`r2026-11-10-12-gap-1440p`); 720p T **3.393** /
+  X **3.277** with chaining fully on (`r2026-11-10-11-gap-720p`), whose chainMask-2 repeat is void.
+  So it decides two things: whether X falls to at or below T at 2560x1440 (then the c32 chain was the
+  last of the penalty and chaining is simply the wrong route at the shipping size), and whether the
+  0.116 ms saving the small size showed with chaining on is real - the `-2-720p` request exists only
+  because the first attempt at that half landed on a contended card. Quote the gate lines with the
+  numbers (`gpu_before`, `gpu_after`, `idle_waited_s`) and the fixed-cost probe (0.406-0.421 ms on a
+  clean card) as the control that says the card was at baseline scale; a BUSY before or a non-zero
+  idle wait and neither number is compared. If a run dies with `vkQueueWaitIdle(queue_) failed: -4`,
+  stop queueing and report the card rather than escalating.
+
+* learned: the expert-stage chain was most but not all of the 1440p chaining penalty, and the
+  small-size half of the pair is no read at all - it landed on a contended card (2026-11-10 tick,
+  read of `r2026-11-10-13-gap2-1-1440p` and `-2-720p`, both exit 0 after 5.6 s / 5.0 s, entry
+  `port-profile 2560 1440` / `1280 720`, on the binary `r2026-11-10-13-gap2-0-build` stamped **in
+  sync** at patch `22337d051a3a`, port `9d08f41`, 17 shader modules / 78 PTX kernels, policy
+  `92cc2c01922f`). **1440p is the clean sample**: its two lines read `total 9.397 ms (sum of
+  per-dispatch spans, 2560x1440), 249 dispatches, a barrier after every launch` and `production
+  schedule (counter chaining): 249 dispatches, GPU 9.525 ms (min of 7, same graph and size, no client
+  in the loop)`, so with chainMask 2 the chained route is still 0.128 ms dearer than the barriers,
+  against 0.694 ms with chaining fully on - the expert chain was 0.549 ms of that penalty and the c32
+  chain is the rest. Two controls say the sample is a reading: the barrier total is where it was with
+  chaining on (9.397 against 9.380), and the fixed-cost probe reads 0.409 ms, inside the usual
+  0.406-0.421 window. The gate is `gpu_before` WARN (util 3%), `gpu_after` BUSY (34%),
+  `idle_waited_s` 0.0 - the before-gate passes and the T-against-X comparison is intra-run, so the
+  after-BUSY is recorded rather than disqualifying. **720p is quoted nowhere**: barrier total
+  **21.030** ms against 3.393 with chaining on (6.2x) while its own fixed-cost probe reads 0.411 ms -
+  the contended-card signature where the probe holds and the table inflates - with `gpu_after` BUSY
+  at 92%, so neither its T nor its X of 3.536 (against 3.277) is evidence. So the item's first
+  question is answered - the expert chain was not the whole 1440p penalty, and `X >= T` still holds -
+  and its second is open, because the void sample cannot say whether the small size's 0.116 ms was
+  ever real. The move the readable half authorises was made: `src/nr_graph.cpp`'s `chainMask` default
+  **2 -> 0** in `experiments/opendlss_port/linux-port.patch` (odl-src's one commit amended,
+  `22337d0` -> `5c075a8`, patch re-cut `22337d051a3a` -> `5c075a8a7bfb`; only that file moved, the
+  `From` line, the stat lines, the blob index and the hunk differ), suite **598 passed / 9 failed /
+  38 skipped** - the same nine libGL/SDL2 environment failures this box always has. Queued behind a
+  rebuild: `r2026-11-10-14-gap3-1-1440p` and `-2-720p`, the second because the small-size half of
+  this pair has to be replaced, not because its question is settled. NOT verified: no device here, so
+  chainMask 0 has not been timed at either size.
 
 * learned: the two-route comparison put the 1440p cost in the chaining, not the barriers - the
   launch path is not the lever at any size, and the schedule has a size-dependent one (2026-11-10
