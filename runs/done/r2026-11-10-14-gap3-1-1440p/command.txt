@@ -1,0 +1,1 @@
+bash tools/port_profile.sh 2560 1440
