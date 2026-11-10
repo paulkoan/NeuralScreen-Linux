@@ -33,6 +33,35 @@ anything there.
 
 ## 1. Next work
 
+* **The port's pass is the next thing to attack, and it needs this file named to be touched.**
+  `experiments/opendlss_port/linux-port.patch` is authorised by this item and by nothing else.
+  Where the time is: the pass costs **3.446 ms** at 1080p on the small network and **6.296 ms** on
+  the large one, against NGX's 4.6 - so the small network is already past NGX, and the ~2.6 ms gap
+  the plan has been quoting is the large network's. Both are the same code with a different graph,
+  so a structural win helps both, and the small network is what the best frame is built on
+  (24.1 ms / 41.6 fps at work-scale 0.75). The FFN sweep is closed - four changes, one cost time,
+  one was worse, one did nothing, one crashed the device - so the next target is **dispatch count
+  and the gaps between dispatches**, not another register cap. Start by reading the per-dispatch
+  table in `r2026-11-08-profile-1080p-b`: 120 kernels, and the question is whether the cost is in
+  the kernels' own spans or in the space between them, because a barrier or a fence per dispatch
+  shows up as a gap and is fixable without touching a kernel. Then make **one** change, rebuild,
+  and read it at 720p (`port-profile 1280 720`); 1080p is corroboration and counts only at baseline
+  scale with its untouched rows inside the bar. Revert anything that kills the device on a clean
+  card rather than escalating it. Amend the patch's single commit and re-cut with
+  `git format-patch -1`, and make the same change in `/opt/data/tmp/odl-src/scripts/build_linux.sh`
+  - a change made only in the patch is lost the next time it is regenerated.
+
+* learned: the policy is now readable from here, and both installs landed (2026-11-10, interactive).
+  `tools/auto_runner.py` publishes the deployed file to `runs/policy.toml` on the results branch
+  whenever its hash changes, whether or not anything runs - `bc26217` is the first such commit, and
+  the published file is byte-identical to `ops/policy.toml` at `92cc2c01922f`, so the box is running
+  exactly the reviewed copy. That closes the circle that had the tick waiting for a file only a run
+  could change. The gate's bar is now `busy_util = 25` in the policy (was 15 in the code), passed to
+  the probe as `--busy-util`, and every report line carries the utilisation it was reached at -
+  `WARN [util 18% of the 25% bar] (resident: chromium)` - because "WARN" alone hid whether a sample
+  passed at 3% or at 24%. A browser playing video is the live source under test, not a contender
+  with it, which is why the bar moved.
+
 * learned: the internal-size curve is decided whole and **0.75 is the optimum** - 1.0 is clearly worse, so
   the setting stays where it is and no code changes (2026-11-10 tick, read of `r2026-11-10-9-small-ws100`,
   exit 0 in 16.8 s, entry `minimal-small`, 300 frames, `--size 2560x1440 --work-scale 1.0 --headless --shm
