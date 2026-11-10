@@ -33,21 +33,38 @@ anything there.
 
 ## 1. Next work
 
-* The small network's fps and pixel-parity pair is **queued**, and this item waits on its reading and nothing else:
-  `runs/queue/r2026-11-10-6-small-video.json` (entry `minimal-small`, `r2026-11-10-5-ws-video`'s argv character for
-  character - `--source video --input-video fixtures/stream-1440p-2s.mp4 --size 2560x1440 --work-scale 0.75 --headless
-  --frames 300 --shm --worker-log --save-after small-ws-after.png`, 900 s). The blocker this item spent four ticks on is
-  gone: the box policy now carries a plain `minimal-small` (`uv run python -m minimal`, no `xvfb-run`) with
-  `NS_WORKER_CMD` on `serve --model /opt/neuralscreen/model-small`, so the pair differs from the large network's own
-  sample only in the model. The proof is the runner's published copy, `runs/policy.toml` at digest `28b387ec388f`, which is
-  `ops/policy.toml` (`ed69c43`) byte for byte (`sha256 28b387ec388f6f5f...`). What the run has to show, in order: the
-  worker banner's model line reads `/opt/neuralscreen/model-small` (if it reads `/opt/neuralscreen/model`, nothing below
-  counts); the median / steady rate against `r2026-11-10-5-ws-video`'s 30.2 ms / 33.2 fps on the same shape (reference:
-  `r2026-11-08-1440p-window`'s 48.3 ms / 20.7 fps at 1440p internal); `small-ws-after.png` at 2560x1440 RGBA; and the
-  parity reading against that run's `ws-video-after.png` - the weights differ, so the pixels must differ, and
-  byte-identical PNGs mean the model never swapped. The port pass is 1.88x cheaper on the small network at profile scale
-  (`r2026-11-10-profile-small-c` 3.446 ms against b / c's 6.494 / 6.522), so an fps gain far short of that says the client
-  chain, not the network, is the frame. The other parked lever is unchanged: the FFN sweep's cap-80 question waits on a word.
+* The small network is a win and the question under it is its internal size: queue
+  `runs/queue/r2026-11-10-7-small-ws50.json` (entry `minimal-small`, `r2026-11-10-6-small-video`'s argv with
+  `--work-scale 0.75` -> `--work-scale 0.5` and `--save-after small-ws50-after.png`, 900 s), and this item waits on
+  its reading and nothing else. What the run has to show, in order: the worker banner's model line reads
+  `/opt/neuralscreen/model-small` (if it reads `/opt/neuralscreen/model`, nothing below counts); the median / steady
+  rate against `r2026-11-10-6-small-video`'s **24.1 ms / 41.6 fps** at `--work-scale 0.75` on this exact shape and
+  the large network's 30.2 ms / 33.2 fps (`r2026-11-10-5-ws-video`, same shape) - 60 fps needs 16.7 ms, so a frame
+  near 17-19 ms says this one argument has taken most of the remaining gap, while a frame that barely moves says the
+  fixed costs (readback + reply at the frame size, plus the client chain) are the floor and the internal size is
+  spent; `small-ws50-after.png` at 2560x1440 RGBA, and **different** from `small-ws-after.png` - a different internal
+  size must move the picture, so identical bytes mean the resize never ran and the reading is void. `--work-scale` is
+  the existing switch and the port's `resize_rgba8` does both bilinear dispatches with no rebuild, so the run needs
+  no code change; an internal size behind a setting is the quality trade the goal item already authorises. The other
+  parked lever is unchanged: the FFN sweep's cap-80 question waits on a word.
+
+* learned: the small network's client-level pair landed and it is the better configuration - **24.1 ms / 41.6 fps
+  steady** against the large network's 30.2 ms / 33.2 fps on the identical shape (2026-11-10 tick, read of
+  `r2026-11-10-6-small-video`, exit 0 in 13.3 s, entry `minimal-small`, 300 frames, `--size 2560x1440 --work-scale
+  0.75 --headless --shm`, repo `8f96f4c` (+60 uncommitted), worker in sync on patch `f1908586c80c` at port
+  `9d08f41`, policy `28b387ec388f`, card WARN before and after, so it passes the gate). All three checks the item set
+  pass: the worker banner reads `serve: 1920x1080, model /opt/neuralscreen/model-small`, so the small network really
+  ran; `small-ws-after.png` is **2560x1440 RGBA** (colortype 6, 3,494,079 bytes, sha256 `7e6e13de`); and it is **not**
+  `r2026-11-10-5-ws-video`'s `ws-video-after.png` (`4c6d0d93`, 3,232,828 bytes) - the weights swapped and the pixels
+  moved, which is the parity reading. 6.1 ms / +8.4 fps off the frame, where the port pass at profile scale is only
+  3.05 ms cheaper (`r2026-11-10-profile-small-c` 3.446 against b / c's 6.494 / 6.522), so the gain is not only the
+  pass: the worker's own line falls to **14.48 ms mean** (frames 119-299 read 11.7-14.6 ms) from the large network's
+  ~21, and the client's median frame decomposes as capture ~4 + send 2.4 + recv 14.7 + display 2.4 - the client now
+  waits on the worker almost exactly, so what is left is the pass's internal size and the fixed per-frame round trip
+  at 1440p output, not the transport. One flag of record only: the capture spread's max **48.2 ms at frame 43** against
+  a 4.0 ms median, outside the warm-up - the same frame-43 one-off shape `r2026-11-10-5-ws-video` carries, and it does
+  not enter the median. NOT verified: nothing was re-run here (no device on this box), so the 0.75 -> 0.5 step is
+  unmeasured until the run above lands.
 
 * learned: the box's policy carries the plain `minimal-small` at last, so the small network's fps / parity half is unblocked
   and queued in the same tick (2026-11-10 tick, no device here - nothing measured). `ops/policy.toml` (`ed69c43`) drops the
