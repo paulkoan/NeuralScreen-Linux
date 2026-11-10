@@ -1,0 +1,36 @@
+{
+  "exit_code": 0,
+  "seconds": 15.806,
+  "argv": [
+    "uv",
+    "run",
+    "python",
+    "-m",
+    "minimal",
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--shm",
+    "--worker-log",
+    "--save-after",
+    "ws-video-after.png"
+  ],
+  "artifacts": [
+    "ws-video-after.png"
+  ],
+  "runner": "005dd2c6ea9e",
+  "entry_env": [
+    "NS_WORKER_CMD"
+  ],
+  "gpu_before": "WARN (resident but not contending: signal-desktop (pid 18889, 162.0 MiB); resident but not contending: chromium (pid 18945, 107.0 MiB); resident but not contending: msedge (pid 1300500, 436.0 MiB))",
+  "gpu_after": "WARN (resident but not contending: signal-desktop (pid 18889, 162.0 MiB); resident but not contending: chromium (pid 18945, 107.0 MiB); resident but not contending: msedge (pid 1300500, 436.0 MiB))",
+  "idle_waited_s": 45.0
+}
