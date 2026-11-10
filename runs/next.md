@@ -33,6 +33,34 @@ anything there.
 
 ## 1. Next work
 
+* **Next: read `r2026-11-10-1-profile` and `r2026-11-10-2-shm-window` and act on the branch the second
+  one names. This item edits nothing but `runs/next.md`, and it re-queues nothing: both runs are
+  already in `runs/queue` behind the rebuild.**
+  `r2026-11-10-0-rebuild` landed exit 0 with the stamp the item asked for - `/opt/neuralscreen/port`
+  at `9d08f41`, 18 modified files, patch `a522cd30bbb2cb65c0f9ee46053c25aa3b2a9c23`, "16 shader
+  modules / 78 PTX kernels", and `rebuilt ... is patch a522cd30bbb2..., which is the patch applied -
+  runs will be in sync` - so the binary that loses the device is no longer the one the box runs.
+  * `runs/done/r2026-11-10-1-profile` (entry `port-profile 1920 1080`): the smoke test. Exit 0 at
+    ~6.5 ms (`r2026-11-08-profile-1080p-b`/`-c` read **6.494 / 6.522**), card WARN and `idle_waited_s`
+    recorded. If it dies with `vkQueueWaitIdle(queue_) failed: -4` (VK_ERROR_DEVICE_LOST), the same
+    signature on a fresh binary from a reverted patch is the card or the driver, not a code question:
+    stop queuing, record blocked, and it needs the developer.
+  * `runs/done/r2026-11-10-2-shm-window` (`manual: true` - the window source wants a picker clicked;
+    `minimal`'s argv is `--frames 120 --source window --size 1920x1080 --shm --capture-transport shm`
+    plus the two PNGs). Its control is `r2026-11-08-1080p-window-c`: **30.5 ms / 32.8 fps steady,
+    capture split wait 0.5 / read 5.1 ms**, gst chain 25% of one core. The reading is `read`, the
+    second is the `capture cpu:` line, and the caps are unchanged (RGBA 1920x1080), so the
+    before/after PNG hashes must match the control's - a changed hash is a defect, not a trade.
+    If `read` falls, the memfd is the lever and the next item is the port's `fullWidth != workWidth`
+    refusal so `--work-scale` moves the 1080p resize off gst and into the pass; **that item must name
+    `experiments/opendlss_port/linux-port.patch`**, cut from `/opt/data/tmp/odl-src/src/serve.cpp`
+    (edit the source, amend its one commit, `git format-patch -1` into the patch) - naming the file is
+    the authorisation, and a branch left unnamed is how the capture item stalled on 2026-11-09.
+    If `read` does not fall, the transport is settled as not the lever, the capture leg closes for
+    good, and that goes at the top of Learned rather than into another shape.
+  * If the profile has landed cleanly and the shm-window request is still sitting in `runs/queue`, it
+    is waiting on a person at the picker: say that in one line and stop.
+
 * learned: the rebuild is queued and the capture comparison is aimed at a fresh binary (2026-11-10 tick,
   no run - no device here). The box's worker is still built from patch `25cf5f62fbc4`, the `.maxnreg 80`
   that loses the device, and `8b6fc8f` reverted it in the repo with nothing rebuilding since - so every
