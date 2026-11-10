@@ -52,6 +52,24 @@ anything there.
   the change is in `src/nr_graph.cpp`'s schedule. Either way: one change, one `port-build`, one
   720p read, and revert anything that kills the device on a clean card rather than escalating it.
 
+  * **Stuck, 2026-11-10 tick - the comparison is in and it picks a file with no change in it.** T
+    **3.393** / X **3.277** ms over the same **249** dispatches: the barrier route costs **0.116 ms**
+    (0.47 us per dispatch, **3.4%** of the pass), so 96.6% is the dispatches' own work and the launch
+    path is worth at most 3.4% - `src/kernels.cpp` is not the pick. By the item's own definitions
+    that leaves `src/nr_graph.cpp`, and every knob in it is already at its measured optimum: the
+    deferred projection costs **~3 us a block inside the FFN** and saves a dispatch *and* a 1-15 MB
+    state publication (`deferMax` 128 stands - unfusing means a 5-6.5 us standalone GEMM plus that
+    publication, and 256 contradicts the c256 note that the separate GEMM is faster there);
+    `chainMask` bit 4 is measured neutral and only moves the split GEMMs off the gemv route; the four
+    route fuses are load-bearing; every stage in the fresh table sits at 110-150 TFLOP/s, i.e. the
+    achievable rate for these shapes. **So the next change needs a file this item excludes - the PTX
+    emitter (the c256 FFN launches 63 workgroups of 32 warps on a 76-SM card, but its ~2016 warps are
+    all the work that stage has: small, not mis-tiled) or `src/serve.cpp` (the frame's other ~17 ms).
+    Name one and the item moves.** The one read that would sharpen it without a word is the same
+    comparison at the shipping size - `tools/port_profile.sh 2560 1440` as
+    `runs/queue/r2026-11-10-12-gap-1440p.json`, where T - X scales to ~0.34 ms and crosses the item's
+    own 0.3 ms line; queue that next if no word has arrived.
+
 * learned: the per-dispatch table cannot separate a dispatch's own span from the gap after it, and
   that is measurable in one run now (2026-11-10 tick, code change in the patch's `src/main.cpp` -
   no device here). Read of the table in `r2026-11-08-profile-1080p-b` as the item asked: **120
