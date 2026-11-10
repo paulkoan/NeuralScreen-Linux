@@ -1,0 +1,7 @@
+{
+  "id": "r2026-11-10-14-gap3-1-1440p",
+  "entry": "port-profile",
+  "args": ["2560", "1440"],
+  "timeout_s": 600,
+  "note": "The reading that says whether the c32 chain was the rest of the 1440p penalty. Same argv as r2026-11-10-13-gap2-1-1440p, on the binary that carries chainMask 0 (chaining off altogether). Quote these two lines verbatim: `total T ms (sum of per-dispatch spans, 2560x1440), N dispatches, a barrier after every launch` and `production schedule (counter chaining): N dispatches, GPU X ms (min of 7, same graph and size, no client in the loop)`. The numbers to read against, from the chainMask-2 run before this one: T 9.397 ms, X 9.525 ms, N 249; and from the run with chaining fully on (r2026-11-10-12-gap-1440p): T 9.380, X 10.074. Check the gate first (gpu_before / gpu_after / idle_waited_s: a BUSY before or a non-zero idle wait and the sample is quoted nowhere), then read T against 9.397 (the fixed-cost probe line is the control that says the card was at baseline scale - it reads 0.406-0.421 ms on every clean run) and X against 9.525. If X falls to at or below T, the c32 chain was the residual penalty and chaining is simply the wrong route at the shipping size; if X stays above T, the schedule is not the lever at 2560x1440 and the chain narrowing stops there. If the run dies with `vkQueueWaitIdle(queue_) failed: -4`, stop queueing and report the card."
+}

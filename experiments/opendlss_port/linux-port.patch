@@ -1,4 +1,4 @@
-From 22337d051a3ace9c0b5bfbd8b9722ec63fd1fded Mon Sep 17 00:00:00 2001
+From 5c075a8a7bfb5cb22972cae93fde9af28b833699 Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -141,7 +141,7 @@ both, and the hold the client pays to present the mid).
  src/kernels.cpp              |  101 +++-
  src/kernels.h                |   54 +-
  src/main.cpp                 |   96 ++-
- src/nr_graph.cpp             |  116 ++--
+ src/nr_graph.cpp             |  119 ++--
  src/nr_graph.h               |    6 +-
  src/nr_model.cpp             |   11 +
  src/nr_model.h               |    6 +
@@ -150,7 +150,7 @@ both, and the hold the client pays to present the mid).
  src/serve.cpp                | 1074 ++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |   71 ++-
  src/vk_context.h             |   23 +
- 18 files changed, 2417 insertions(+), 62 deletions(-)
+ 18 files changed, 2420 insertions(+), 62 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/mid_warp.comp
@@ -1207,20 +1207,23 @@ index 6d57e3a..86606e1 100644
  }
  
 diff --git a/src/nr_graph.cpp b/src/nr_graph.cpp
-index 5c8a2e1..390fe93 100644
+index 5c8a2e1..468fd24 100644
 --- a/src/nr_graph.cpp
 +++ b/src/nr_graph.cpp
-@@ -134,15 +134,28 @@ Graph::Routes Graph::routesFromEnvironment() {
+@@ -134,15 +134,31 @@ Graph::Routes Graph::routesFromEnvironment() {
    r.fusePool = !getenv("DLSS5VK_NO_FUSE_POOL");
    r.fuseUpres = !getenv("DLSS5VK_NO_FUSE_UPRES");
    r.fusePost = !getenv("DLSS5VK_NO_FUSE_POST");
 -  r.chainMask = getenv("DLSS5VK_CHAIN_MASK") ? atoi(getenv("DLSS5VK_CHAIN_MASK")) : 3;   // bit 4 measured neutral
-+  // Bit 4 measured neutral; bit 1 (the expert stages' FFN -> attention -> projection chain) is off as of
-+  // 2026-11-10: with chaining on, the production schedule cost 10.074 ms against the barrier route's 9.380 ms
-+  // on the same 249 dispatches at 2560x1440 (r2026-11-10-12-gap-1440p), where at 1280x720 it was the cheaper
-+  // route by 0.116 ms - so the counter waits are a size-dependent cost, and the expert chain is the one that
-+  // covers the bulk of the pass. Revert if the pair reads the 720p saving as worth more than the 1440p cost.
-+  r.chainMask = getenv("DLSS5VK_CHAIN_MASK") ? atoi(getenv("DLSS5VK_CHAIN_MASK")) : 2;
++  // Bit 4 measured neutral; bits 1 and 2 (the expert stages' FFN -> attention -> projection chain and
++  // the c32 blocks' chain) are off as of 2026-11-10. With chaining fully on the production schedule cost
++  // 10.074 ms against the barrier route's 9.380 ms on the same 249 dispatches at 2560x1440
++  // (r2026-11-10-12-gap-1440p); with bit 1 off (chainMask 2) it cost 9.525 against 9.397
++  // (r2026-11-10-13-gap2-1-1440p) - so the expert chain was 0.549 ms of that 0.694 ms penalty and the
++  // c32 chain is the remaining 0.128, i.e. the counter waits are dearer than they save at this size.
++  // At 1280x720 chaining read 0.116 ms cheaper with everything on (r2026-11-10-11-gap-720p), and the
++  // chainMask-2 sample at that size landed on a contended card, so the small-size reading is open.
++  r.chainMask = getenv("DLSS5VK_CHAIN_MASK") ? atoi(getenv("DLSS5VK_CHAIN_MASK")) : 0;
    r.deferMax = getenv("DLSS5VK_DEFER_MAX") ? (uint32_t)atoi(getenv("DLSS5VK_DEFER_MAX")) : 128u;
    r.vitChain = getenv("DLSS5VK_VIT_CHAIN") ? atoi(getenv("DLSS5VK_VIT_CHAIN")) != 0 : true;
    return r;
@@ -1242,7 +1245,7 @@ index 5c8a2e1..390fe93 100644
    // Chaining links consecutive PTX launches through device counters and drops the barrier between them, so every
    // launch in the chain must take its PTX route. Any switch that sends one kernel family (or one fused block)
    // back to GLSL takes the whole graph back to barriers.
-@@ -161,9 +174,6 @@ Graph::Graph(vk::Context& context, Model& model, Kernels& kernels, const Geometr
+@@ -161,9 +177,6 @@ Graph::Graph(vk::Context& context, Model& model, Kernels& kernels, const Geometr
              geometry_.fullHeight, tallestRow, Kernels::kSyncCountersPerRegion);
      routes_.chain = routes_.vitChain = false;
    }
@@ -1252,7 +1255,7 @@ index 5c8a2e1..390fe93 100644
  }
  
  Graph::~Graph() {
-@@ -592,7 +602,8 @@ void Graph::encodeVit(VkCommandBuffer commands, Activation& state, uint32_t toke
+@@ -592,7 +605,8 @@ void Graph::encodeVit(VkCommandBuffer commands, Activation& state, uint32_t toke
    // the producer's column-group count at kSyncRows + 4 * {0 expand, 1 contract, 2 qkv, 4 projection}).
    const bool chain = routes_.vitChain;
    auto vitCounter = [&](int block, int op) { return kernels_.syncAddress(block, Kernels::kSyncRows) + 4 * op; };
@@ -1262,7 +1265,7 @@ index 5c8a2e1..390fe93 100644
      kernels_.setStageLabel("block " + std::to_string(block) + " vit");
      const Tensor& expand = model_.tensor(block, 0);
      const Tensor& contract = model_.tensor(block, 1);
-@@ -604,7 +615,7 @@ void Graph::encodeVit(VkCommandBuffer commands, Activation& state, uint32_t toke
+@@ -604,7 +618,7 @@ void Graph::encodeVit(VkCommandBuffer commands, Activation& state, uint32_t toke
      e.output = expanded; e.silu = true; e.quantize = true;
      e.chainSingle = true;
      if (chain) {
@@ -1271,7 +1274,7 @@ index 5c8a2e1..390fe93 100644
        e.chainSignal = vitCounter(block, 0); e.chained = true;
      }
      kernels_.gemmFp8(commands, e);
-@@ -661,7 +672,7 @@ void Graph::encodeVit(VkCommandBuffer commands, Activation& state, uint32_t toke
+@@ -661,7 +675,7 @@ void Graph::encodeVit(VkCommandBuffer commands, Activation& state, uint32_t toke
      p.output = &state; p.quantize = true;
      p.residual = ffnResidual; p.scaleResidual = true; p.auxTensor = &projection; p.auxByteOffset = channels * channels;
      if (chain && attnPtx) { p.chainWaitRows = vitCounter(block, 3); p.chainWaitExpected = heads * (padded / 64); }
@@ -1280,7 +1283,7 @@ index 5c8a2e1..390fe93 100644
      kernels_.gemmFp8(commands, p);
      capture(commands, "block-" + std::to_string(block), state);
    }
-@@ -757,11 +768,13 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
+@@ -757,11 +771,13 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
    const uint32_t rows1 = d1.width * d1.height;
    Activation* downsampled32 = allocate("encoder 32 downsample", rows1, 32, Format::E4);
    const bool poolBlock4 = options_.fusedBlocks && !options_.captureIntermediates && fusePool;
@@ -1298,7 +1301,7 @@ index 5c8a2e1..390fe93 100644
      std::swap(state, scratch);
      capture(commands, "block-" + std::to_string(block), *state);
    }
-@@ -779,12 +792,17 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
+@@ -779,12 +795,17 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
    }
    capture(commands, "transition-4-5", *next64);
  
@@ -1320,7 +1323,7 @@ index 5c8a2e1..390fe93 100644
      const FusedStage& stage = encoderStages[s];
      const uint32_t rows = stage.level.width * stage.level.height;
      const uint32_t nextRows = stage.next.width * stage.next.height;
-@@ -802,7 +820,7 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
+@@ -802,7 +823,7 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
        std::swap(st, sc);
        if (!hasPendingProjection_) capture(commands, "block-" + std::to_string(block), *st);
      }
@@ -1329,7 +1332,7 @@ index 5c8a2e1..390fe93 100644
      kernels_.setStageLabel("transition " + std::to_string(stage.last));
      Activation* pooled = allocate(label + " downsample", nextRows, stage.channels, Format::E4);
      kernels_.downsample2x(commands, *raw, *pooled, stage.level.width, stage.level.height, stage.next.width,
-@@ -818,67 +836,72 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
+@@ -818,67 +839,72 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
      capture(commands, "transition-" + std::to_string(stage.last) + "-" + std::to_string(stage.last + 1), *next);
      stageInput = next;
    }
@@ -1425,7 +1428,7 @@ index 5c8a2e1..390fe93 100644
      const uint32_t lowRows = stage.low.width * stage.low.height;
      const uint32_t rows = stage.high.width * stage.high.height;
      std::string label = "decoder " + std::to_string(stage.channels);
-@@ -946,12 +969,13 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
+@@ -946,12 +972,13 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
      stageInput = st;
    }
  
@@ -1442,7 +1445,7 @@ index 5c8a2e1..390fe93 100644
      head_ = allocate("RGBA neural head", fullRows, 4, Format::F32);
      if (options_.fusedBlocks && !options_.captureIntermediates && routes_.fusePost) {
        // The post blend (2x upsample of block 69 + block 0, learned scales) feeds block 70 in registers and the
-@@ -980,7 +1004,7 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
+@@ -980,7 +1007,7 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
        f.attentionScaleByteOffset = layout.scale;
        f.headWeights = &headWeights; f.head = head_;
        f.width = g.fullWidth; f.height = g.fullHeight; f.shiftX = shiftX; f.shiftY = shiftY;
@@ -1451,7 +1454,7 @@ index 5c8a2e1..390fe93 100644
        kernels_.fusedBlock32(commands, f);
      } else {
        Activation* rawMerged = allocate("post raw merge", fullRows, 32, Format::F16);
-@@ -989,7 +1013,7 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
+@@ -989,7 +1016,7 @@ void Graph::record(VkCommandBuffer commands, const Activation& inputFeatures) {
                           *merged, d0.width, d0.height, g.fullWidth, g.fullHeight);
        Activation* rawBlockOutput = allocate("post raw block output", fullRows, 32, Format::F16);
        Temporaries temps = createTemporaries("post", fullRows, 32);
