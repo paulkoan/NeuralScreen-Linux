@@ -1,0 +1,7 @@
+{
+  "id": "r2026-11-10-1-profile",
+  "entry": "port-profile",
+  "args": ["1920", "1080"],
+  "timeout_s": 600,
+  "note": "The smoke test that a fresh binary from a reverted patch survives a real dispatch. It runs on the box's own timer, so it answers without anyone at the screen: exit 0 at ~6.5 ms - r2026-11-08-profile-1080p-b and -c read 6.494 / 6.522 on the pre-cap binary - with card WARN and idle_waited_s recorded. If it dies with the same `vkQueueWaitIdle(queue_) failed: -4` (VK_ERROR_DEVICE_LOST) that r2026-11-09-shm-window and the FFN sweep's sixth pair wore, stop queuing: the same signature on a fresh binary from a reverted patch is the card or the driver, not a code question, and it needs the developer. Queued directly behind r2026-11-10-0-rebuild (numeric prefix), so it reads the rebuilt worker."
+}

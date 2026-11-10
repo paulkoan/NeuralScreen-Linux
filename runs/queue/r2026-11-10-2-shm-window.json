@@ -1,0 +1,12 @@
+{
+  "id": "r2026-11-10-2-shm-window",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--source", "window", "--size", "1920x1080", "--shm",
+           "--capture-transport", "shm",
+           "--save-before", "shm-window-before.png",
+           "--save-after", "shm-window-after.png", "--worker-log"],
+  "timeout_s": 900,
+  "artifacts": ["shm-window-before.png", "shm-window-after.png"],
+  "manual": true,
+  "note": "Re-runs the shared-memory capture comparison that r2026-11-09-shm-window could not read: this argv is that run's, character for character, so the pair with its control is one variable apart (--capture-transport shm). r2026-11-09-shm-window produced no number at all - its worker died at the warm-up with `vkQueueWaitIdle(queue_) failed: -4` before the first frame, because the box was still running the patch that loses the device - so this run only exists once r2026-11-10-0-rebuild has replaced the binary. Its control is r2026-11-08-1080p-window-c: **30.5 ms / 32.8 fps steady, capture split wait 0.5 / read 5.1 ms**, gst chain 25% of one core. The reading is `read`, which should fall toward a memory copy while the frame time holds or improves; the `capture cpu:` line is the second reading. The caps are unchanged (RGBA 1920x1080), so the before/after PNG hashes must match the control's - a changed hash is a defect, not a trade. If read falls, the memfd is the lever and the next item is the port's fullWidth != workWidth refusal so --work-scale moves the 1080p resize off gst and into the pass; if it does not fall, the transport is settled as not the lever and the capture leg closes for good. manual: true because the window source wants a picker clicked. Queued last (numeric prefix), so it reads the rebuilt worker."
+}
