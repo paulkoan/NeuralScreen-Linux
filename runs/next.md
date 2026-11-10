@@ -70,6 +70,22 @@ anything there.
   a headless 1080p run reaches the small network under the same client argv the large network's
   numbers were taken on - one line in `/opt/neuralscreen/policy.toml`, and that file is the box's.
 
+  **2026-11-10 tick, and the obstacle is now one file and one word.** The box's deployed policy is
+  unchanged in behaviour: `ops/policy.toml` (`f1473eb`) is the reviewed copy, taken from
+  `r2026-11-10-profile-large-1080p`'s own published `policy.toml`, and its one edit - deleting the
+  shadowed duplicate `minimal-small` - cannot change what runs, because the runner keys entries in a
+  dict and the last block wins. So the entry this item asks for still exists nowhere: the surviving
+  `minimal-small` is `xvfb-run -a uv run python -m minimal` with `NS_WORKER_CMD` naming `serve --model
+  /opt/neuralscreen/model-small`, while the fps / pixel-parity pair needs the plain client argv the
+  large network's numbers were taken on (`minimal` carries no wrapper and `r2026-11-10-5-ws-video` ran
+  it `--headless` at exit 0, so the wrapper is the only thing between the two). The change is one line
+  in `ops/policy.toml`: drop `xvfb-run -a` from `minimal-small`, or add a plain sibling beside it. A
+  tick may not authorise a policy edit for itself, so this waits on the developer: either write it and
+  install it, or name `ops/policy.toml` in this item and the next tick can write it - with
+  `install -m 0644 /opt/neuralscreen/state/repo/ops/policy.toml /opt/neuralscreen/policy.toml` still a
+  person's act, and the next run's published copy the proof it landed. Nothing is queued off it either
+  way. The other parked lever is unchanged: the FFN sweep's cap-80 question waits on a word.
+
 * learned: the ordinary profile runs the large network again and its own sample dates the card rather
   than the code - `r2026-11-10-profile-large-1080p` (2026-11-10 tick, exit 0 in 4.5 s, 4.46 s wall,
   entry `port-profile`, `bash tools/port_profile.sh 1920 1080`, repo `87a5e7b`, policy `e735408303da`)
