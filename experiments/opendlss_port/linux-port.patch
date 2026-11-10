@@ -1,4 +1,4 @@
-From a522cd30bbb2cb65c0f9ee46053c25aa3b2a9c23 Mon Sep 17 00:00:00 2001
+From f1908586c80c992da865c66cb5bc196dc6121c7c Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -132,13 +132,14 @@ the vector, and the field carries no occlusion flag - so on real content small f
 smear and disoccluded pixels fall back to no interpolation (docs/interpolation.md prices
 both, and the hold the client pays to present the mid).
 ---
- scripts/build_linux.sh       |  161 ++++++
+ scripts/build_linux.sh       |  161 +++++
  shaders/composite_serve.comp |  196 +++++++
  shaders/mid_warp.comp        |  146 +++++
  shaders/preprocess.comp      |   26 +-
  shaders/proxy_expand.comp    |   35 ++
- src/kernels.cpp              |   88 ++-
- src/kernels.h                |   48 +-
+ shaders/resize_rgba8.comp    |   66 +++
+ src/kernels.cpp              |  101 +++-
+ src/kernels.h                |   54 +-
  src/main.cpp                 |   69 ++-
  src/nr_graph.cpp             |  109 ++--
  src/nr_graph.h               |    6 +-
@@ -146,14 +147,15 @@ both, and the hold the client pays to present the mid).
  src/nr_model.h               |    6 +
  src/nr_schedule.cpp          |  235 ++++++++
  src/nr_schedule.h            |   56 ++
- src/serve.cpp                | 1004 ++++++++++++++++++++++++++++++++++
+ src/serve.cpp                | 1074 ++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |   71 ++-
  src/vk_context.h             |   23 +
- 17 files changed, 2230 insertions(+), 60 deletions(-)
+ 18 files changed, 2385 insertions(+), 60 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/mid_warp.comp
  create mode 100644 shaders/proxy_expand.comp
+ create mode 100644 shaders/resize_rgba8.comp
  create mode 100644 src/nr_schedule.cpp
  create mode 100644 src/nr_schedule.h
  create mode 100644 src/serve.cpp
@@ -775,8 +777,80 @@ index 0000000..23d1ef5
 +                                       1.0);
 +}
 \ No newline at end of file
+diff --git a/shaders/resize_rgba8.comp b/shaders/resize_rgba8.comp
+new file mode 100644
+index 0000000..5706876
+--- /dev/null
++++ b/shaders/resize_rgba8.comp
+@@ -0,0 +1,66 @@
++#version 460
++// RGBA8 in, RGBA8 out, resized — the one dispatch the work-scale path needs.
++//
++// The worker is handed the client's frame at the display size and runs the network at the
++// work size (`--work-scale`, minimal/loop.py's work_size), so the colour has to come down
++// once on the way in and the published image has to go back up once on the way out. Both
++// directions are the same dispatch with the two sizes swapped, which is why this is one
++// shader and not two: inWidth/outWidth say which way it is going, and a 1:1 call is the
++// identity to the byte (the texel-centre mapping below lands exactly on the source pixel).
++//
++// Bilinear, and deliberately so: what the stage replaces is the capture chain's
++// `videoscale`, which is a bilinear-ish resample as well, and the picture the network
++// produces is already the trade this mode exists to make (a settings-shaped one — the
++// product accepts quality costs when they can be switched off). Nearest on the way up
++// would be visibly blockier than what gst was doing, so bilinear is the comparison that
++// keeps the frame-time reading meaningful.
++//
++// The alpha byte rides through the same mix: every source this path sees is opaque (the
++// composite writes 255), so a mix of opaques is 255 again and no pixel can go transparent.
++layout(local_size_x = 8, local_size_y = 8) in;
++
++layout(push_constant) uniform Push {
++  uint inWidth;
++  uint inHeight;
++  uint outWidth;
++  uint outHeight;
++} pc;
++
++layout(std430, binding = 0) readonly buffer Source { uint sourcePixels[]; };   // RGBA8, little-endian
++layout(std430, binding = 6) writeonly buffer Out { uint outPixels[]; };        // RGBA8, little-endian
++
++vec4 fetch(uint x, uint y) {
++  const uint packed = sourcePixels[y * pc.inWidth + x];
++  const float k = 1.0 / 255.0;
++  return vec4(float(packed & 0xffu) * k,
++              float((packed >> 8u) & 0xffu) * k,
++              float((packed >> 16u) & 0xffu) * k,
++              float((packed >> 24u) & 0xffu) * k);
++}
++
++void main() {
++  uvec2 id = gl_GlobalInvocationID.xy;
++  if (id.x >= pc.outWidth || id.y >= pc.outHeight) return;
++  // Texel centres. Output pixel `id` covers [id, id + 1) and its centre sits at
++  // `(id + 0.5) * in/out` in input pixel units, so the position to sample is that minus
++  // the half-pixel that takes it from a boundary to a centre. At 1:1 the two halves
++  // cancel exactly and the samples are all the source pixel itself with t == 0.
++  vec2 scale = vec2(float(pc.inWidth) / float(pc.outWidth),
++                    float(pc.inHeight) / float(pc.outHeight));
++  vec2 p = (vec2(id) + vec2(0.5)) * scale - vec2(0.5);
++  vec2 base = floor(p);
++  vec2 t = p - base;
++  // Clamped at the edge, the way the sampler's address mode would have done it: the four
++  // taps of an edge pixel are that pixel repeated, so the border does not darken.
++  const ivec2 last = ivec2(int(pc.inWidth) - 1, int(pc.inHeight) - 1);
++  const ivec2 lo = clamp(ivec2(base), ivec2(0), last);
++  const ivec2 hi = clamp(ivec2(base) + 1, ivec2(0), last);
++  vec4 topLeft = fetch(uint(lo.x), uint(lo.y));
++  vec4 topRight = fetch(uint(hi.x), uint(lo.y));
++  vec4 bottomLeft = fetch(uint(lo.x), uint(hi.y));
++  vec4 bottomRight = fetch(uint(hi.x), uint(hi.y));
++  vec4 value = mix(mix(topLeft, topRight, t.x), mix(bottomLeft, bottomRight, t.x), t.y);
++  uvec4 bytes = uvec4(clamp(floor(value * 255.0 + 0.5), vec4(0.0), vec4(255.0)));
++  outPixels[id.y * pc.outWidth + id.x] =
++      bytes.r | (bytes.g << 8u) | (bytes.b << 16u) | (bytes.a << 24u);
++}
 diff --git a/src/kernels.cpp b/src/kernels.cpp
-index 62bb8c3..0b0c2ab 100644
+index 62bb8c3..928650c 100644
 --- a/src/kernels.cpp
 +++ b/src/kernels.cpp
 @@ -42,7 +42,8 @@ void check(bool condition, const char* message) {
@@ -785,11 +859,11 @@ index 62bb8c3..0b0c2ab 100644
    for (const char* name : {"gemm_fp8", "gemm_f16", "ops", "window_normalize", "window_attend", "global_normalize",
 -                           "global_attend", "preprocess", "fused_block32", "qkv_attention", "gemm_mlp", "global_attention", "gemm_reduce"}) {
 +                           "global_attend", "preprocess", "fused_block32", "qkv_attention", "gemm_mlp", "global_attention",
-+                           "gemm_reduce", "composite_serve", "proxy_expand", "mid_warp"}) {
++                           "gemm_reduce", "composite_serve", "proxy_expand", "mid_warp", "resize_rgba8"}) {
      modules_[name] = context_.loadShaderModule(shaderDirectory + "/" + name + ".spv");
    }
  }
-@@ -498,16 +499,83 @@ void Kernels::preprocessFromProxy(VkCommandBuffer commands, const vk::Buffer& pr
+@@ -498,16 +499,96 @@ void Kernels::preprocessFromProxy(VkCommandBuffer commands, const vk::Buffer& pr
    struct Push {
      uint32_t fullWidth, fullHeight, validWidth, validHeight, sourceWidth, sourceHeight, seed;
      float autoMask, localTone, localStructure, skinStructure, style;
@@ -820,6 +894,19 @@ index 62bb8c3..0b0c2ab 100644
 +  dispatchLabel_ = "proxy expand";
 +  dispatch(commands, pipeline("proxy_expand", {}, 0), bindings, &push, sizeof(push),
 +           (width + 7) / 8, (height + 7) / 8, 1);
++}
++
++void Kernels::resizeRgba8(VkCommandBuffer commands, const vk::Buffer& source, const vk::Buffer& output,
++                          uint32_t inWidth, uint32_t inHeight, uint32_t outWidth, uint32_t outHeight) {
++  struct Push {
++    uint32_t inWidth, inHeight, outWidth, outHeight;
++  } push{inWidth, inHeight, outWidth, outHeight};
++  const vk::Buffer* bindings[vk::kGenericBindings] = {};
++  bindings[0] = &source;
++  bindings[6] = &output;
++  dispatchLabel_ = "resize rgba8";
++  dispatch(commands, pipeline("resize_rgba8", {}, 0), bindings, &push, sizeof(push),
++           (outWidth + 7) / 8, (outHeight + 7) / 8, 1);
 +}
 +
 +void Kernels::compositeToRgba8(VkCommandBuffer commands, const vk::Buffer& proxy, const Activation& head,
@@ -874,7 +961,7 @@ index 62bb8c3..0b0c2ab 100644
  void Kernels::convertF32ToF16(VkCommandBuffer commands, const Activation& input, Activation& output) {
    check(input.format == Format::F32 && output.format == Format::F16, "convert formats");
    uint32_t count = input.rows * input.channels;
-@@ -790,7 +858,21 @@ bool Kernels::ptxFfnEnabled() {
+@@ -790,7 +871,21 @@ bool Kernels::ptxFfnEnabled() {
  }
  
  uint32_t Kernels::ffnRowTiles(uint32_t channels) {
@@ -898,10 +985,10 @@ index 62bb8c3..0b0c2ab 100644
  
  void Kernels::expertFfnPtx(VkCommandBuffer commands, const ExpertFfnArgs& a, const Chain& chain) {
 diff --git a/src/kernels.h b/src/kernels.h
-index 472bd36..d2eadf0 100644
+index 472bd36..bace217 100644
 --- a/src/kernels.h
 +++ b/src/kernels.h
-@@ -77,10 +77,48 @@ class Kernels {
+@@ -77,10 +77,54 @@ class Kernels {
      uint32_t fullWidth, fullHeight, validWidth, validHeight, sourceWidth, sourceHeight, seed;
      bool autoMask;
      float localTone, localStructure, skinStructure, style;
@@ -928,6 +1015,12 @@ index 472bd36..d2eadf0 100644
 +  void expandRgba8ToProxy(VkCommandBuffer commands, const vk::Buffer& source,
 +                          const vk::Buffer& proxy, uint32_t width, uint32_t height,
 +                          bool bgra = false);
++  // RGBA8 in, RGBA8 out, resized (shaders/resize_rgba8.comp). The work-scale path's one
++  // extra stage: the client's frame arrives at the display size while the network runs at
++  // the work size, so the colour comes down once on the way in and the published image goes
++  // back up once on the way out. Bilinear, and a 1:1 call is the identity to the byte.
++  void resizeRgba8(VkCommandBuffer commands, const vk::Buffer& source, const vk::Buffer& output,
++                   uint32_t inWidth, uint32_t inHeight, uint32_t outWidth, uint32_t outHeight);
 +  // `motion` is the client's field: 2 x f16 per pixel, current -> previous, in work-resolution
 +  // pixels (guides.py's units, and what NGX consumes), which the shader turns into the
 +  // reprojection the demo's motionTex carries in uv. A caller that declared no field passes a
@@ -950,7 +1043,7 @@ index 472bd36..d2eadf0 100644
    void convertF32ToF16(VkCommandBuffer commands, const Activation& input, Activation& output);
    void quantize(VkCommandBuffer commands, const Activation& input, Activation& output);
    void downsample2x(VkCommandBuffer commands, const Activation& input, Activation& output, uint32_t inWidth,
-@@ -210,13 +248,19 @@ class Kernels {
+@@ -210,13 +254,19 @@ class Kernels {
    // w2 tile-major [e][4][32][32], w3 tile-major [K/32][K][32].
    static bool ptxFfnEnabled();
    static uint32_t ffnRowTiles(uint32_t channels);          // PTX expert FFN: 16-row tiles per workgroup (its chaining signals cover 16 * tiles rows)
@@ -1714,10 +1807,10 @@ index 0000000..8d64f1c
 +}  // namespace nr
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..41d36b8
+index 0000000..06af4af
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,1004 @@
+@@ -0,0 +1,1074 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -1732,8 +1825,14 @@ index 0000000..41d36b8
 +//
 +// What this is not, and says so rather than misbehaving:
 +//
-+//   * No NGX upscaling. fullWidth/fullHeight must be 0 or the work size. The MVP sends
-+//     0 ("colour and work are the same size"); a --work-scale run is rejected here.
++//   * Work scale. fullWidth/fullHeight in the header are the display frame the client sends
++//     and wants back; the work size is what the network runs at. Equal (or 0, the MVP's own
++//     spelling of "colour and work are the same size") is every number measured before this
++//     path existed, and keeps that exact code. Smaller work than frame is --work-scale: the
++//     colour comes down once on the way in and the published image goes back up once on the
++//     way out, both with one bilinear dispatch (shaders/resize_rgba8.comp), so the resize
++//     happens on the GPU inside this pass instead of in the capture chain's videoscale. A
++//     frame smaller than the work size is still refused: nothing here scales the other way.
 +//   * The shared-memory channels, both directions: SHMI carries the frame up (colour +
 +//     motion, no pipe copy) and OUTS carries the pixels back, with OAK2/SACK acknowledgements.
 +//     A refusal is answered ok=0, which is the documented fallback: the client stays on
@@ -2135,16 +2234,27 @@ index 0000000..41d36b8
 +    fprintf(stderr, "serve: the stream header carried a work size of %ux%u\n", workWidth, workHeight);
 +    return 2;
 +  }
-+  if ((startup.fullWidth && startup.fullWidth != workWidth) || (startup.fullHeight && startup.fullHeight != workHeight)) {
-+    fprintf(stderr, "serve: the client expects NGX upscaling (%ux%u -> %ux%u); this worker runs the network at one "
-+                    "size. Run the pipeline without --work-scale.\n",
-+            workWidth, workHeight, startup.fullWidth, startup.fullHeight);
++  // The display frame: what the client sends its colour at and wants its pixels back at. A
++  // zero is the header's own "colour and work are the same size", which is what every run
++  // measured before this path existed sent - so those keep the code they had, exactly.
++  const uint32_t frameWidth = startup.fullWidth ? startup.fullWidth : workWidth;
++  const uint32_t frameHeight = startup.fullHeight ? startup.fullHeight : workHeight;
++  if (frameWidth < workWidth || frameHeight < workHeight) {
++    fprintf(stderr, "serve: the header asks for a %ux%u frame from a %ux%u work size; this path "
++                    "scales a smaller work size up to the frame, never the other way round\n",
++            frameWidth, frameHeight, workWidth, workHeight);
 +    return 2;
 +  }
++  const bool workScaled = frameWidth != workWidth || frameHeight != workHeight;
 +
 +  const uint32_t seed = (uint32_t)atoi(getenv("DLSS5VK_SERVE_SEED") ? getenv("DLSS5VK_SERVE_SEED") : "0");
 +  fprintf(stderr, "serve: %ux%u, model %s, shaders %s, seed %u\n", workWidth, workHeight, modelDir.c_str(),
 +          shaderDir.c_str(), seed);
++  if (workScaled)
++    fprintf(stderr, "serve: work scale: the client's frame is %ux%u and the network runs at %ux%u, "
++                    "so the colour is resized down on the way in and the published image back up "
++                    "(one bilinear dispatch each way)\n",
++            frameWidth, frameHeight, workWidth, workHeight);
 +  fprintf(stderr, "serve: built from %s\n", buildStamp());
 +  if (startup.intensity != 1.0f)
 +    fprintf(stderr, "serve: the header asks for intensity %.3f; this path has no intensity blend, it is ignored\n",
@@ -2187,8 +2297,16 @@ index 0000000..41d36b8
 +  std::unique_ptr<nr::Graph> graph;
 +  vk::Buffer proxy{};
 +  vk::Buffer colourBuffer{};  // the client's RGBA8 frame, from the pipe or the mapping
++  // The work-scale path's two extra surfaces, created only when the frame and the work size
++  // differ: `workColourBuffer` is the client's colour at the work size (what the proxy is
++  // expanded from) and `frameBuffer`/`midFrameBuffer` are the published image/mid at the
++  // frame size (what is read back and handed to the client). With no scale they stay empty
++  // and no dispatch touches them.
++  vk::Buffer workColourBuffer{};
++  vk::Buffer frameBuffer{};
 +  vk::Buffer imageBuffer{};      // RGBA8, the composite's output and what leaves the device
 +  vk::Buffer midBuffer{};        // RGBA8, the generated mid-frame, when one is asked for
++  vk::Buffer midFrameBuffer{};
 +  vk::Buffer historyProxy{};     // the last published frame, as a proxy the next one reads
 +  vk::Buffer motionBuffer{};     // the client's motion field, 2 x f16 per pixel, as it arrived
 +  nr::Activation* features = nullptr;
@@ -2261,7 +2379,16 @@ index 0000000..41d36b8
 +    features = graph->allocate("input features", fullWidth * fullHeight, 16, nr::Format::F32);
 +    proxy = context->createBuffer((VkDeviceSize)workWidth * workHeight * 16, false, "proxy");
 +    colourBuffer =
-+        context->createBuffer((VkDeviceSize)workWidth * workHeight * 4, false, "rgba8 frame");
++        context->createBuffer((VkDeviceSize)frameWidth * frameHeight * 4, false, "rgba8 frame");
++    // With a work scale the colour the proxy is expanded from is a resize of the client's
++    // frame, so the expand reads this surface and not colourBuffer; without one the two are
++    // the same picture and this buffer is never created, let alone dispatched.
++    if (workScaled) {
++      workColourBuffer =
++          context->createBuffer((VkDeviceSize)workWidth * workHeight * 4, false, "rgba8 work colour");
++      frameBuffer = context->createBuffer((VkDeviceSize)frameWidth * frameHeight * 4, false, "rgba8 frame image");
++      midFrameBuffer = context->createBuffer((VkDeviceSize)frameWidth * frameHeight * 4, false, "rgba8 frame mid-frame");
++    }
 +    imageBuffer = context->createBuffer((VkDeviceSize)workWidth * workHeight * 4, false, "rgba8 image");
 +    // The mid-frame's own surface: the composite writes imageBuffer, so a generated frame
 +    // cannot share it, and a proxy (the history) is not a picture - what leaves the device
@@ -2297,7 +2424,11 @@ index 0000000..41d36b8
 +            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - began).count());
 +  };
 +
-+  std::vector<uint8_t> colour((size_t)workWidth * workHeight * 4);
++  // The colour is the client's own frame, so it is the display size and not the work size:
++  // with a work scale this is what comes off the pipe and what the resize on the way in
++  // reads. The motion field is the other way round - the client computes it at the work
++  // resolution (minimal/loop.py's work_size) and the composite reads it there.
++  std::vector<uint8_t> colour((size_t)frameWidth * frameHeight * 4);
 +  std::vector<uint8_t> motion((size_t)workWidth * workHeight * 4);   // 2 x f16 per pixel
 +
 +  uint32_t frames = 0;
@@ -2363,6 +2494,13 @@ index 0000000..41d36b8
 +            } else {
 +              output.width = le32(rest.data());
 +              output.height = le32(rest.data() + 4);
++              // The pixels this path publishes are the display frame's, so a channel sized
++              // for anything else is worth a line before it is written through: the client
++              // sizes it for the frame it wants back (protocol.py's open_out(self.width,
++              // self.height)), which with a work scale is not the work size.
++              if (workScaled && (output.width != frameWidth || output.height != frameHeight))
++                fprintf(stderr, "serve: the pixel channel is %ux%u and this run publishes %ux%u "
++                                "frames\n", output.width, output.height, frameWidth, frameHeight);
 +              output.bytes = (size_t)output.width * output.height * 4 + 8;
 +              if (!output.map) {
 +                output.fd = openShared(name, output.bytes, false);
@@ -2474,9 +2612,10 @@ index 0000000..41d36b8
 +        // Only the header came down the pipe.
 +        if (input.colourCapacity < colour.size() || input.motionCapacity < motion.size()) {
 +          fprintf(stderr,
-+                  "serve: the frame channel is %zu+%zu bytes, a %ux%u frame needs %zu+%zu\n",
-+                  input.colourCapacity, input.motionCapacity, workWidth, workHeight,
-+                  colour.size(), motion.size());
++                  "serve: the frame channel is %zu+%zu bytes, a %ux%u colour + %ux%u motion frame "
++                  "needs %zu+%zu\n",
++                  input.colourCapacity, input.motionCapacity, frameWidth, frameHeight,
++                  workWidth, workHeight, colour.size(), motion.size());
 +          return 2;
 +        }
 +      } else {
@@ -2550,7 +2689,15 @@ index 0000000..41d36b8
 +        // it. The same expand the current frame gets, on the previous one: one dispatch and no
 +        // host bytes.
 +        if (haveHistory) kernels->expandRgba8ToProxy(commands, imageBuffer, historyProxy, workWidth, workHeight, bgra);
-+        kernels->expandRgba8ToProxy(commands, colourBuffer, proxy, workWidth, workHeight, bgra);
++        // The client's colour down to the work size first, when the two differ: the expand
++        // below reads a work-sized surface either way, and without a work scale it is the
++        // client's own bytes with no resize recorded at all. Channel order is untouched by
++        // the resize (bilinear is per channel), so `bgra` still reaches the expand intact.
++        if (workScaled)
++          kernels->resizeRgba8(commands, colourBuffer, workColourBuffer, frameWidth, frameHeight,
++                               workWidth, workHeight);
++        kernels->expandRgba8ToProxy(commands, workScaled ? workColourBuffer : colourBuffer, proxy,
++                                    workWidth, workHeight, bgra);
 +        preprocess.history = haveHistory ? &historyProxy : nullptr;
 +        kernels->preprocessFromProxy(commands, proxy, *features, preprocess);
 +        graph->record(commands, *features);
@@ -2566,6 +2713,16 @@ index 0000000..41d36b8
 +        if (midPath)
 +          kernels->midWarpToRgba8(commands, historyProxy, motionBuffer, midBuffer, workWidth,
 +                                  workWidth, workHeight, 0.5f);
++        // And the published picture back up to the frame size, one dispatch, on the surface
++        // the readback and the reply read. The mid-frame is published as a picture too, so it
++        // gets the same upscale rather than being handed to the client at the work size.
++        if (workScaled) {
++          kernels->resizeRgba8(commands, imageBuffer, frameBuffer, workWidth, workHeight,
++                               frameWidth, frameHeight);
++          if (midPath)
++            kernels->resizeRgba8(commands, midBuffer, midFrameBuffer, workWidth, workHeight,
++                                 frameWidth, frameHeight);
++        }
 +        if (splitTiming && splitPool)
 +          vkCmdWriteTimestamp(commands, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, splitPool, 2);
 +        context->endAndSubmit(commands, true);
@@ -2649,7 +2806,9 @@ index 0000000..41d36b8
 +        double midMs = 0.0;
 +        if (midPath) {
 +          const std::chrono::steady_clock::time_point midBegan = std::chrono::steady_clock::now();
-+          midImage = context->download(midBuffer, (VkDeviceSize)workWidth * workHeight * 4);
++          midImage = workScaled
++              ? context->download(midFrameBuffer, (VkDeviceSize)frameWidth * frameHeight * 4)
++              : context->download(midBuffer, (VkDeviceSize)workWidth * workHeight * 4);
 +          const std::vector<uint8_t>* midInline = nullptr;
 +          uint32_t midBytes = 0;
 +          publishImage(midOutput, midImage, &midInline, &midBytes);
@@ -2664,7 +2823,11 @@ index 0000000..41d36b8
 +          midFrames++;
 +        }
 +        if (wantPixels) {
-+          image = context->download(imageBuffer, (VkDeviceSize)workWidth * workHeight * 4);
++          // The frame size, not the work size: with a work scale the picture the client gets
++          // is the upscaled one, and that is also what its pixel channel is sized for.
++          image = workScaled
++              ? context->download(frameBuffer, (VkDeviceSize)frameWidth * frameHeight * 4)
++              : context->download(imageBuffer, (VkDeviceSize)workWidth * workHeight * 4);
 +          afterDownload = std::chrono::steady_clock::now();
 +          publishImage(output, image, &inlinePixels, &replyBytes);
 +        } else {
