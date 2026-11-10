@@ -55,6 +55,24 @@ anything there.
   faster one. The other parked lever, the FFN sweep's cap-80 question, waits on a word rather than a
   file.
 
+* learned: the window half of the work-scale pair landed and its sample is muddied - the source,
+  not the pass, set the frame (2026-11-10 tick, read of `r2026-11-10-4-ws-window`, exit 0, 120
+  frames, entry `minimal`, `--source window --size 2560x1440 --work-scale 0.75 --shm`, repo
+  `c6cc22341f5e`, worker in sync on patch `f1908586c80c` at port `9d08f41`, card WARN before and
+  after, and the item's artifact check passes: both PNGs are **2560x1440 RGBA**). Median **93.9 ms /
+  10.6 fps steady** (headline 0.68, mean 1462.5) against the control `r2026-11-08-1440p-window`'s
+  **48.3 / 20.7**, but the frame is not a reading of the pass: the capture split is **wait 1337.7 /
+  read 8.1** against the control's 0.5 / 9.0, the pipeline used **1% of one core**, and the run's own
+  spread flags a one-off **5745.3 ms at frame 93** outside the warm-up - the window the picker chose
+  published about 0.7 fps, so the median is taken over frames the compositor dribbled. The worker's
+  own line carries the same mud: **70.09 ms mean** with network+composite swinging **8.8 -> 136.9 ms
+  inside the one run** (frames 1/2/59 read 11.7/11.7/8.8, frames 29/89/119 read 55.9/43.1/136.9), so
+  a busy card sat on top of a starved source and the sample neither vindicates nor refutes the
+  port-side resize. The one field that does read is the **read 8.1 against the control's 9.0** (wait
+  0.5), the same "the resize has left gst and the read did not move" answer the video leg gave, so
+  the route stays a wash to be left off and the window leg is closed rather than repeated. Nothing is
+  queued off it: the top item below is unchanged and still waits on the box's policy.
+
 * learned: the port's own resize is built, it runs, and it does not beat the capture chain's - the
   picker-free work-scale route lands **between** the two older routes rather than past them
   (2026-11-10 tick, read of `r2026-11-10-5-ws-video`, exit 0, 300 frames, entry `minimal`,
