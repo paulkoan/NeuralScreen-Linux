@@ -33,23 +33,40 @@ anything there.
 
 ## 1. Next work
 
-* learned: the picker-free half of the work-scale measurement is queued behind a landed build, so
-  the change now has a device number coming without the portal (2026-11-10 tick, read of
-  `r2026-11-10-3-ws-build`, exit 0, then a run request). The prerequisite is met:
-  `bash experiments/opendlss_port/rebuild.sh` landed in sync, patch `f1908586c80c` at port
-  `9d08f41`, **17 shader modules** (was 16) with `resize_rgba8.comp` among them and 78 PTX kernels -
-  so the new RGBA8 resize shader compiled and the module-count check the item asked for reads 17,
-  with no compile error naming `resize_rgba8`. Queued and pushed (`9593992` on main):
-  `runs/queue/r2026-11-10-5-ws-video.json`, entry `minimal`, args `--source video --input-video
-  fixtures/stream-1440p-2s.mp4 --size 2560x1440 --work-scale 0.75 --headless --frames 300 --shm
-  --worker-log --save-after ws-video-after.png`, `timeout_s` 900, artifact `ws-video-after.png`,
-  `manual` absent so the box runs it on its own timer with no picker. What it reads, in the queue
-  note: the median and steady rate against `r2026-11-08-1080p-video`'s 27.4 ms / 36.5 fps (1080p
-  internal, resize in gst, capture 8.7) and against `r2026-11-07-video-b`'s 35.2 ms / 28.4 fps
-  (1440p internal, no resize), then the capture split's read against video-b's 6.4 ms because the
-  pass does the resize now, and the PNG must come back 2560x1440. Still waiting on a person and not
-  on this tick: `runs/queue/r2026-11-10-4-ws-window.json` is `manual: true` for the portal picker,
-  so the window half of the same reading stays where it is until someone clicks it on the box.
+* learned: the port's own resize is built, it runs, and it does not beat the capture chain's - the
+  picker-free work-scale route lands **between** the two older routes rather than past them
+  (2026-11-10 tick, read of `r2026-11-10-5-ws-video`, exit 0, 300 frames, entry `minimal`,
+  `--source video --input-video fixtures/stream-1440p-2s.mp4 --size 2560x1440 --work-scale 0.75
+  --headless --shm`, repo `9593992`, worker **in sync** on patch `f1908586c80c` at port `9d08f41`
+  - the same stamp `r2026-11-10-3-ws-build` stamped, so the 17 shader modules it read (was 16) are
+  this binary's and `resize_rgba8` is dispatchable - card WARN before and after, `idle_waited_s`
+  45.0). Median **30.2 ms / 33.2 fps steady** (headline 22.3; the 44.9 ms mean is frame 0's 4006.8
+  ms recv, and the spread's maxima in send and recv are that same warm-up frame) against
+  `r2026-11-08-1080p-video`'s **27.4 ms / 36.5 fps** (1080p internal, the resize in gst, captured
+  on patch `f2cd1f272c4c`) and `r2026-11-07-video-b`'s **35.2 ms / 28.4 fps** (1440p internal, no
+  resize, patch `088280e62d50`) - so the network at 1080p with the port doing both bilinear
+  dispatches is **5.0 ms cheaper than running it at 1440p** and **2.8 ms dearer than handing it a
+  frame gst already scaled**, which is the opposite way round from what the port-side route was
+  built for; both controls are earlier builds, so the delta crosses a build as well as the route,
+  and that caveat travels with it. The worker's banner is the proof the change is what ran:
+  "the client's frame is 2560x1440 and the network runs at 1920x1080, so the colour is resized down
+  on the way in and the published image back up (one bilinear dispatch each way)". **The named
+  capture split does fall, by 0.5 ms and not by the 2.3 ms the gst resize was priced at**:
+  capture **5.9 ms** (send 2.6, recv 33.8 = copy 1.7 + waiting 32.1, display 2.5) against
+  video-b's 6.4, where the 1080p-in-gst run read 8.7 for a chain still carrying `videoscale` - so
+  the resize has left gst and the pass has taken it back on, and at this size that is close to a
+  wash. The item's artifact check passes: `ws-video-after.png` is **2560x1440 RGBA** (colortype 6,
+  3,232,828 bytes), so the published frame really comes back at the display size with the work at
+  1080p. One one-off of record only: the capture spread's max **38.0 ms at frame 43** against a
+  4.8 ms median, outside the warm-up and unexplained, and the same shape the send spread carries at
+  frame 14 in `r2026-11-08-1080p-window-b`. Nothing is queued off it and the route is not reverted:
+  the video leg's verification is complete and it reads the port-side resize as no win on this
+  fixture, while the window leg of the same change,
+  `runs/queue/r2026-11-10-4-ws-window.json`, is still in the queue as `manual: true` for the portal
+  picker and still waits on a person at the box - if it is read and the window source disagrees
+  with this, that is the sample that decides, and if it is never read then the port's
+  `fullWidth != workWidth` path is a wash to be left off and the gst route stays the one every
+  number on the record was measured on.
 
 * learned: the port takes `fullWidth != workWidth` now, so `--work-scale` no longer needs the
   capture chain to do the resize - the change is made, the patch re-cut to `f1908586c80c` and pushed
