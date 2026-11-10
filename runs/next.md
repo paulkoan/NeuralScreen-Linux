@@ -59,7 +59,14 @@ anything there.
   the separate `minimal`-shaped entry the fps half needs; on this one it does nothing. No request can
   measure the small network until that env is set - requests carry no env and the runner builds the
   worker's env from the policy entry alone - so nothing is queued off this and the item stays here for
-  the developer.
+  the developer. **Status after the re-issue `r2026-11-10-profile-small-b` (2026-11-10 tick): the
+  policy edit has still not taken.** It landed exit 0 in 4.2 s and its `model:` line reads
+  `/opt/neuralscreen/model` once more, with total **6.376 ms** at 1080p against the same baseline's
+  6.296 (`idle_waited_s` 15.0 and `gpu_before` WARN, so by the standing gate rule it is not compared
+  either) - a repeat of the run above, not a small-network number. Nothing is queued off it and a
+  third identical re-issue would only repeat the baseline, so no further `port-profile-small` request
+  is planted; what is needed is unchanged and is the developer's: the `port-profile-small` entry in
+  `/opt/neuralscreen/policy.toml` with env `NEURALSCREEN_MODEL_DIR=/opt/neuralscreen/model-small`.
 
   The reading would be the small network's
   profile total against the large network's at the same size (`r2026-11-10-1-profile` 6.296 ms at
