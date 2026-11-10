@@ -1,0 +1,8 @@
+{
+  "id": "r2026-11-10-profile-small-c",
+  "entry": "port-profile-small",
+  "args": ["1920", "1080"],
+  "timeout_s": 600,
+  "artifacts": [],
+  "note": "Third attempt, queued because the developer reports the policy was fixed and the box disagreed five minutes earlier. r2026-11-10-profile-small-b ran at 17:38:57Z and its own header still read `entry port-profile-small - env from policy: NS_WORKER_CMD` with `model:  /opt/neuralscreen/model` on line two, which is the large network - so either the edit landed after that run, or it is not reaching the runner. The silent way for the second to happen: tools/auto_runner.py builds its entry table as `entries[name] = entry` with no duplicate check at all, so if the policy holds two `[[entry]]` blocks named port-profile-small - the old wrong-shaped one and the corrected one - the LAST one wins by position and the other is invisible, with no warning either way. Two greps settle it on the box: `grep -n 'name = \"port-profile' /opt/neuralscreen/policy.toml` should show exactly two lines, and `grep -c NS_WORKER_CMD /opt/neuralscreen/policy.toml` should show one - that name belongs only to the minimal-shaped entry, and the profiler never reads it. Read the `model:` line FIRST as always: it must print /opt/neuralscreen/model-small. If it prints /opt/neuralscreen/model again, the entry the runner is using is still the old one and the numbers are a third repeat of the baseline rather than a measurement."
+}

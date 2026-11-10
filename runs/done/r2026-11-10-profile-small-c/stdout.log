@@ -1,0 +1,91 @@
+binary: /opt/neuralscreen/port/build/dlss5vk
+model:  /opt/neuralscreen/model-small
+size:   1920x1080, minimum of 7 frames per dispatch
+
+maxComputeSharedMemorySize 49152 bytes
+400 trivial dispatches + barriers: 0.410 ms (1.02 us each)
+total 3.446 ms (sum of per-dispatch spans, 1920x1080)
+
+by kernel:
+     0.352 ms   10.2%  block32_ptx 34560w f74
+     0.339 ms    9.8%  block32_ptx 34945w f48
+     0.249 ms    7.2%  gemmv_ptx 640x4096->1024 f5 s4
+     0.242 ms    7.0%  gemmv_ptx 640x1024->4096 f6
+     0.228 ms    6.6%  gemmv_ptx 640x1024->3072 f8 s2
+     0.153 ms    4.4%  ffn_ptx 8640x256 e8 r4
+     0.130 ms    3.8%  gemmv_ptx 640x1024->1024 f5 s4
+     0.104 ms    3.0%  ffn_ptx 138240x64 e2 r4 +proj
+     0.094 ms    2.7%  ffn_ptx 138240x64 e2 r4
+     0.090 ms    2.6%  block32_ptx 8712w f130
+     0.089 ms    2.6%  block32_ptx 8833w f66
+     0.088 ms    2.6%  global_attention_stream_ptx 640t x32
+     0.088 ms    2.5%  qkv_ptx 40w x16 K512
+     0.085 ms    2.5%  block32_ptx 8760w f2
+     0.085 ms    2.5%  block32_ptx 8640w f2
+     0.083 ms    2.4%  ffn_ptx 34560x128 e4 r4 +proj
+     0.076 ms    2.2%  ffn_ptx 34560x128 e4 r4
+     0.064 ms    1.8%  gemmv_ptx 2160x512->512 f5
+     0.056 ms    1.6%  global_normalize_ptx 640t x32
+     0.050 ms    1.5%  qkv_ptx 2257w x2 K64
+     0.049 ms    1.4%  qkv_ptx 2220w x2 K64
+     0.049 ms    1.4%  qkv_ptx 2160w x2 K64
+     0.049 ms    1.4%  upsampleResidual
+     0.045 ms    1.3%  qkv_ptx 2196w x2 K64
+     0.037 ms    1.1%  gemm_mlp 2160x64->256->64 x8
+     0.035 ms    1.0%  gemmv_ptx 2160x512->512 f4
+     0.031 ms    0.9%  qkv_ptx 589w x4 K128
+     0.031 ms    0.9%  qkv_ptx 558w x4 K128
+     0.031 ms    0.9%  qkv_ptx 570w x4 K128
+     0.030 ms    0.9%  qkv_ptx 540w x4 K128
+     0.027 ms    0.8%  gemmv_ptx 8640x256->256 f5
+     0.025 ms    0.7%  qkv_ptx 160w x8 K256
+     0.024 ms    0.7%  gemm_ptx 138240x64->64 f13
+     0.023 ms    0.7%  qkv_ptx 150w x8 K256
+     0.023 ms    0.7%  qkv_ptx 144w x8 K256
+     0.023 ms    0.7%  qkv_ptx 135w x8 K256
+     0.017 ms    0.5%  gemm_ptx 138240x64->64 f5
+     0.016 ms    0.5%  gemmt_ptx 640x1024->512 f0 p256 s4
+     0.016 ms    0.5%  gemm_ptx 34560x128->128 f13
+     0.015 ms    0.4%  downsample2x
+
+by stage:
+     0.352 ms   10.2%  block 0 c32
+     0.339 ms    9.8%  block 70 c32
+     0.128 ms    3.7%  block 4 c64
+     0.128 ms    3.7%  block 14 vit
+     0.125 ms    3.6%  block 16 vit
+     0.125 ms    3.6%  block 13 vit
+     0.125 ms    3.6%  block 12 vit
+     0.124 ms    3.6%  block 15 vit
+     0.123 ms    3.6%  block 11 vit
+     0.123 ms    3.6%  block 18 vit
+     0.122 ms    3.5%  block 17 vit
+     0.115 ms    3.3%  block 27 c64
+     0.098 ms    2.8%  block 26 c64
+     0.090 ms    2.6%  block 28 c32
+     0.090 ms    2.6%  block 3 c64
+     0.089 ms    2.6%  block 2 c32
+     0.089 ms    2.6%  block 6 c128
+     0.085 ms    2.5%  block 29 c32
+     0.085 ms    2.5%  block 1 c32
+     0.083 ms    2.4%  block 25 c128
+     0.075 ms    2.2%  block 8 c256
+     0.072 ms    2.1%  block 22 c256
+     0.070 ms    2.0%  block 23 c256
+     0.070 ms    2.0%  block 7 c256
+     0.069 ms    2.0%  block 5 c128
+     0.068 ms    2.0%  block 24 c128
+     0.059 ms    1.7%  block 9 split512
+     0.059 ms    1.7%  block 21 split512
+     0.058 ms    1.7%  block 20 split512
+     0.057 ms    1.7%  block 10 split512
+     0.033 ms    0.9%  transition ->26
+     0.023 ms    0.7%  transition 19
+     0.019 ms    0.6%  transition ->24
+     0.015 ms    0.4%  transition 4
+     0.013 ms    0.4%  transition 4-5
+     0.013 ms    0.4%  transition ->22
+     0.011 ms    0.3%  transition 6
+     0.010 ms    0.3%  transition 8
+     0.009 ms    0.3%  transition ->28
+     0.008 ms    0.2%  transition 10-11
