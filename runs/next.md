@@ -68,7 +68,11 @@ anything there.
     Name one and the item moves.** The one read that would sharpen it without a word is the same
     comparison at the shipping size - `tools/port_profile.sh 2560 1440` as
     `runs/queue/r2026-11-10-12-gap-1440p.json`, where T - X scales to ~0.34 ms and crosses the item's
-    own 0.3 ms line; queue that next if no word has arrived.
+    own 0.3 ms line; queue that next if no word has arrived. **Queued 2026-11-10 tick as
+    `runs/queue/r2026-11-10-12-gap-1440p.json`** (`port-profile 2560 1440`, 600 s), so the next tick
+    reads it rather than queueing it again - and if T - X crosses 0.3 ms there, the item's own
+    definition authorises `src/kernels.cpp` and no word is needed; if it stays inside the bar, what
+    is needed is a word naming the PTX emitter or `src/serve.cpp`.
 
 * learned: the per-dispatch table cannot separate a dispatch's own span from the gap after it, and
   that is measurable in one run now (2026-11-10 tick, code change in the patch's `src/main.cpp` -
