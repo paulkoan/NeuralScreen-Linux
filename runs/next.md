@@ -45,7 +45,14 @@ anything there.
   `NEURALSCREEN_MODEL_DIR=/opt/neuralscreen/model-small` (the extracted 310.9.16 network the
   2026-11-09 survey names) - plus a `minimal`-shaped one whose `NS_WORKER_CMD` names
   `serve --model /opt/neuralscreen/model-small` for the fps and pixel-parity half. That file is the
-  box's, so it is a line for the developer, not this tick. The reading would be the small network's
+  box's, so it is a line for the developer, not this tick - **and the developer reports it is already
+  there: the entry was requested earlier and added, with a different env from the one proposed here.**
+  So the block is gone, and `r2026-11-10-profile-small` is queued against it at 1080p. The check that
+  matters is inside that request: read the run's own `model:` line before its numbers, because
+  `tools/port_profile.sh` honours exactly `NEURALSCREEN_MODEL_DIR` and `NEURALSCREEN_PORT_BIN`, and an
+  entry whose env names anything else runs the large network while looking exactly like a result.
+
+  The reading would be the small network's
   profile total against the large network's at the same size (`r2026-11-10-1-profile` 6.296 ms at
   1080p, `r2026-11-03-profile` 9.749 ms at 1440p) and, only if that wins, the fps pair. The one port
   sample so far says otherwise - `r2026-10-30-aq` **26.5 ms / 37.8 fps against the large network's
