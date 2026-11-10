@@ -23,7 +23,7 @@ if [ ! -d "$dest" ]; then
     exit 1
 fi
 
-files="ns-progress-watchdog.sh ns-results-monitor.sh ns-cron-failure.py ns-tick-state.py"
+files="ns-progress-watchdog.sh ns-results-monitor.sh ns-cron-failure.py ns-tick-state.py ns-box-state.py"
 
 case "$mode" in
     --check)

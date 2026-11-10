@@ -139,3 +139,21 @@ if [ -f "$state_script" ] && command -v python3 >/dev/null 2>&1; then
         [ -f "$smarker" ] && rm -f "$smarker"
     fi
 fi
+
+# ---- what the box is running, without anyone having to be asked -----------------------------
+# The deployed policy changes only when the human does something: it lives outside the repository
+# and is installed by hand. So "I have done it" was a message only they could send, and the loop sat
+# waiting for it. The runner publishes the file to the results branch whenever its hash changes,
+# with no run needed, so the box's own state is readable as a file - and this says what it found,
+# once per distinct answer. Silent when the answer has not changed, which is most of the time.
+box_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/ns-box-state.py"
+bmarker="$(dirname "$dir")/.box-state-notified"
+if [ -f "$box_script" ] && command -v python3 >/dev/null 2>&1; then
+    box=$(python3 "$box_script" 2>/dev/null)
+    if [ -n "$box" ]; then
+        if [ ! -f "$bmarker" ] || [ "$(cat "$bmarker" 2>/dev/null)" != "$box" ]; then
+            printf '%s\n' "$box" > "$bmarker" 2>/dev/null || true
+            echo "$box"
+        fi
+    fi
+fi
