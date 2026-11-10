@@ -1,0 +1,7 @@
+{
+  "id": "r2026-11-10-16-gap5-0-build",
+  "entry": "port-build",
+  "args": [],
+  "timeout_s": 900,
+  "note": "Rebake the port with `src/nr_graph.cpp`'s `chainMask` default now 0 (was 2) so a 1080p profile can read the production-schedule line with nothing chained. Read the stamp: it must name patch `e2c9ae674997` at port `9d08f41`, in sync, 17 shader modules / 78 PTX kernels, and the module count is the check that the patch applied whole. Anything else and the 1080p profile behind it is measuring the old binary - say so and do not compare its two lines."
+}

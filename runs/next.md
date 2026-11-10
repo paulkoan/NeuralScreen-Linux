@@ -66,30 +66,57 @@ anything there.
   verified: no device here, so chainMask 2 has not been timed; the c32 chain alone is still unread at
   720p and is unread at 1080p at any setting.
 
-* **Read the chainMask-2 rebuild: does the c32 chain alone carry the small-size win, and which way
-  does chaining's sign go at the 1080p the shipping pass actually runs?** The reading is queued:
-  `runs/queue/r2026-11-10-15-gap4-1-1080p` and `-2-720p`, behind the build
-  `runs/queue/r2026-11-10-15-gap4-0-build` (all three queued 2026-11-10), and lands as
-  `runs/done/<id>`. The change they measure is one line of `src/nr_graph.cpp` inside
-  `experiments/opendlss_port/linux-port.patch` (source of truth `/opt/data/tmp/odl-src`, amend its one
-  commit and re-cut with `git format-patch -1`), where `routesFromEnvironment`'s `chainMask` default
-  went 0 -> 2: **that file is what any further move on this edits** - back to 0, or on to 3, once the
-  1080p sample says which side of the flip the shipping internal size is on. What each size prints is
-  `total T ms (sum of per-dispatch spans, <size>), N dispatches, a barrier after every launch` and
-  `production schedule (counter chaining): N dispatches, GPU X ms (min of 7, same graph and size, no
-  client in the loop)`. The numbers to read against, all **249** dispatches: at 1920x1080 there is no
-  chains-off sample at all, so the run reads against itself - X at or below T means the c32 chain pays
-  where the app runs and the default is right, X above T means chaining is wrong there too and the
-  default goes back to 0; at 1280x720 the c32 chain alone is unread (the chainMask-2 attempt,
-  `r2026-11-10-13-gap2-2-720p`, landed on a contended card) and the pair to beat is chaining fully on
-  T **3.393** / X **3.277** (`r2026-11-10-11-gap-720p`) against chains off T **3.385** / X **3.558**
-  (`r2026-11-10-14-gap3-2-720p`), so the question is whether the c32 chain carries the 0.281 ms or
-  whether that win needs the expert chain too. Quote the gate lines with the numbers (`gpu_before`,
-  `gpu_after`, `idle_waited_s`) and the fixed-cost probe (0.406-0.421 ms on a clean card) as the
-  control that says the card was at baseline scale; a BUSY before or a non-zero idle wait and neither
-  number is compared. If a run dies with `vkQueueWaitIdle(queue_) failed: -4`, stop queueing and
-  report the card rather than escalating.
+* learned: the c32 chain carries none of the 720p win and chaining is the dearer route at both sizes the
+  port ships, so the default goes back to chains off (2026-11-10 tick, read of
+  `r2026-11-10-15-gap4-1-1080p` and `-2-720p`, both exit 0 after 4.4 s / 3.9 s, entry `port-profile 1920
+  1080` / `1280 720`, on the binary `r2026-11-10-15-gap4-0-build` stamped **in sync** at patch
+  `e7bdcb5ee877`, port `9d08f41`, 17 shader modules / 78 PTX kernels, policy `92cc2c01922f`). **720p
+  answers the first question, and the answer is no**: with the c32 chain alone the production schedule
+  reads `GPU 3.545 ms (min of 7, same graph and size, no client in the loop)` against its own barrier
+  total's `3.388 ms (sum of per-dispatch spans, 1280x720), 249 dispatches, a barrier after every
+  launch` - the chains-off value 3.558 (`r2026-11-10-14-gap3-2-720p`) is 0.013 ms away and chaining
+  fully on 3.277 (`r2026-11-10-11-gap-720p`) is 0.268 ms away - so the 0.281 ms at that size is the
+  expert chain's and the c32 chain carries none of it. **1080p answers the second**: the same two lines
+  read `total 6.385 ms (sum of per-dispatch spans, 1920x1080), 249 dispatches, a barrier after every
+  launch` and `production schedule (counter chaining): 249 dispatches, GPU 9.240 ms (min of 7, same
+  graph and size, no client in the loop)`, so X sits **2.855 ms above T** at the size the port ships
+  the network at (0.75 of a 1440p output). One flag of record, and it is why the number is read as
+  chaining and not as the c32 chain's own cost: 9.240 is where the *1440p* c32 sample sits (9.525), not
+  where its own barrier total does, i.e. a gap 20x the same chain's 0.128 ms at 2560x1440
+  (`r2026-11-10-13-gap2-1-1440p`) and 0.157 ms at 1280x720. Gate: `gpu_before` WARN (util 16%),
+  `gpu_after` BUSY (50%), `idle_waited_s` 0.0 on the 1080p half and WARN (24%) / BUSY (47%) / 0.0 on
+  the 720p half, so the before-gate passes on both and each comparison is intra-run; the fixed-cost
+  probe reads **0.411 ms** on both halves, inside the usual 0.406-0.421 window, and the 1080p barrier
+  table is at baseline scale (`block32_ptx 34560w f74` 0.353 against 0.351, `ffn_ptx 8640x256 e8 r4`
+  0.610 against 0.613). The move those two readings authorise was made: `src/nr_graph.cpp`'s
+  `chainMask` default **2 -> 0** in `experiments/opendlss_port/linux-port.patch` (odl-src's one commit
+  amended, `e7bdcb5` -> `e2c9ae6`, patch re-cut `e7bdcb5ee877` -> `e2c9ae674997`, and the comment above
+  the line now carries the 1080p sample and the c32-only 720p one), suite **598 passed / 9 failed / 38
+  skipped**, the same nine libGL/SDL2 environment failures this box always has. The ladder the default
+  now stands on, all **249** dispatches: 1280x720 3.277 fully on / 3.545 c32 / 3.558 off; 1920x1080
+  9.240 c32; 2560x1440 9.041 off / 9.525 c32 / 10.074 fully on. NOT verified: no device here, so the
+  new default has not been timed, and the 1080p chains-off control behind it is the item below.
 
+* **Read the chains-off 1080p control: does the production schedule sit near its own barrier total at
+  chainMask 0 the way it does at the other two sizes, or is that 2.855 ms gap the schedule's cost at
+  1080p rather than the chain's?** The reading is queued: `runs/queue/r2026-11-10-16-gap5-1-1080p`
+  behind the rebuild `runs/queue/r2026-11-10-16-gap5-0-build` (both queued 2026-11-10), and lands as
+  `runs/done/<id>`. The default the pair measures is one line of `src/nr_graph.cpp` inside
+  `experiments/opendlss_port/linux-port.patch` (source of truth `/opt/data/tmp/odl-src`, amend its one
+  commit and re-cut with `git format-patch -1`), which now ends `: 0` - **that file is what any further
+  move on this edits**, back to 2 or on to 3 if a later sample says so. What the run prints is `total T
+  ms (sum of per-dispatch spans, 1920x1080), 249 dispatches, a barrier after every launch` and
+  `production schedule (counter chaining): 249 dispatches, GPU X ms (min of 7, same graph and size, no
+  client in the loop)`. What it reads against, with the same two instruments and nothing chained: X sat
+  **0.173 ms above T at 1280x720** (3.558 against 3.385) and **0.395 ms below it at 2560x1440** (9.041
+  against 9.436), where the chained settings put them 0.128-0.694 ms apart at 1440p and 0.116 ms apart
+  fully on at 720p - so X near T at 1080p means the schedule is at baseline there and the chains-off
+  default is confirmed, while an X that stays near 9.2 means the production schedule itself is dear at 1080p
+  whatever is chained, which is a finding about `src/nr_schedule.cpp` in the same patch and not about
+  the default. Quote the gate lines (`gpu_before`, `gpu_after`, `idle_waited_s`) and the fixed-cost
+  probe (0.406-0.421 ms on a clean card) as the control that says the card was at baseline scale; a
+  BUSY before or a non-zero idle wait and neither number is compared. If a run dies with
+  `vkQueueWaitIdle(queue_) failed: -4`, stop queueing and report the card rather than escalating.
 * learned: the expert-stage chain was most but not all of the 1440p chaining penalty, and the
   small-size half of the pair is no read at all - it landed on a contended card (2026-11-10 tick,
   read of `r2026-11-10-13-gap2-1-1440p` and `-2-720p`, both exit 0 after 5.6 s / 5.0 s, entry
