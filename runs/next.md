@@ -33,25 +33,23 @@ anything there.
 
 ## 1. Next work
 
-* **Next: queue the picker-free half of the work-scale measurement, so the change gets a device
-  number without the portal. This item is a run request and it edits nothing else: it writes
-  `runs/queue/r2026-11-10-5-ws-video.json` with the file tool and pushes it (entry `minimal`, args
-  `--source video --input-video fixtures/stream-1440p-2s.mp4 --size 2560x1440 --work-scale 0.75
-  --headless --frames 300 --shm --worker-log --save-after ws-video-after.png`, `timeout_s` 900,
-  artifact `ws-video-after.png`), then deletes this item and leaves a learned line in its place.**
-  It is `r2026-11-08-1080p-video`'s fixture and shape with the resize moved out of `--size` and into
-  `--work-scale 0.75`, and it needs no picker, so the box can run it unattended while
-  `r2026-11-10-4-ws-window` waits for one. What it reads: the **median and steady rate against
-  `r2026-11-08-1080p-video`'s 27.4 ms / 36.5 fps** (1080p internal, the resize done by gst's
-  `videoscale`, capture 8.7 ms) and against `r2026-11-07-video-b`'s **35.2 ms / 28.4 fps** (1440p
-  internal, no resize anywhere); then the **capture line against video-b's 6.4 ms**, because the pass
-  does the resize now and the capture should be back at the no-scale figure. `ws-video-after.png`
-  must come back **2560x1440**. How to read it: at ~27 ms with capture ~6.4 the resize has moved into
-  the pass for nothing and the work-scale shape is the cheaper 1080p route; at ~35 ms the two
-  dispatches over 11M pixels cost what gst's stage did, and the `--size 1920x1080` route stays the
-  better one. One prerequisite: `r2026-11-10-3-ws-build` must have landed - until it does, runs stamp
-  OUT OF SYNC and a number from the old binary means nothing. If that build failed, this item waits
-  and says so rather than queueing a run against the stale worker.
+* learned: the picker-free half of the work-scale measurement is queued behind a landed build, so
+  the change now has a device number coming without the portal (2026-11-10 tick, read of
+  `r2026-11-10-3-ws-build`, exit 0, then a run request). The prerequisite is met:
+  `bash experiments/opendlss_port/rebuild.sh` landed in sync, patch `f1908586c80c` at port
+  `9d08f41`, **17 shader modules** (was 16) with `resize_rgba8.comp` among them and 78 PTX kernels -
+  so the new RGBA8 resize shader compiled and the module-count check the item asked for reads 17,
+  with no compile error naming `resize_rgba8`. Queued and pushed (`9593992` on main):
+  `runs/queue/r2026-11-10-5-ws-video.json`, entry `minimal`, args `--source video --input-video
+  fixtures/stream-1440p-2s.mp4 --size 2560x1440 --work-scale 0.75 --headless --frames 300 --shm
+  --worker-log --save-after ws-video-after.png`, `timeout_s` 900, artifact `ws-video-after.png`,
+  `manual` absent so the box runs it on its own timer with no picker. What it reads, in the queue
+  note: the median and steady rate against `r2026-11-08-1080p-video`'s 27.4 ms / 36.5 fps (1080p
+  internal, resize in gst, capture 8.7) and against `r2026-11-07-video-b`'s 35.2 ms / 28.4 fps
+  (1440p internal, no resize), then the capture split's read against video-b's 6.4 ms because the
+  pass does the resize now, and the PNG must come back 2560x1440. Still waiting on a person and not
+  on this tick: `runs/queue/r2026-11-10-4-ws-window.json` is `manual: true` for the portal picker,
+  so the window half of the same reading stays where it is until someone clicks it on the box.
 
 * learned: the port takes `fullWidth != workWidth` now, so `--work-scale` no longer needs the
   capture chain to do the resize - the change is made, the patch re-cut to `f1908586c80c` and pushed
