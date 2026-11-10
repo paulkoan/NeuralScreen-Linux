@@ -1,0 +1,7 @@
+{
+  "id": "r2026-11-10-14-gap3-0-build",
+  "entry": "port-build",
+  "args": [],
+  "timeout_s": 900,
+  "note": "Rebuild dlss5vk from the re-cut patch (5c075a8a7bfb, cut from odl-src commit 5c075a8). Only src/nr_graph.cpp moved in it: routesFromEnvironment's chainMask default goes 2 -> 0, so the c32 blocks' chain (bit 2) is dropped as well and the graph runs on barriers throughout. No shader and no emitter moved, so the build must still report 17 shader modules and 78 PTX kernels - a different count means the patch did not apply cleanly, and a compile error would name src/nr_graph.cpp because that is the only file this patch touched. Quote the final stamp line: it must read port 9d08f41 at patch 5c075a8a7bfb. Before this build every port run stamps OUT OF SYNC (the last landed build is patch 22337d051a3a), and the profile pair queued behind this (r2026-11-10-14-gap3-1-1440p and -2-720p, their numeric prefixes sort after this one) must read the new binary - if the stamp names the old patch, do not read the profiles, report that instead. Reason for the change: with the expert chain already off, the chained production schedule read 9.525 ms against the barrier route's 9.397 ms on the same 249 dispatches at 2560x1440 (r2026-11-10-13-gap2-1-1440p), so the expert chain accounted for 0.549 ms of the 0.694 ms penalty the 3 -> 2 change was made for and the c32 chain is the 0.128 ms that is left."
+}

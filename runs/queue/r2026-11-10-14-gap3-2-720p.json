@@ -1,0 +1,7 @@
+{
+  "id": "r2026-11-10-14-gap3-2-720p",
+  "entry": "port-profile",
+  "args": ["1280", "720"],
+  "timeout_s": 600,
+  "note": "The small-size half of the chain-narrowing pair, re-run because the chainMask-2 sample at this size landed on a contended card and is no read (r2026-11-10-13-gap2-2-720p: barrier total 21.030 ms against 3.393 ms with chaining on, gpu_after BUSY at 92%, fixed-cost probe 0.411) - so nothing is quoted from it, including its X of 3.536. Same argv as r2026-11-10-11-gap-720p, on the binary that carries chainMask 0. Quote `total T ms (sum of per-dispatch spans, 1280x720), N dispatches, a barrier after every launch`, `production schedule (counter chaining): N dispatches, GPU X ms (min of 7, same graph and size, no client in the loop)`, and the gate lines. The numbers to read against, from the run with chaining fully on: T 3.393 / X 3.277, 249 dispatches - chaining was 0.116 ms CHEAPER than barriers there, so if that saving is gone or reversed at this size then the chain narrowing costs the small size and is only worth keeping for 2560x1440. A BUSY before or a non-zero idle_waited_s and the sample is quoted nowhere: that is what happened last time, and this run exists only to replace it. Fixed-cost probe 0.406-0.421 ms is the control."
+}
