@@ -33,46 +33,53 @@ anything there.
 
 ## 1. Next work
 
-* **The pass's two routes are timed side by side now; read `r2026-11-10-11-gap-720p` and make the
-  one change its comparison picks.** The item's file: `experiments/opendlss_port/linux-port.patch`
-  (source of truth `/opt/data/tmp/odl-src`, amend its one commit and re-cut with
-  `git format-patch -1` - a change made only in the patch is lost the next time it is regenerated),
-  and inside it **one** file: `src/kernels.cpp` if the reading puts the cost in the space between
-  dispatches, or `src/nr_graph.cpp` if it puts it in the schedule's own work. No shader, no emitter
-  and no `src/serve.cpp` change in this item. What the run prints is two lines on one size and one
-  card: `total T ms (sum of per-dispatch spans, 1280x720), N dispatches, a barrier after every
-  launch` and `production schedule (counter chaining): N dispatches, GPU X ms (min of 7, no client
-  in the loop)`. T is the instrument's old number and should land near `r2026-11-08-profile-720p`'s
-  **3.620 ms**; **X is what the shipping route's pass costs**, which until now only a live frame's
-  own `network+composite` line could say (~9.9 ms at 1080p on the large network - and that line
-  also carries the pre-network dispatches the profile never counts). **T - X is the barrier per
-  dispatch**, the quantity the 120-kernel table cannot show, because the profile forces chaining
-  off and the worker ships it on. Above ~0.3 ms the launch path is the lever and the change is in
-  `src/kernels.cpp`; inside the 0.03 ms noise bar the dispatches' own work is the whole cost and
-  the change is in `src/nr_graph.cpp`'s schedule. Either way: one change, one `port-build`, one
-  720p read, and revert anything that kills the device on a clean card rather than escalating it.
+* **Read the chain-narrowing pair and say whether the expert-stage chain was the 1440p penalty.**
+  The reading is queued: `runs/queue/r2026-11-10-13-gap2-1-1440p` and `-2-720p`, behind the build
+  `runs/queue/r2026-11-10-13-gap2-0-build` (all three queued 2026-11-10), and lands as
+  `runs/done/<id>`. The change they measure is
+  one line of `src/nr_graph.cpp` inside `experiments/opendlss_port/linux-port.patch` (source of
+  truth `/opt/data/tmp/odl-src`, amend its one commit and re-cut with `git format-patch -1`), where
+  `routesFromEnvironment`'s `chainMask` default goes 3 -> 2: **that file is what any further move on
+  this edits** - 2 -> 0 (chaining off altogether) if X is still at or above T at 1440p, or back to 3
+  if the 720p half reads the change as a wash. What each size prints is `total T ms (sum of
+  per-dispatch spans, <size>), N dispatches, a barrier after every launch` and `production schedule
+  (counter chaining): N dispatches, GPU X ms (min of 7, same graph and size, no client in the
+  loop)`. The numbers to read against are the run before the change: 1440p T **9.380** /
+  X **10.074** and 720p T **3.393** / X **3.277**, both **249** dispatches - i.e. chaining was
+  0.694 ms dearer than barriers at the shipping size and 0.116 ms cheaper at 720p. So the pair
+  decides two things: whether X falls below T at 2560x1440 (the expert chain was the penalty and the
+  change stands) and whether the 720p 0.116 ms survives (it does not, and the change is a wash to
+  revert). Quote the gate lines with the numbers (`gpu_before`, `gpu_after`, `idle_waited_s`) and
+  the fixed-cost probe (0.406-0.421 ms on a clean card) as the control that says the card was at
+  baseline scale; a BUSY before or a non-zero idle wait and neither number is compared. If a run
+  dies with `vkQueueWaitIdle(queue_) failed: -4`, stop queueing and report the card rather than
+  escalating.
 
-  * **Stuck, 2026-11-10 tick - the comparison is in and it picks a file with no change in it.** T
-    **3.393** / X **3.277** ms over the same **249** dispatches: the barrier route costs **0.116 ms**
-    (0.47 us per dispatch, **3.4%** of the pass), so 96.6% is the dispatches' own work and the launch
-    path is worth at most 3.4% - `src/kernels.cpp` is not the pick. By the item's own definitions
-    that leaves `src/nr_graph.cpp`, and every knob in it is already at its measured optimum: the
-    deferred projection costs **~3 us a block inside the FFN** and saves a dispatch *and* a 1-15 MB
-    state publication (`deferMax` 128 stands - unfusing means a 5-6.5 us standalone GEMM plus that
-    publication, and 256 contradicts the c256 note that the separate GEMM is faster there);
-    `chainMask` bit 4 is measured neutral and only moves the split GEMMs off the gemv route; the four
-    route fuses are load-bearing; every stage in the fresh table sits at 110-150 TFLOP/s, i.e. the
-    achievable rate for these shapes. **So the next change needs a file this item excludes - the PTX
-    emitter (the c256 FFN launches 63 workgroups of 32 warps on a 76-SM card, but its ~2016 warps are
-    all the work that stage has: small, not mis-tiled) or `src/serve.cpp` (the frame's other ~17 ms).
-    Name one and the item moves.** The one read that would sharpen it without a word is the same
-    comparison at the shipping size - `tools/port_profile.sh 2560 1440` as
-    `runs/queue/r2026-11-10-12-gap-1440p.json`, where T - X scales to ~0.34 ms and crosses the item's
-    own 0.3 ms line; queue that next if no word has arrived. **Queued 2026-11-10 tick as
-    `runs/queue/r2026-11-10-12-gap-1440p.json`** (`port-profile 2560 1440`, 600 s), so the next tick
-    reads it rather than queueing it again - and if T - X crosses 0.3 ms there, the item's own
-    definition authorises `src/kernels.cpp` and no word is needed; if it stays inside the bar, what
-    is needed is a word naming the PTX emitter or `src/serve.cpp`.
+* learned: the two-route comparison put the 1440p cost in the chaining, not the barriers - the
+  launch path is not the lever at any size, and the schedule has a size-dependent one (2026-11-10
+  tick, read of `r2026-11-10-12-gap-1440p`, exit 0 in 10.1 s, entry `port-profile 2560 1440`, card
+  WARN before (util 20%) and after (9%), `idle_waited_s` 0.0). Its own two lines read `total
+  9.380 ms (sum of per-dispatch spans, 2560x1440), 249 dispatches, a barrier after every launch` and
+  `production schedule (counter chaining): 249 dispatches, GPU 10.074 ms (min of 7, same graph and
+  size, no client in the loop)`, with the fixed-cost probe at **0.413 ms** (the usual 0.406-0.421
+  window, so the card was at baseline scale) and T near `r2026-11-08-profile-1440p`'s 9.714 - so the
+  run's own internal comparison stands: **the shipping route is 0.694 ms dearer than the barrier
+  route at 2560x1440**, where at 1280x720 the same comparison read it 0.116 ms cheaper
+  (`r2026-11-10-11-gap-720p`, T 3.393 / X 3.277). A sign flip means the gap is not a
+  barrier-per-dispatch constant, so `src/kernels.cpp` is not the pick at either size and the item's
+  own definition leaves `src/nr_graph.cpp`; the change made is `routesFromEnvironment`'s `chainMask`
+  default **3 -> 2** - the expert stages' FFN -> attention -> projection chain is no longer taken,
+  the c32 blocks' chain is kept - with that reading written above it in the code. Patch re-cut: id
+  `b609638dda05` -> `22337d051a3a` (odl-src's one commit amended; the `From` line, the two stat
+  lines, the `src/nr_graph.cpp` blob index and the hunks differ). Suite **598 passed / 9 failed /
+  38 skipped**, the same nine libGL/SDL2 environment failures this box always has;
+  `g++ -fsyntax-only -std=c++20 -DVK_ENABLE_BETA_EXTENSIONS` clean on `nr_graph.cpp`. Queued behind
+  the build: `r2026-11-10-13-gap2-1-1440p` and `-2-720p`. Debt the item's fence leaves standing, for
+  whoever holds a file named for it: `src/nr_graph.h`'s `int chainMask = 3;` and README's
+  `Default 3` still read the old default - both are inert, since `routesFromEnvironment` always
+  assigns, but they are now the wrong number and no item this tick authorised editing either. NOT
+  verified: no device here, so the new default has not been timed; both halves are unread until the
+  pair lands.
 
 * learned: the per-dispatch table cannot separate a dispatch's own span from the gap after it, and
   that is measurable in one run now (2026-11-10 tick, code change in the patch's `src/main.cpp` -

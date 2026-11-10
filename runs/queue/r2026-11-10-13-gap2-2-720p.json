@@ -1,0 +1,7 @@
+{
+  "id": "r2026-11-10-13-gap2-2-720p",
+  "entry": "port-profile",
+  "args": ["1280", "720"],
+  "timeout_s": 600,
+  "note": "The regression half of the chain-narrowing pair, at the size where chaining was still the cheaper route. Same argv as r2026-11-10-11-gap-720p, on the binary that carries chainMask 2 (expert chain off, c32 chain on). Quote the two lines verbatim: `total T ms (sum of per-dispatch spans, 1280x720), N dispatches, a barrier after every launch` and `production schedule (counter chaining): N dispatches, GPU X ms (min of 7, same graph and size, no client in the loop)`. Before the change this size read T 3.393 ms, X 3.277 ms, N 249 - chaining 0.116 ms cheaper than barriers, which is the whole reason the mechanism is on. Check the gate first (gpu_before / gpu_after / idle_waited_s), then read T against 3.393 and the fixed-cost probe against 0.406-0.421 ms (the control that says the card was at baseline scale). The reading: if T stays near 3.393 and X is now at or above T, the 0.116 ms this size used to get from chaining is gone and the change is a wash to be reverted; if T or X moved by more than about 0.1 ms in either direction the sample is a card state and is quoted nowhere. This is the half that decides the revert, so it is read even though the 1440p run is the one the change was made for."
+}

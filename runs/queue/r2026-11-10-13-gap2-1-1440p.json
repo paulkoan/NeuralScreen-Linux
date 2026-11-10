@@ -1,0 +1,7 @@
+{
+  "id": "r2026-11-10-13-gap2-1-1440p",
+  "entry": "port-profile",
+  "args": ["2560", "1440"],
+  "timeout_s": 600,
+  "note": "The reading that decides whether the chain-narrowing change pays, at the size where chaining was the dearer route. Same argv as r2026-11-10-12-gap-1440p, on the binary that carries chainMask 2 (expert chain off, c32 chain on). Quote these two lines verbatim: `total T ms (sum of per-dispatch spans, 2560x1440), N dispatches, a barrier after every launch` and `production schedule (counter chaining): N dispatches, GPU X ms (min of 7, same graph and size, no client in the loop)`. The numbers to beat, from the run before the change: T 9.380 ms, X 10.074 ms, N 249 - i.e. chaining cost 0.694 ms at this size while barriers cost nothing. Check the gate first (gpu_before / gpu_after / idle_waited_s: a BUSY before or a non-zero idle wait and the sample is quoted nowhere), then read T against 9.380 (the fixed-cost probe line is the control that says the card was at baseline scale - it reads 0.410-0.421 ms on every clean run) and X against 10.074. If X falls to at or below T, the expert-stage chain was the penalty and the change stands. If X stays near 10.07 with T at 9.38, the remaining suggestion is the c32 chain (chainMask bit 2), and the next change is the same line in src/nr_graph.cpp going 2 -> 0, which is chaining off altogether. If the run dies with `vkQueueWaitIdle(queue_) failed: -4`, stop queueing and report the card."
+}
