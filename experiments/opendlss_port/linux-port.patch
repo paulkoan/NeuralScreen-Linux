@@ -1,4 +1,4 @@
-From f1908586c80c992da865c66cb5bc196dc6121c7c Mon Sep 17 00:00:00 2001
+From b609638dda0580d033b4b63026cbbb7e9150ed41 Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -140,7 +140,7 @@ both, and the hold the client pays to present the mid).
  shaders/resize_rgba8.comp    |   66 +++
  src/kernels.cpp              |  101 +++-
  src/kernels.h                |   54 +-
- src/main.cpp                 |   69 ++-
+ src/main.cpp                 |   96 ++-
  src/nr_graph.cpp             |  109 ++--
  src/nr_graph.h               |    6 +-
  src/nr_model.cpp             |   11 +
@@ -150,7 +150,7 @@ both, and the hold the client pays to present the mid).
  src/serve.cpp                | 1074 ++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |   71 ++-
  src/vk_context.h             |   23 +
- 18 files changed, 2385 insertions(+), 60 deletions(-)
+ 18 files changed, 2411 insertions(+), 61 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/mid_warp.comp
@@ -1066,7 +1066,7 @@ index 472bd36..bace217 100644
                         uint32_t scaleByteOffset, Activation& normalized, uint32_t tokens, uint32_t heads);
    void windowAttend(VkCommandBuffer commands, const Activation& normalized, const vk::Buffer& prior,
 diff --git a/src/main.cpp b/src/main.cpp
-index 6d57e3a..3a7adbd 100644
+index 6d57e3a..86606e1 100644
 --- a/src/main.cpp
 +++ b/src/main.cpp
 @@ -20,6 +20,7 @@
@@ -1086,7 +1086,48 @@ index 6d57e3a..3a7adbd 100644
  
  namespace {
  int runShaderInfo(int argc, char** argv) {
-@@ -731,13 +734,77 @@ int runProfile(int argc, char** argv) {
+@@ -706,6 +709,21 @@ int runProfile(int argc, char** argv) {
+     for (size_t i = 0; i < entries.size() && i < best.size(); ++i)
+       best[i].milliseconds = std::min(best[i].milliseconds, entries[i].milliseconds);
+   }
++  // The route the worker ships is the chained one, and the per-dispatch table above cannot show it:
++  // its timings need a barrier after every launch. So the same graph, at the same size, is run on the
++  // production schedule (counter chaining, no barrier between launches) and timed with GPU timestamps.
++  // The two totals differ only in barriers vs counters, so their difference is what a barrier per
++  // dispatch costs and the remainder is the dispatches' own work - the question the table alone cannot
++  // answer. It is the same measurement `parity` prints for its production schedule, reachable from a
++  // `port-profile` request.
++  const uint32_t barrierDispatches = kernels.dispatchCount();
++  const bool profiledWithBarriers = !nr::Kernels::chainEnabled();
++  const bool envChain = getenv("DLSS5VK_CHAIN") ? atoi(getenv("DLSS5VK_CHAIN")) != 0 : true;
++  GraphRun production;
++  if (envChain) {
++    nr::Kernels::setChainEnabled(true);
++    production = runGraph(context, model, kernels, geometry, *features, true, false, frames);
++  }
+   const std::string stageFilter = argValue(argc, argv, "--stage", "");
+   for (size_t index = 0; index < best.size(); ++index) {
+     const auto& entry = best[index];
+@@ -719,7 +737,17 @@ int runProfile(int argc, char** argv) {
+   }
+   std::vector<std::pair<std::string, double>> sorted(byLabel.begin(), byLabel.end());
+   std::sort(sorted.begin(), sorted.end(), [](auto& a, auto& b) { return a.second > b.second; });
+-  printf("total %.3f ms (sum of per-dispatch spans, %ux%u)\n\nby kernel:\n", total, width, height);
++  printf("total %.3f ms (sum of per-dispatch spans, %ux%u), %u dispatches, %s\n",
++         total, width, height, barrierDispatches,
++         profiledWithBarriers ? "a barrier after every launch" : "CHAINED: no barrier between launches, so the spans overlap");
++  if (envChain)
++    printf("production schedule (%s): %u dispatches, GPU %.3f ms (min of %d, same graph and size, no client in the loop)\n"
++           "  the gap between the two totals is what a barrier per dispatch costs; what is left is the dispatches themselves\n",
++           production.chained ? "counter chaining" : "chaining asked for, the graph fell back to barriers",
++           production.dispatches, production.minGpuMs, frames);
++  else
++    printf("production schedule: not measured (DLSS5VK_CHAIN=0 turns the chained route off)\n");
++  printf("\nby kernel:\n");
+   for (size_t i = 0; i < sorted.size() && i < 40; ++i)
+     printf("  %8.3f ms  %5.1f%%  %s\n", sorted[i].second, 100 * sorted[i].second / total, sorted[i].first.c_str());
+   std::vector<std::pair<std::string, double>> stages(byStage.begin(), byStage.end());
+@@ -731,13 +759,77 @@ int runProfile(int argc, char** argv) {
  }
  }  // namespace
  
