@@ -1,7 +1,0 @@
-{
-  "id": "r2026-11-08-ffn4-1-720p",
-  "entry": "port-profile",
-  "args": ["1280", "720"],
-  "timeout_s": 600,
-  "note": "The 720p half of the FFN sweep's third measurement pair, on the binary r2026-11-08-ffn4-0-build produces (R4 family all at .maxnreg 64: C=256 back from 48, C=64 and C=128 capped for the first time). Usable only if the rows come back at baseline scale - the last pair is the test: r2026-11-08-ffn3-1-720p read total 3.619 ms against r2026-11-08-profile-720p's 3.620, with ffn_ptx 4032x256 e8 r4 0.464 against the baseline's e8 r3 0.461 and block32_ptx 16128w f74 0.170 against 0.170, so that sample is good; the first pair's 720p (r2026-11-08-ffn-1-720p) read 6.191 ms for the same rows at ~1.7x and is void. Read the three FFN rows that changed against r2026-11-08-ffn3-1-720p's same-build rows, since this build differs from it only in the three emitter arguments: ffn_ptx 4032x256 e8 r4 0.464, ffn_ptx 16128x128 e4 r4 +proj 0.313 and e4 r4 0.050, ffn_ptx 64512x64 e2 r4 +proj 0.159 and e2 r4 0.051, and the total (3.619) against profile-720p's 3.620. Controls: the barrier probe (0.406 on ffn3-1-720p, 0.409 on profile-720p, 0.408/0.409 on the 1080p pair) is the fixed-cost control, and gpu_before/gpu_after/idle_waited_s are part of the reading - a BUSY before invalidates the sample. A cap change on a kernel that is 12.8% of the pass is worth a fraction of a millisecond, so a move inside 0.03 ms on a row is noise and the direction is the reading."
-}

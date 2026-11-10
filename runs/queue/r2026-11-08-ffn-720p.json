@@ -1,7 +1,0 @@
-{
-  "id": "r2026-11-08-ffn-720p",
-  "entry": "port-profile",
-  "args": ["1280", "720"],
-  "timeout_s": 600,
-  "note": "The 720p half of the FFN sweep's measurement pair, to be read against r2026-11-08-profile-720p (3.620 ms, exit 0, WARN card before and after, idle_waited_s 0.0) on the previous binary. It needs r2026-11-08-ffn-build to have landed first: on the old binary the C=256 FFN is ffn_ptx *x256 e8 r3, and on this build it is the r4 kernel, so if the run's stamp does not name f687b434 read it as the old code and nothing is comparable. What to read: the total against 3.620 ms, and the FFN rows by name. The family is 0.461 + 0.314 + 0.160 + 0.053 + 0.051 = 1.04 ms here, 28.7% of the total, with ffn_ptx 4032x256 e8 r3 at 0.461 ms being the single largest - on this build that row's name changes to e8 r4, and the rows' shapes change with it (the workgroup covers 64 rows instead of 48), so quote the new names rather than the old ones. The barrier probe (400 trivial dispatches + barriers, 0.409 ms / 1.02 us each) is the fixed-cost control: if it has moved, the card's clocks moved and the pair is not comparable. Same gate discipline as every profile run: gpu_before, gpu_after and idle_waited_s are part of the reading, and a BUSY before invalidates the sample."
-}

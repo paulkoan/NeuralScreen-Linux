@@ -1,9 +1,0 @@
-{
-  "id": "r2026-11-02-be",
-  "entry": "minimal",
-  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
-           "--shm", "--save-after", "be-1440p.png", "--worker-log"],
-  "timeout_s": 300,
-  "artifacts": ["be-1440p.png"],
-  "note": "bd (shm + send-ahead 2) measured 26.5 ms / 37.7 fps against bb's pipe serial 39.7 ms / 25.2 fps and bc's pipe+send-ahead 44.7 ms / 22.4 fps, and the split blamed the transport: on shm the client's send no longer blocks (send median 2.3 ms against bc's 35.1) and the steady frame sits below the worker's own per-frame time, so the second frame really overlaps. bd changed two variables at once - shared memory and the second frame in flight - so this run changes one: the same 1440p-with-pixels shape and the same --shm, but serial (no --send-ahead 2). If be lands near 26 ms the concurrency buys nothing on shm and the whole ~13 ms win is transport; if it lands near bb's 40 ms the overlap is the lever and shm only enables it. Read the send/recv split: shm serial should keep send at ~2-3 ms and put the worker's ~28 ms in recv, so a steady median near 30 ms means the handoff costs ~2 ms and bd's 26.5 was real overlap. be's after.png should be byte-identical to bb's and bc's (both sha 4dc4d07bec92f58134ec01e8221e25e049557c4f) - the flag is a timing knob only."
-}

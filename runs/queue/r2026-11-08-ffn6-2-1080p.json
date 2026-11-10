@@ -1,8 +1,0 @@
-{
-  "id": "r2026-11-08-ffn6-2-1080p",
-  "entry": "port-profile",
-  "args": ["1920", "1080"],
-  "timeout_s": 600,
-  "artifacts": [],
-  "note": "The 1080p half of the FFN sweep's fourth pair, on the binary r2026-11-08-ffn6-0-build produces (C=128 R4 entry at .maxnreg 80; C=64 and C=256 R4 still 64). Read the two C=128 rows against r2026-11-08-ffn5-0-1080p, the clean sample the third change's second half produced: ffn_ptx 34560x128 e4 r4 +proj 0.418 and e4 r4 0.076, with the untouched ffn_ptx 8640x256 e8 r4 0.607, the total 6.315 ms and the barrier probe 0.407 as controls. A move inside 0.03 ms on a row is noise and the direction is the reading; every row the change does not touch must come back inside ~0.02 ms of that baseline. Quote only at baseline scale (~6.3-6.6 ms total, not 30) with the '400 trivial dispatches + barriers' probe inside 0.406-0.409 ms, gpu_before WARN and idle_waited_s 0.0. The item wants two 1080p samples because one of the third change's pair lost its card (r2026-11-08-ffn5-1-1080p read 30.677 ms with its probe unmoved and was quoted nowhere); this is the first, and the reading tick re-queues a second identical run if this one comes back inflated. If both are inflated, that is a box-level problem and the item stops there for a human."
-}

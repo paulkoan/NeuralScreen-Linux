@@ -1,7 +1,0 @@
-{
-  "id": "r2026-11-03-port-build-split2",
-  "entry": "port-build",
-  "args": [],
-  "timeout_s": 900,
-  "note": "Rebuild the staged port from the updated linux-port.patch, which now carries the split timing behind DLSS5VK_SERVE_SPLIT: three bottom-of-pipe timestamps around the neural graph and the composite, printed as 'network X, composite Y' instead of the combined figure. Nothing changes when the variable is unset. This is a fresh id because r2026-11-03-port-build-split was refused on its 1800s timeout and the runner skips ids that already exist in runs/done; the request itself is identical apart from the timeout now sitting at the 900s ceiling. The rebuild script ends by asking the new binary which patch it carries, so a stale binary reports OUT OF SYNC instead of silently measuring the old code."
-}

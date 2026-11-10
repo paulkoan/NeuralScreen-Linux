@@ -1,8 +1,0 @@
-{
-  "id": "r2026-11-03-split",
-  "entry": "minimal",
-  "args": ["--frames", "60", "--headless", "--source", "synthetic", "--size", "2560x1440",
-           "--shm", "--worker-env", "DLSS5VK_SERVE_SPLIT=1", "--worker-log"],
-  "timeout_s": 900,
-  "note": "The measurement the port profile could not make: how much of the worker's 12-13.5 ms 'network+composite' is the neural pass and how much is the composite plus the gap between them. The port's rebuilt binary carries three bottom-of-pipe timestamps around the graph and the composite, printed as 'network X, composite Y' when DLSS5VK_SERVE_SPLIT is set. That flag is set here through --worker-env rather than a policy entry, because the policy's env is per-entry and this flush should not be paid by every run. Shape matches be/bh so the totals are comparable: synthetic 1440p, shm, no pixels saved, 60 frames. Read stderr's 'serve frame 30:' line for the split, and compare network+composite against be's combined figure and against the profile's 9.75 ms arithmetic. Note the timestamps flush the queue, so this run's own frame time is inflated by design and must not be quoted as a frame rate."
-}

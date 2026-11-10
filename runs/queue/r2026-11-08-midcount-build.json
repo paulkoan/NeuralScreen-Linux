@@ -1,8 +1,0 @@
-{
-  "id": "r2026-11-08-midcount-build",
-  "entry": "port-build",
-  "args": [],
-  "timeout_s": 900,
-  "artifacts": [],
-  "note": "Rebuild the staged port from the re-cut patch. The port's mid-frame counters now print on the exit a served run takes (the stream-closed one) and not only inside the --frames branch, and the patch id moved 043fc12 -> f2cd1f27, so every port run stamps OUT OF SYNC until this lands. No arguments - rebuild.sh defaults to /opt/neuralscreen/port, which is what NS_WORKER_CMD points at. Two lines to read: the stamp, which must name f2cd1f27 and say 'in sync' (NOT 91c8a0c768c0, which is what the box is carrying now), and 16 shader modules / 78 PTX kernels. Nothing else in the patch changed - this build's only new code is five lines in serve.cpp's exit paths - so a module count other than 16/78, or a shader that fails to compile, means something else moved."
-}

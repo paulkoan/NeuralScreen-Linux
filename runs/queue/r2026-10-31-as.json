@@ -1,9 +1,0 @@
-{
-  "id": "r2026-10-31-as",
-  "entry": "minimal",
-  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
-           "--save-after", "after.png", "--worker-log"],
-  "timeout_s": 300,
-  "artifacts": ["after.png"],
-  "note": "Picture half of the per-stage scheduling cost lever, which won the 1440p decision: r2026-10-31-ar's --work-scale 0.75 died at frame 0 (exit 3, the worker cannot do NGX upscaling), and r2026-10-31-aq showed the small network is slower here (26.5 vs 24.6 ms median), so the default scheduling path is the only live lever. This run keeps the default path (no work-scale, no motion flag) and adds --save-after so the winning path's output can be diffed against the established no-motion reference picture. Expect 120 done / 0 skipped, ~24.6 ms median / 40.7 fps steady, and after.png byte-identical to r2026-10-30-ah's nomotion.png (MAD 0.0) if the scheduling path is quality-neutral."
-}

@@ -1,7 +1,0 @@
-{
-  "id": "r2026-11-03-profile",
-  "entry": "port-profile",
-  "args": [],
-  "timeout_s": 600,
-  "note": "Per-dispatch timings for the built port at 2560x1440: the answer to why the pass is 12.0-13.5 ms against NGX's 7.1 ms for the same weights. The schedule is ruled out (counter chaining is on at this size - the barrier fallback needs (fullHeight+11)/8 > 512, which is 181 here - and no fallback warning appears in any live run), so the cost is inside the kernels and the port can already say where. This request exists partly to settle a question the results branch cannot: whether the port-profile entry is actually in the policy. If the runner rejects the entry name, that is the answer and it lands as a failed run rather than a silent skip. No artifacts: the output is the timing table itself."
-}

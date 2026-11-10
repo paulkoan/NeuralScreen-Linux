@@ -1,8 +1,0 @@
-{
-  "id": "r2026-11-10-3-ws-build",
-  "entry": "port-build",
-  "args": [],
-  "timeout_s": 900,
-  "artifacts": [],
-  "note": "Rebuild the staged port from the re-cut patch, for the work-scale change. The patch is now f1908586c80c (was a522cd30bbb2, which the box is carrying now), so until this lands every port run stamps OUT OF SYNC. What moved: src/serve.cpp no longer refuses fullWidth != workWidth - it takes the client's frame at the display size, does ONE bilinear resize down to the work size before the proxy expand, runs the network as before, and resizes the composite's output back up to the frame size before the readback and the reply; new shaders/resize_rgba8.comp (RGBA8 -> RGBA8, bilinear, in/out sizes as push constants), Kernels::resizeRgba8 in src/kernels.{h,cpp}, and 'resize_rgba8' added to Kernels' fixed module list (without that entry the dispatch throws). A frame smaller than the work size is still refused, and the no-scale path (fullWidth 0 or equal) records no resize at all, so every earlier run's code is unchanged. Read three things in the build log: the stamp must name f1908586c80c and say 'runs will be in sync'; the shader count must be 17 modules (it was 16) - a count of 16 means the new shader did not compile, which is where glslang will first see it, since the box that queued this could not compile it; and 78 PTX kernels, unchanged (no emitter list entry moved). Any shader compile error named 'resize_rgba8' is this change's fault and not the box's."
-}

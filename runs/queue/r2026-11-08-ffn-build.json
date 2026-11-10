@@ -1,8 +1,0 @@
-{
-  "id": "r2026-11-08-ffn-build",
-  "entry": "port-build",
-  "args": [],
-  "timeout_s": 900,
-  "artifacts": [],
-  "note": "Rebuild the staged port from the re-cut patch, which now carries the first change of the FFN sweep: src/kernels.cpp's ffnRowTiles() no longer special-cases C=256, so the expert FFN of the largest kernel family at every size takes the R4 variant (warps = E * rowTiles = 32, the A tile's full 64 rows) instead of R3. build_linux.sh already emits both C256 variants, so the R4 kernel is generated at .maxnreg 64 - rowTiles and the register cap are the one change. The patch id moved f2cd1f27 -> f687b434, so every port run stamps OUT OF SYNC until this lands. Two lines to read: the stamp, which must name f687b434 and say 'in sync' (NOT f2cd1f27, which is what the box carries now), and the kernel shader/PTX counts. The count must still be 16 shader modules / 78 PTX kernels: R4 was already in the emitter list, only the selection changed, so a different count means something else moved. No arguments - rebuild.sh defaults to /opt/neuralscreen/port, which is what NS_WORKER_CMD points at. This build is a prerequisite for r2026-11-08-ffn-720p and r2026-11-08-ffn-1080p; nothing is measured until it lands."
-}

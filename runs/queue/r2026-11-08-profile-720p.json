@@ -1,7 +1,0 @@
-{
-  "id": "r2026-11-08-profile-720p",
-  "entry": "port-profile",
-  "args": ["1280", "720"],
-  "timeout_s": 600,
-  "note": "The third size that decides what the next port work even is. The pass is the largest remaining stage - 6.5 ms at 1080p on the profile's own sum (r2026-11-08-profile-1080p-b/-c, 6.494 and 6.522) against NGX's 4.6, and 9.714 at 1440p against NGX's 7.1 - and there are two entirely different explanations for what is left in it, with opposite next steps. If the pass scales with area, it is arithmetic-bound and the target is the kernels (the FFN pair is ~25% of it). If it does not scale, it is bound by something fixed per dispatch, and the target is the dispatch structure - bigger tiles, fewer of them - which is not a kernel-optimisation job at all. 720p separates them in one run: 1280x720 is 0.44 of 1080p's pixels, so an area-bound pass should read about 2.9 ms (and NGX reads 2.90 here, which is the coincidence worth having), while a dispatch-bound pass stays near 6. What to read: the total against 6.5 at 1080p and 9.714 at 1440p, then the per-kernel table for whether the same kernel names carry the time at all three sizes - a fixed cost shows up as the same kernels holding the same milliseconds while the frame shrinks. Same entry, same binary and same instrument as the two 1080p runs, so this is comparable to them; the caveat carries as before, that the profile disables chaining and its sum is a sum of spans rather than a frame time. Gate it like any measurement: if the card reads BUSY before or after, say so and do not compare."
-}

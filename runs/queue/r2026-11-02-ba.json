@@ -1,9 +1,0 @@
-{
-  "id": "r2026-11-02-ba",
-  "entry": "minimal",
-  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "1920x1080",
-           "--worker-log"],
-  "timeout_s": 300,
-  "artifacts": [],
-  "note": "1080p without the pixel channel, on the same checkout as az (1080p with pixels, 31.6 ms). The 13.6 ms figure on record is from ao on an older client, so az-vs-ba is the first same-build pixel/no-pixel pair at 1080p. That pair is what the resolution decision needs: it separates 'the pixel channel costs 18 ms' from '1080p is slower than 1440p', which the cross-build numbers cannot do."
-}

@@ -1,8 +1,0 @@
-{
-  "id": "r2026-11-10-profile-large-1080p",
-  "entry": "port-profile",
-  "args": ["1920", "1080"],
-  "timeout_s": 600,
-  "artifacts": [],
-  "note": "Two jobs, one run. First, it is the control for the policy edit: the ordinary `port-profile` entry had NEURALSCREEN_MODEL_DIR pointed at /opt/neuralscreen/model-small, so any profile it ran was the small network wearing the large one's name, and the 6.296 ms baseline this plan quotes came from before that edit landed. A run now must read `model:  /opt/neuralscreen/model` and land near 6.3 ms; if it reads model-small or comes back near 3.4 ms, the entry is still swapped and the baseline's meaning is in question. Second, it carries the policy: tools/auto_runner.py now copies the deployed policy.toml beside every result, so this run's directory publishes the file itself, which is currently invisible from the repository - the reason three runs were spent guessing at entries. Read `model:` first, then the total against r2026-11-10-1-profile's 6.296 ms, then open runs/done/<id>/policy.toml. Gate as usual: BUSY before or a non-zero idle_waited_s means say so and do not compare."
-}

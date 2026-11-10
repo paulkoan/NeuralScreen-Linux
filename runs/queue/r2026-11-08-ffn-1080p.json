@@ -1,7 +1,0 @@
-{
-  "id": "r2026-11-08-ffn-1080p",
-  "entry": "port-profile",
-  "args": ["1920", "1080"],
-  "timeout_s": 600,
-  "note": "The 1080p half of the FFN sweep's measurement pair, read against r2026-11-08-profile-1080p-b and -c (6.494 ms and 6.522 ms, an equal pair on the previous binary, WARN card before and after, idle_waited_s 0.0 both) and, secondarily, against r2026-11-08-profile-1440p (9.714 ms). It needs r2026-11-08-ffn-build first; the stamp must name f687b434 or the run is still the old C=256 R3 kernel and the pair says nothing. What to read: the total against the 6.49/6.52 pair - the sweep's claim is that the C=256 FFN row (the largest kernel at all three sizes) moves, and at 1080p that row is ffn_ptx 8640x256 e8 r3 at 1.431 ms in the old table, so the change has its largest per-kernel share to show here. Quote the FFN rows by their new r4 names. The two old 1080p runs were an equal pair, which is what makes a single new reading usable if it moves by more than the 0.03 ms they differ by; the barrier probe (400 trivial dispatches + barriers) is the control for whether the clocks are the same as the baseline run. No 1440p run is queued behind this one - the sweep's first change is measured at the two sizes the item names - so the 1440p baseline 9.714 ms and the 720p/1080p/1440p area ratio (0.444 / 1.0 / 1.78) are context, not part of the pair."
-}

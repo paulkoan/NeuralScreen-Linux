@@ -1,9 +1,0 @@
-{
-  "id": "r2026-11-02-bc",
-  "entry": "minimal",
-  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
-           "--send-ahead", "2", "--save-after", "bc-1440p.png", "--worker-log"],
-  "timeout_s": 300,
-  "artifacts": ["bc-1440p.png"],
-  "note": "The user's decision is 1440p, aim for max FPS. This tests the one lever that needs no code: --send-ahead 2. The serial loop (default) is capture 2.9 + send 4.8 + recv 26.2 + display 2.1 = ~36 ms; pipelined, the frame time should fall toward max(worker 26.2, client 10.5) instead of their sum. At 1080p send-ahead 2 only saved 1.8 ms because the worker dominates, but at 1440p the client's 10.5 ms is serialized against a 26 ms recv so there is more to hide. Compare against bb's 39.7 ms median on the same build and same pixel shape. bc's after.png should be byte-identical to bb's if send-ahead changes no pixels."
-}

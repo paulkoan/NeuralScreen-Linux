@@ -1,8 +1,0 @@
-{
-  "id": "r2026-11-09-capture-transport-probe",
-  "entry": "pytest",
-  "args": [],
-  "timeout_s": 900,
-  "artifacts": [],
-  "note": "Runs the suite on the box, and the thing to read is one SKIPPED line: tests/test_capture_transport.py reports which capture transports this machine can offer. The capture chain writes every frame into a pipe (`... ! fdsink fd=1`) and the client reads it, which at 1080p is 8.3 MB a frame measuring **5.1 ms** of a 30.5 ms frame - about 1.6 GB/s, pipe speed - and the pipe is already at Linux's 1 MiB cap, so it cannot be given more headroom. The pixel channel is the reason this is worth asking: moving THAT from a pipe to shared memory took the frame 39.7 -> 26.4 ms, and the capture is the same kind of cost at the other end. The probe names four things and asks nothing of the suite: `shmsink` and `shmsrc` (gst-plugins-bad, a segment the client reads directly, removing the pipe's extra copy), whether `memfd_create` works here (gst keeps writing to an fd, but the fd is memory, so the client maps it instead of copying out of a kernel buffer), the current `fs.pipe-max-size`, and whether `gst-launch-1.0` is present at all. It skips rather than asserts on purpose - a missing plugin is a property of the box, not a bug in the repo, and a red test would block every other code change the loop wants to make. So the answer arrives as a skip line in this run's output. Nothing here changes a run's numbers and nothing here needs a screen; the only thing to do with the result is decide which transport to build behind the existing pipe path."
-}

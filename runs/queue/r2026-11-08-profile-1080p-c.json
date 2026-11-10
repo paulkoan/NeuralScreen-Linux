@@ -1,7 +1,0 @@
-{
-  "id": "r2026-11-08-profile-1080p-c",
-  "entry": "port-profile",
-  "args": ["1920", "1080"],
-  "timeout_s": 600,
-  "note": "Second of the two same-size profile runs that test the 1080p/1440p pair's contradiction (r2026-11-08-profile-1080p 13.733 ms against r2026-11-08-profile-1440p 9.714 ms on the same binary). Identical shape, entry and args as r2026-11-08-profile-1080p-b and queued directly behind it, deliberately: b runs after the card has been idle and c runs on the heat b leaves, which are the two clock states that can explain a smaller frame reading dearer, with nothing else differing between the runs. If c comes back near 13.7 as well, the 1080p number is reproducible under this route's own conditions and the fixed-cost/per-kernel reading of the pass stands; if c comes back clearly lower (the ~5.5 a linear pixel scaling predicts), the 13.733 was a cold-clock artifact and the earlier cross-size table stands instead. Read gpu_before, gpu_after and idle_waited_s too: if the idle gate held as long before c as it did before b, both runs started cold and an equal pair weakens the clock reading without killing it."
-}

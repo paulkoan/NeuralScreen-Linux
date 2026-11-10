@@ -1,7 +1,0 @@
-{
-  "id": "r2026-11-08-ffn4-2-1080p",
-  "entry": "port-profile",
-  "args": ["1920", "1080"],
-  "timeout_s": 600,
-  "note": "The 1080p half of the FFN sweep's third measurement pair, on the binary r2026-11-08-ffn4-0-build produces (R4 family all at .maxnreg 64: C=256 back from 48, C=64 and C=128 capped for the first time). This build differs from r2026-11-08-ffn-2-1080p only in the C=64 / C=128 emitter arguments, so that run is the like-for-like baseline: ffn_ptx 8640x256 e8 r4 0.613 ms, ffn_ptx 34560x128 e4 r4 +proj 0.551 and e4 r4 0.090, ffn_ptx 138240x64 e2 r4 +proj 0.318 and e2 r4 0.099, total 6.550 ms, barrier probe 0.408 ms. Three things to read. (a) Did the C=256 revert restore its row to 0.613 - r2026-11-08-ffn3-2-1080p read 0.967 on the 48 build against the same everything else, so 0.613 here is the revert landing. (b) Did the first cap move the C=64 / C=128 rows off those four numbers; a cap change is worth a fraction of a kernel family that is ~16% of the pass, so a move inside 0.03 ms on a row is noise and the direction is the reading. (c) Did the total come back from 6.792 to ~6.550. Controls: the barrier probe (0.408-0.409 across all four 1080p samples) is the fixed-cost control, and gpu_before/gpu_after/idle_waited_s are part of the reading - a BUSY before invalidates the sample. Cross-check on any 1080p sample: the whole table should sit within ~0.01 ms of the baselines above on the ~30 rows the changes do not touch, which is what separates a real row move from a contended run."
-}

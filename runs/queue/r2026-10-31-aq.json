@@ -1,9 +1,0 @@
-{
-  "id": "r2026-10-31-aq",
-  "entry": "minimal-small",
-  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
-           "--worker-log"],
-  "timeout_s": 300,
-  "artifacts": [],
-  "note": "Repeat of an (small network, no motion, 1440p, 26.8 ms) against aq's own reference point. The small model was FASTER at 1080p (13.6 vs 14.5) and SLOWER at 1440p (26.8 vs 21.8), which is backwards for a smaller network; either the 1440p spread is that large or the 31-block schedule pays per-stage dispatch at high resolution. Two runs of the same shape settle it."
-}
