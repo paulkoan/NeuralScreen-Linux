@@ -33,50 +33,36 @@ anything there.
 
 ## 1. Next work
 
-* The 31-block small network is the next lever, and re-measuring it on the port needs one line in the
-  box's policy. The port loads it already - the patch derives the stage table from the manifest
-  (`src/nr_schedule.{h,cpp}`, `schedule --check` clean on both networks) and
-  `docs/small-network-schedule.md` settles that it is the same six-level U-Net with fewer blocks per
-  level - so what is missing is only a way for a run to name the model: the runner builds the
-  worker's env from the policy entry, a request carries no env, and `tools/port_profile.sh` takes the
-  model from `NEURALSCREEN_MODEL_DIR`. What I need is a second entry in
-  `/opt/neuralscreen/policy.toml` beside `port-profile` - `port-profile-small`, argv
-  `["bash", "tools/port_profile.sh"]`, env
-  `NEURALSCREEN_MODEL_DIR=/opt/neuralscreen/model-small` (the extracted 310.9.16 network the
-  2026-11-09 survey names) - plus a `minimal`-shaped one whose `NS_WORKER_CMD` names
-  `serve --model /opt/neuralscreen/model-small` for the fps and pixel-parity half. That file is the
-  box's, so it is a line for the developer, not this tick. **Status after `r2026-11-10-profile-small`
-  (2026-11-10 tick): the entry on the box is the wrong shape, and the run is the proof.** It landed
-  exit 0 in 4.3 s and its own `model:` line reads `/opt/neuralscreen/model` - the large network -
-  while its report header reads `env from policy: NS_WORKER_CMD`. So the `port-profile-small` entry
-  that exists sets `NS_WORKER_CMD` (the `minimal`-shaped half) and not `NEURALSCREEN_MODEL_DIR`, which
-  is the only name `tools/port_profile.sh` reads; the script therefore fell back to the default model
-  and returned a repeat of `r2026-11-10-1-profile` dressed as a result (total **20.671 ms** against that
-  run's 6.296 at 1080p, `idle_waited_s` 15.0 and `gpu_after` BUSY at 73%, so by the standing gate rule
-  it is not compared anyway). **What the developer needs to add is still the first line only:** a
-  `port-profile-small` entry, argv `["bash", "tools/port_profile.sh"]`, env
-  `NEURALSCREEN_MODEL_DIR=/opt/neuralscreen/model-small`. The `NS_WORKER_CMD` that is there belongs on
-  the separate `minimal`-shaped entry the fps half needs; on this one it does nothing. No request can
-  measure the small network until that env is set - requests carry no env and the runner builds the
-  worker's env from the policy entry alone - so nothing is queued off this and the item stays here for
-  the developer. **Status after the re-issue `r2026-11-10-profile-small-b` (2026-11-10 tick): the
-  policy edit has still not taken.** It landed exit 0 in 4.2 s and its `model:` line reads
-  `/opt/neuralscreen/model` once more, with total **6.376 ms** at 1080p against the same baseline's
-  6.296 (`idle_waited_s` 15.0 and `gpu_before` WARN, so by the standing gate rule it is not compared
-  either) - a repeat of the run above, not a small-network number. Nothing is queued off it and a
-  third identical re-issue would only repeat the baseline, so no further `port-profile-small` request
-  is planted; what is needed is unchanged and is the developer's: the `port-profile-small` entry in
-  `/opt/neuralscreen/policy.toml` with env `NEURALSCREEN_MODEL_DIR=/opt/neuralscreen/model-small`.
+* The small network's fps and pixel-parity half is the next lever, and it needs one line in the box's
+  policy before anything can queue: a `minimal`-shaped entry in `/opt/neuralscreen/policy.toml`,
+  beside `port-profile-small`, whose `NS_WORKER_CMD` names `serve --model
+  /opt/neuralscreen/model-small`. Requests carry no env and the runner builds the worker's env from
+  the policy entry alone - which is exactly why `port-profile-small` was the only way to re-measure
+  the port, and the same fence applies here. What the pair would read: the small network's fps and
+  its before/after PNGs against the large network's on the same shape (`r2026-11-10-5-ws-video`'s
+  30.2 ms / 33.2 fps steady at 1080p-internal and `r2026-11-08-1440p-window`'s 48.3 ms / 20.7 fps at
+  1440p), plus the pixel-parity check between the two models' published frames. It is worth the
+  entry, because at profile scale the small network is **1.88x** the large one (learned, below).
+  Nothing is queued off this until that entry exists; the file is the box's, so this is the
+  developer's line. The other parked lever is unchanged: the FFN sweep's cap-80 question waits on a
+  word rather than a file.
 
-  The reading would be the small network's
-  profile total against the large network's at the same size (`r2026-11-10-1-profile` 6.296 ms at
-  1080p, `r2026-11-03-profile` 9.749 ms at 1440p) and, only if that wins, the fps pair. The one port
-  sample so far says otherwise - `r2026-10-30-aq` **26.5 ms / 37.8 fps against the large network's
-  24.6** - but it is an October run on an older patch and the port's schedule change has never been
-  checked for pixel parity on a device, while the third-party reads of the 310.9.16 model (2026-11-09
-  survey: 8.8 -> 5.4 ms at 4K on an RTX 4080 SUPER, 36-40% lower GPU time elsewhere) call it the
-  faster one. The other parked lever, the FFN sweep's cap-80 question, waits on a word rather than a
-  file.
+* learned: the 31-block small network has been re-measured on the port and it is **1.88x** the large
+  one at profile scale (2026-11-10 tick, read of `r2026-11-10-profile-small-c`, exit 0 in 4.1 s,
+  entry `port-profile-small`, `bash tools/port_profile.sh 1920 1080`, revision `3ecf0542b68b`, card
+  WARN before and after with `idle_waited_s` 105.0, so by the standing gate rule it is a usable
+  sample and it counts). Its `model:` line reads `/opt/neuralscreen/model-small` and its report
+  header reads `env from policy: NEURALSCREEN_MODEL_DIR` - the policy edit the last four items asked
+  for has taken at last, and the run is the proof. Total **3.446 ms** at 1920x1080 (sum of
+  per-dispatch spans; fixed-cost probe 0.410 ms against the usual 0.406-0.409 window) against the
+  large network's clean **6.494 / 6.522** (`r2026-11-08-profile-1080p-b` / `-c`) and 6.296
+  (`r2026-11-10-1-profile`, BUSY gate, quoted for reference only): **0.53, i.e. 1.88x**, in line with
+  the 2026-11-09 survey's 1.78x claim and clear of the older October sample (`r2026-10-30-aq` 26.5 ms
+  / 37.8 fps against the large network's 24.6). The kernel table is the small graph's own - `block 0
+  c32` 0.352 ms and `block 70 c32` 0.339 ms top the per-stage list and the ffn/gemmv rows are the
+  small shapes - so the model really swapped rather than the large one re-reading. What this does NOT
+  settle: fps and pixel parity on the small network, which is the item above and waits on the box's
+  `minimal`-shaped policy entry.
 
 * learned: the window half of the work-scale pair landed and its sample is muddied - the source,
   not the pass, set the frame (2026-11-10 tick, read of `r2026-11-10-4-ws-window`, exit 0, 120
