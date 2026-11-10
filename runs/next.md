@@ -33,20 +33,40 @@ anything there.
 
 ## 1. Next work
 
-* The small network is a win and the question under it is its internal size: queue
-  `runs/queue/r2026-11-10-7-small-ws50.json` (entry `minimal-small`, `r2026-11-10-6-small-video`'s argv with
-  `--work-scale 0.75` -> `--work-scale 0.5` and `--save-after small-ws50-after.png`, 900 s), and this item waits on
+* The small network's internal-size curve is missing its 1.0 point, and that is the one that prices the resize:
+  queue `runs/queue/r2026-11-10-8-small-ws100.json` (entry `minimal-small`, `r2026-11-10-6-small-video`'s argv with
+  `--work-scale 0.75` -> `--work-scale 1.0` and `--save-after small-ws100-after.png`, 900 s), and this item waits on
   its reading and nothing else. What the run has to show, in order: the worker banner's model line reads
-  `/opt/neuralscreen/model-small` (if it reads `/opt/neuralscreen/model`, nothing below counts); the median / steady
-  rate against `r2026-11-10-6-small-video`'s **24.1 ms / 41.6 fps** at `--work-scale 0.75` on this exact shape and
-  the large network's 30.2 ms / 33.2 fps (`r2026-11-10-5-ws-video`, same shape) - 60 fps needs 16.7 ms, so a frame
-  near 17-19 ms says this one argument has taken most of the remaining gap, while a frame that barely moves says the
-  fixed costs (readback + reply at the frame size, plus the client chain) are the floor and the internal size is
-  spent; `small-ws50-after.png` at 2560x1440 RGBA, and **different** from `small-ws-after.png` - a different internal
-  size must move the picture, so identical bytes mean the resize never ran and the reading is void. `--work-scale` is
-  the existing switch and the port's `resize_rgba8` does both bilinear dispatches with no rebuild, so the run needs
-  no code change; an internal size behind a setting is the quality trade the goal item already authorises. The other
-  parked lever is unchanged: the FFN sweep's cap-80 question waits on a word.
+  `/opt/neuralscreen/model-small` and carries **no** work-scale line (at 1.0 the port records no resize at all, so a
+  work-scale line naming 2560x1440 means the argument did not take); the median / steady rate against 0.75's
+  **24.1 ms / 41.6 fps** and 0.5's **31.3 ms / 31.9 fps** on this exact shape - if 1.0 lands within ~1 ms of 0.75
+  the resize is a wash and `--work-scale` should be dropped (no quality loss, one less setting), while a 1.0 that is
+  clearly worse says the resize is doing real work and 0.75 is the optimum; the worker's own line and its component
+  split (proxy, network+composite, readback, reply) against 0.75's 14.48 mean and 2.5-3.9 / 5.1-8.7 / 2.7-3.6 /
+  1.2-1.7, which is what says whether the two resize dispatches are the ~1 ms the 0.5 sample implies; and
+  `small-ws100-after.png` at 2560x1440 RGBA, **different** from both `small-ws-after.png` and `small-ws50-after.png`.
+  No code change: `--work-scale 1.0` is the existing switch and the port's `fullWidth == workWidth` path records no
+  resize. The other parked lever is unchanged: the FFN sweep's cap-80 question waits on a word.
+
+* learned: the internal-size lever is spent - 0.5 reads **worse** than 0.75 and the network does not get cheaper
+  (2026-11-10 tick, read of `r2026-11-10-7-small-ws50`, exit 0 in 15.4 s, entry `minimal-small`, 300 frames,
+  `--size 2560x1440 --work-scale 0.5 --headless --shm`, repo `5fc29e8` (+61 uncommitted), worker in sync on patch
+  `f1908586c80c` at port `9d08f41`, policy `28b387ec388f`, card WARN before and after, `idle_waited_s` 0.0, so it
+  passes the gate). Median **31.3 ms / 31.9 fps steady** (headline 21.9; the 44.9 ms mean is frame 0's 3816.9 ms
+  recv) against `r2026-11-10-6-small-video`'s **24.1 ms / 41.6 fps** at 0.75 on the identical shape - **7.2 ms
+  worse**, not the 17-19 ms the item's good branch wanted. The banner reads `serve: 1280x720, model
+  /opt/neuralscreen/model-small`, so the small network ran at the smaller internal size, and the artifact check
+  passes: `small-ws50-after.png` is **2560x1440 RGBA** (colortype 6, 2,709,726 bytes, sha256 `ae2afdca`),
+  **different** from 0.75's `small-ws-after.png` (3,494,079, `7e6e13de`) - MAD **2.249** per channel, 56.55% of
+  pixels moved >2, 6.53% >8, max 75 - so the resize ran and the picture moved. **The worker's own line is where the
+  reading is**: 17.98 ms mean against 0.75's 14.48, and its component split says why - `network+composite` is
+  **flat** (5.9-8.1 against 5.1-8.7) despite 0.44x the pixels, while every frame-sized component rose ~1 ms (proxy
+  3.4-4.5 against 2.5-3.9, readback 3.5-4.7 against 2.7-3.6, reply 1.7-2.9 against 1.2-1.7). So the pass's cost is
+  not pixel-bound at this size - the two bilinear resizes are sized by the 2560x1440 frame, not the work size, and
+  they do not shrink when the work does - and the internal-size lever buys nothing on the network while the fixed
+  costs stay. NOT verified: the 0.75 baseline is a different run ~20 min earlier, so the 7.2 ms delta crosses a card
+  state; the flat `network+composite` is the part that does not depend on it. The missing point on the curve is 1.0,
+  where there is no resize at all - that is the item above.
 
 * learned: the small network's client-level pair landed and it is the better configuration - **24.1 ms / 41.6 fps
   steady** against the large network's 30.2 ms / 33.2 fps on the identical shape (2026-11-10 tick, read of
