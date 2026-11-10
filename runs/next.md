@@ -33,6 +33,28 @@ anything there.
 
 ## 1. Next work
 
+* The 31-block small network is the next lever, and re-measuring it on the port needs one line in the
+  box's policy. The port loads it already - the patch derives the stage table from the manifest
+  (`src/nr_schedule.{h,cpp}`, `schedule --check` clean on both networks) and
+  `docs/small-network-schedule.md` settles that it is the same six-level U-Net with fewer blocks per
+  level - so what is missing is only a way for a run to name the model: the runner builds the
+  worker's env from the policy entry, a request carries no env, and `tools/port_profile.sh` takes the
+  model from `NEURALSCREEN_MODEL_DIR`. What I need is a second entry in
+  `/opt/neuralscreen/policy.toml` beside `port-profile` - `port-profile-small`, argv
+  `["bash", "tools/port_profile.sh"]`, env
+  `NEURALSCREEN_MODEL_DIR=/opt/neuralscreen/model-small` (the extracted 310.9.16 network the
+  2026-11-09 survey names) - plus a `minimal`-shaped one whose `NS_WORKER_CMD` names
+  `serve --model /opt/neuralscreen/model-small` for the fps and pixel-parity half. That file is the
+  box's, so it is a line for the developer, not this tick. The reading would be the small network's
+  profile total against the large network's at the same size (`r2026-11-10-1-profile` 6.296 ms at
+  1080p, `r2026-11-03-profile` 9.749 ms at 1440p) and, only if that wins, the fps pair. The one port
+  sample so far says otherwise - `r2026-10-30-aq` **26.5 ms / 37.8 fps against the large network's
+  24.6** - but it is an October run on an older patch and the port's schedule change has never been
+  checked for pixel parity on a device, while the third-party reads of the 310.9.16 model (2026-11-09
+  survey: 8.8 -> 5.4 ms at 4K on an RTX 4080 SUPER, 36-40% lower GPU time elsewhere) call it the
+  faster one. The other parked lever, the FFN sweep's cap-80 question, waits on a word rather than a
+  file.
+
 * learned: the port's own resize is built, it runs, and it does not beat the capture chain's - the
   picker-free work-scale route lands **between** the two older routes rather than past them
   (2026-11-10 tick, read of `r2026-11-10-5-ws-video`, exit 0, 300 frames, entry `minimal`,
