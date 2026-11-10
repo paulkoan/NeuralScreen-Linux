@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "seconds": 4.155,
+  "argv": [
+    "bash",
+    "tools/port_profile.sh",
+    "1920",
+    "1080"
+  ],
+  "artifacts": [],
+  "runner": "005dd2c6ea9e",
+  "entry_env": [
+    "NS_WORKER_CMD"
+  ],
+  "gpu_before": "WARN (resident but not contending: Telegram (pid 16290, 40.0 MiB); resident but not contending: signal-desktop (pid 18889, 155.0 MiB); resident but not contending: msedge (pid 1300500, 281.0 MiB); resident but not contending: chromium (pid 3132450, 114.0 MiB))",
+  "gpu_after": "WARN (resident but not contending: Telegram (pid 16290, 40.0 MiB); resident but not contending: signal-desktop (pid 18889, 155.0 MiB); resident but not contending: msedge (pid 1300500, 281.0 MiB); resident but not contending: chromium (pid 3132450, 118.0 MiB))",
+  "idle_waited_s": 15.0
+}
