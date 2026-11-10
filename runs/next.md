@@ -45,12 +45,21 @@ anything there.
   `NEURALSCREEN_MODEL_DIR=/opt/neuralscreen/model-small` (the extracted 310.9.16 network the
   2026-11-09 survey names) - plus a `minimal`-shaped one whose `NS_WORKER_CMD` names
   `serve --model /opt/neuralscreen/model-small` for the fps and pixel-parity half. That file is the
-  box's, so it is a line for the developer, not this tick - **and the developer reports it is already
-  there: the entry was requested earlier and added, with a different env from the one proposed here.**
-  So the block is gone, and `r2026-11-10-profile-small` is queued against it at 1080p. The check that
-  matters is inside that request: read the run's own `model:` line before its numbers, because
-  `tools/port_profile.sh` honours exactly `NEURALSCREEN_MODEL_DIR` and `NEURALSCREEN_PORT_BIN`, and an
-  entry whose env names anything else runs the large network while looking exactly like a result.
+  box's, so it is a line for the developer, not this tick. **Status after `r2026-11-10-profile-small`
+  (2026-11-10 tick): the entry on the box is the wrong shape, and the run is the proof.** It landed
+  exit 0 in 4.3 s and its own `model:` line reads `/opt/neuralscreen/model` - the large network -
+  while its report header reads `env from policy: NS_WORKER_CMD`. So the `port-profile-small` entry
+  that exists sets `NS_WORKER_CMD` (the `minimal`-shaped half) and not `NEURALSCREEN_MODEL_DIR`, which
+  is the only name `tools/port_profile.sh` reads; the script therefore fell back to the default model
+  and returned a repeat of `r2026-11-10-1-profile` dressed as a result (total **20.671 ms** against that
+  run's 6.296 at 1080p, `idle_waited_s` 15.0 and `gpu_after` BUSY at 73%, so by the standing gate rule
+  it is not compared anyway). **What the developer needs to add is still the first line only:** a
+  `port-profile-small` entry, argv `["bash", "tools/port_profile.sh"]`, env
+  `NEURALSCREEN_MODEL_DIR=/opt/neuralscreen/model-small`. The `NS_WORKER_CMD` that is there belongs on
+  the separate `minimal`-shaped entry the fps half needs; on this one it does nothing. No request can
+  measure the small network until that env is set - requests carry no env and the runner builds the
+  worker's env from the policy entry alone - so nothing is queued off this and the item stays here for
+  the developer.
 
   The reading would be the small network's
   profile total against the large network's at the same size (`r2026-11-10-1-profile` 6.296 ms at
