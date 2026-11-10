@@ -1,0 +1,25 @@
+{
+  "id": "r2026-11-08-1080p-window",
+  "entry": "minimal",
+  "args": [
+    "--frames",
+    "120",
+    "--source",
+    "window",
+    "--size",
+    "1920x1080",
+    "--shm",
+    "--save-before",
+    "1080p-window-before.png",
+    "--save-after",
+    "1080p-window-after.png",
+    "--worker-log"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "1080p-window-before.png",
+    "1080p-window-after.png"
+  ],
+  "manual": true,
+  "note": "The goal item's first-ranked lever - run the pass internally at 1080p and let the present scale it to the 1440p output - measured on the product path. Both client halves landed 2026-11-08 (a named --size is the run's frame size, and the present states the stretch), but the only run to exercise them so far is r2026-11-08-1080p-video, which is a file source and --headless: it priced the videoscale resize (capture 6.4 -> 8.7 ms) and confirmed the frame is 1080p end to end, and it never presented anything. So the present half and the portal half are both still unverified, which is what the plan says this run is for: 'the run that would price it is a live or window run at --size 1920x1080.' This is that run: real portal capture of the live 2560x1440 window, resized to a 1920x1080 frame, presented into the full-size window on the real display. Manual because the portal needs a dialog - run it with /opt/neuralscreen/run_manually.sh from a terminal in the graphical session and click the dialog. Read, in order: (a) the capture split against r2026-11-03-live-pipe1m's wait 0.5 / read 6.0 and its 1 MiB buffer line - the resize should add about the 2.3 ms the video run paid, and if it adds much more the resize belongs in the pass, not in gst; (b) the steady median against pipe1m's 33.8 ms / 29.6 fps - the pass is cheaper at 1080p (bg 19.5 against be's 26.4) so the frame should be several ms better if the lever works; (c) 1080p-window-after.png's dimensions (must be 1920x1080, the same check the video run passed) and whether it fills the window rather than sitting in a corner; (d) whether the client still logs a size mismatch at frame 0 - the 'the screen changed size' assert the capture-precedence fix was meant to retire is a failure this run would surface."
+}

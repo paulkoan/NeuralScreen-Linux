@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-31-at",
+  "entry": "minimal",
+  "args": ["--frames", "30", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--save-before", "before.png", "--save-after", "after.png", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": ["before.png", "after.png"],
+  "note": "Controlled repeat of r2026-10-31-as at ah's frame count, so the diff is between two runs that were handed the SAME input. The synthetic fixture moves a 320px bar with the grab index (minimal/capture.py: bar = n*7 mod (w - w/8)), and both --save-after files hold the LAST frame: as ran 120 frames (n=119, bar at 833) against r2026-10-30-ah's 30 (n=29, bar at 203), so the pictures differ by 37.35 MAD in their inputs alone - the as-vs-ah MAD of 38.9 measures the fixture, not the pass. This run is 30 frames, so its last frame is again n=29 and its input is byte-identical to ah's outside nothing at all; --save-before makes that checkable rather than assumed, and the same-input after.png against ah's nomotion.png is the quality-neutrality test the plan wanted (expect MAD 0.0 and ~36 ms median / 27.7 fps steady, the pixel-path shape)."
+}

@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-27-i",
+  "entry": "minimal",
+  "args": ["--frames", "30", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--save-before", "before.png", "--save-after", "after.png", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": ["before.png", "after.png"],
+  "note": "Same card and flags as g and 13-a. The only change is the head-readback averaging: it now walks workWidth x workHeight at stride fullWidth instead of the whole padded buffer, so the printed RGB residual mean is the valid region's and is finally comparable to a pixel mean. The PICTURE IS NOT EXPECTED TO CHANGE - the readback only reads, it does not write pixels - so after.png should again be byte-identical to g's and 13-a's (sha256 9f13979b168dc3a0); if it differs, something other than the averaging changed and that is the finding. What to read: the `serve: head ... residual mean R G B ...` line, and whether the RGB means land near the measured pixel shift of ~+7.0R/+0.6G/+3.7B. Also quote the stamp line and the steady-state per-frame timing (frame 29, not frame 0)."
+}

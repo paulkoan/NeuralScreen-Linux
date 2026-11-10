@@ -1,0 +1,8 @@
+{
+  "id": "r2026-10-30-c",
+  "entry": "port-build",
+  "args": [],
+  "timeout_s": 600,
+  "artifacts": [],
+  "note": "Rebuild the staged port so the worker actually contains step 1. r2026-10-30-a and -b both stamped patch 4b934233b924 and said OUT OF SYNC (checkout is 7b827810f679), so neither exercised the table-driven recorder. Must exit 0 and the stamp line must name 7b827810f679; if it names the old sha the schedule change is still not in the binary."
+}

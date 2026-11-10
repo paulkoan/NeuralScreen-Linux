@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-r",
+  "entry": "minimal-unfused",
+  "args": ["--frames", "3", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--save-after", "unfused.png", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": ["unfused.png"],
+  "note": "Smoke test that the unfused graph is reachable from a worker run: serve must print 'serve: graph unfused' and deliver three frames. r2026-10-30-q must land first so the binary knows DLSS5VK_UNFUSED. A 126 here means the minimal-unfused policy entry is missing; a 'graph fused' line means the switch did not reach serve."
+}

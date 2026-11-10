@@ -1,0 +1,11 @@
+{
+  "id": "r2026-10-27-b",
+  "entry": "minimal",
+  "args": ["--source", "window", "--size", "2560x1440", "--frames", "120",
+           "--worker-log", "--shm", "--send-ahead", "2",
+           "--save-before", "gfn-before.png", "--save-after", "gfn-after.png"],
+  "timeout_s": 300,
+  "artifacts": ["gfn-before.png", "gfn-after.png"],
+  "manual": true,
+  "note": "the real GeForce Now session, second attempt. r2026-10-27-a was the first and the timer consumed it while nobody was at the screen: it ran under SDL_VIDEODRIVER=dummy with no DISPLAY and died in 0.02s on a venv permission error before the pipeline started. This one is marked manual, so the timer leaves it in the queue; run it with /opt/neuralscreen/run_manually.sh from a terminal in the graphical session and click the portal dialog. The deliverable is the frame pair plus the 'capture split: wait ... read ...' line, quoted with the resolution."
+}

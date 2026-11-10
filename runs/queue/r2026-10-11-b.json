@@ -1,0 +1,17 @@
+{
+  "id": "r2026-10-11-b",
+  "entry": "minimal",
+  "args": [
+    "--source", "image",
+    "--input-image", "fixtures/youtube-1440p.png",
+    "--headless",
+    "--frames", "60",
+    "--worker-log",
+    "--shm",
+    "--no-motion",
+    "--send-ahead", "2"
+  ],
+  "timeout_s": 300,
+  "artifacts": ["before.png", "after.png"],
+  "note": "Second attempt, same fixture: the first failed on the previous revision of the executor, which did not read [entry.env] and so ran the Wine worker with no NGX. The report now names the runner that produced it."
+}

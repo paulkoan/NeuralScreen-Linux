@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-x",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "1280x720",
+           "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "Resolution sweep, point 1 of 3: 720p, reference model, fused, no pixels. Together with y (1080p) and z (1440p) this gives median ms against pixel count; the intercept is the fixed per-frame cost (upload, submit, composite) and the slope is the per-pixel cost. Same binary (0aabc30e), same 120 frames."
+}

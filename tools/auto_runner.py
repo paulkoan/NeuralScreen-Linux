@@ -423,6 +423,53 @@ def state_dir(policy: dict, kind: str) -> Path:
     return root
 
 
+def publish_policy(policy: dict, worktree: Path, dry_run: bool = False) -> None:
+    """Publish the policy whenever it changes, whether or not anything ran.
+
+    A run's copy answers "what did this run under", but only if a run happens - and when the queue
+    is empty nothing publishes, so from outside "the file was never installed" and "it was installed
+    and nothing has run since" are the same observation. That is not cosmetic: the tick reads the
+    published copy to decide what it may queue, so a policy edit nobody can see is an edit the tick
+    will not act on, and the queue stays empty because the tick is waiting for the file to change.
+    Publishing on the hash breaks that circle - a change is visible within one pass, with no run.
+    """
+    source = policy.get("_source") or {}
+    digest = source.get("sha256")
+    if not digest:
+        return
+    marker = state_dir(policy, "policy-published") / "sha"
+    if marker.exists() and marker.read_text().strip() == digest:
+        return
+    if dry_run:
+        log(f"would publish policy {digest[:12]}")
+        return
+    results, request = policy["results_branch"], policy["request_branch"]
+    restore_local_results(policy, worktree)
+    git(worktree, "read-tree", f"origin/{request}")
+    parents = []
+    if git(worktree, "rev-parse", "--verify", f"origin/{results}", check=False).returncode == 0:
+        parents.append(f"origin/{results}")
+        git(worktree, "checkout", f"origin/{results}", "--", "runs")
+    parents.append(f"origin/{request}")
+    target = worktree / "runs" / "policy.toml"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(redact_policy(source.get("text", "")))
+    git(worktree, "add", "-f", "runs/policy.toml")
+    tree = git(worktree, "write-tree").stdout.strip()
+    made = git(worktree, "-c", "user.name=neuralscreen-runner",
+               "-c", "user.email=runner@localhost", "commit-tree", tree,
+               *[arg for parent in parents for arg in ("-p", parent)],
+               "-m", f"policy {digest[:12]}: the file the box is running under")
+    commit = made.stdout.strip()
+    push = git(worktree, "push", "origin", f"{commit}:refs/heads/{results}", check=False)
+    if push.returncode != 0:
+        # Not fatal: the next pass tries again, and the marker is only written on success.
+        log(f"policy push failed: {push.stderr.strip()}")
+        return
+    marker.write_text(digest + "\n")
+    log(f"published policy {digest[:12]} to {results}")
+
+
 def restore_local_results(policy: dict, worktree: Path) -> list[str]:
     """Put runs that never reached the branch back into the tree, so a refused push is not a
     lost run: the next pass publishes them along with its own."""
@@ -483,6 +530,9 @@ def publish_pending(policy: dict, worktree: Path, already: set[str], dry_run: bo
 
 def process(policy: dict, worktree: Path, dry_run: bool = False,
             include_manual: bool = False) -> int:
+    # Before the queue and unconditionally: a policy change is news even when there is nothing to
+    # run, and the tick decides what it may queue from the published copy.
+    publish_policy(policy, worktree, dry_run=dry_run)
     already = done_ids(worktree, policy)
     queue = sorted((worktree / "runs" / "queue").glob("*.json"))
     if not queue:

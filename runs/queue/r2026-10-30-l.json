@@ -1,0 +1,8 @@
+{
+  "id": "r2026-10-30-l",
+  "entry": "ngx-live",
+  "args": [],
+  "timeout_s": 300,
+  "artifacts": ["ngx-live.png"],
+  "note": "The real evaluate path, not the gate. The gate's --test creates through the DLL's CreateFeature export and evaluates through NGX_D3D12_EVALUATE_DLSS_EXT (Core), so it reports 0xBAD00004 for every DLL and preset; EvaluateVideo calls the DLL's own EvaluateFeature and has no such mismatch. Three frames at preset 2 on the 310.9.16 DLL: exit 0 plus a non-blank ngx-live.png means the small model works and the gate is the broken instrument. If the worker log shows 'evaluate failed', the problem is real and lives in EvaluateVideo instead."
+}

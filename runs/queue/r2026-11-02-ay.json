@@ -1,0 +1,9 @@
+{
+  "id": "r2026-11-02-ay",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "The policy now carries require_idle. If the card reads BUSY this run holds up to 300s, then runs anyway with gpu_before/gpu_after/idle_waited_s filled in. Two things to read: whether those three fields are non-null (the gate works), and whether the steady median moves away from 25.8 ms (ax) once the card has been checked rather than assumed. Same shape as ax so the pair is directly comparable."
+}

@@ -1,0 +1,10 @@
+{
+  "id": "r2026-11-07-video-b",
+  "entry": "minimal",
+  "args": ["--source", "video", "--input-video", "fixtures/stream-1440p-2s.mp4",
+           "--size", "2560x1440", "--headless", "--frames", "600", "--shm",
+           "--save-after", "video-b.png"],
+  "timeout_s": 900,
+  "artifacts": ["video-b.png"],
+  "note": "Arm B of the repeatability pair, byte for byte the same request as arm A with a different output name. Read the two together: the frame count and the PNG hash are the determinism check (they must match exactly, because nothing differs except when the run happened), and the frame times are the noise floor of this box - how far apart two identical runs land is the smallest difference any future measurement here can claim to see. That number has been missing all week: without it, a 2 ms change between two runs could not be called a change at all."
+}

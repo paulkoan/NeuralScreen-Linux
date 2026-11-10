@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-aj",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "1920x1080",
+           "--no-motion", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "No-motion point at 1920x1080, the 60 fps question. Full-motion 1440p is 29.1 ms (34 fps) and no-motion is 21.8 ms (46 fps); 60 fps needs 16.7 ms. These two points fill the no-motion curve below 1440p so the answer is measured, not extrapolated."
+}

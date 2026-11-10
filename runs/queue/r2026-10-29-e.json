@@ -1,0 +1,24 @@
+{
+  "id": "r2026-10-29-e",
+  "entry": "minimal",
+  "args": [
+    "--frames",
+    "30",
+    "--headless",
+    "--source",
+    "synthetic",
+    "--size",
+    "2560x1440",
+    "--save-before",
+    "before.png",
+    "--save-after",
+    "after.png",
+    "--worker-log"
+  ],
+  "timeout_s": 300,
+  "artifacts": [
+    "before.png",
+    "after.png"
+  ],
+  "note": "Retry of 29-c with the dangling-pointer fix. The pixel path must not crash: expect frames: 30 done, 0 skipped. If it still prints 'write(stdout): Bad address', the hoist did not take. Quote the stamp line so we know which binary ran."
+}

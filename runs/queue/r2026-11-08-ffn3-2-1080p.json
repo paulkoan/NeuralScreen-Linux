@@ -1,0 +1,7 @@
+{
+  "id": "r2026-11-08-ffn3-2-1080p",
+  "entry": "port-profile",
+  "args": ["1920", "1080"],
+  "timeout_s": 600,
+  "note": "The 1080p half of the FFN sweep's second measurement pair, on the binary r2026-11-08-ffn3-0-build produces (C=256 R4 at .maxnreg 48, down from 64). This is the size the sweep can read: 1080p has three clean samples of the same shape (r2026-11-08-profile-1080p-b 6.494 ms and -c 6.522 on the old binary with ffn_ptx 8640x256 e8 r3 0.694, and r2026-11-08-ffn-2-1080p 6.550 on the first-change binary with ffn_ptx 8640x256 e8 r4 0.613), where 720p's rows swing 1.7x between runs on the same binary. Read the C=256 row against 0.613: a cap change is worth a fraction of a kernel that is 9.4% of the pass, so a move inside 0.03 ms is noise and the total (6.550) is expected to stay put - what the run is for is the direction, and for the rest of the FFN family (r2026-11-08-ffn-2-1080p: ffn_ptx 34560x128 e4 r4 +proj 0.551, ffn_ptx 138240x64 e2 r4 +proj 0.318, e2 r4 0.099, 34560x128 e4 r4 0.090) staying where it was. Controls: the barrier probe (0.412/0.408 on b and c, 0.409 on ffn-2-1080p) is the fixed-cost control, and gpu_before/gpu_after/idle_waited_s are part of the reading - a BUSY before invalidates the sample."
+}

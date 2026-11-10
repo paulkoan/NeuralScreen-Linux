@@ -1,0 +1,8 @@
+{
+  "id": "r2026-10-29-d",
+  "entry": "port-build",
+  "args": [],
+  "timeout_s": 600,
+  "artifacts": [],
+  "note": "Rebuild the staged port from linux-port.patch (now 1626 lines, sha changes with the dangling-pointer fix). Must exit 0 and the stamp line must name the new patch sha. The previous build's stamp named 819bea6f149e; this one must name a different sha or the fix is not in the binary."
+}

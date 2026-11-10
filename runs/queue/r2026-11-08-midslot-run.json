@@ -1,0 +1,29 @@
+{
+  "id": "r2026-11-08-midslot-run",
+  "entry": "minimal",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--headless",
+    "--frames",
+    "300",
+    "--shm",
+    "--worker-log",
+    "--motion",
+    "--interpolate",
+    "--save-mid",
+    "midslot-mid.png",
+    "--save-after",
+    "midslot-after.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "midslot-mid.png",
+    "midslot-after.png"
+  ],
+  "note": "The first run of the port's generated mid-frame (after r2026-11-08-midslot-build: this measures nothing if the worker stamps the previous patch). 300 frames, 1440p, shm, real motion field (--motion, so the mid is a real warp and not a copy of the last frame), --interpolate, and the default --interp-pace-ms 8 so the run reports the shape the user actually pays for - the interp stage in the summary IS that hold, and the mid is not free of it. Three lines decide everything. (1) The worker's own stderr: 'mid-frame channel open' (the second slot was found) and, at the end, 'N generated mid-frame(s) sent, M request(s) answered without one, X ms mean per mid' - N should be 299 (frame 0 has no history) and M should be 0; if N is 0 with a 'no mid-frame slot' line the client did not create the section, and if M is large the mid is being skipped for a reason the same line names. (2) The client summary's 'interp: N generated frames presented' must equal the mids sent - a mid that leaves the worker but never arrives is the ordering bug the second slot exists to prevent. (3) The timing line against r2026-11-08-recsplit's client median 32.6 ms / 30.6 fps and worker 19.7 ms: the iteration should grow by the mid's own cost (one dispatch + one 14.7 MB readback + one reply, ~5-6 ms expected) plus the 8 ms hold, and X ms mean per mid is that device-side cost separated from the hold. The picture half is now in the artifacts: midslot-mid.png is the last generated mid-frame and midslot-after.png the real frame from the same iteration, so the warp can be looked at without being at the box - the mid must be the same size and type as after.png, must differ from it, and must not be a byte-copy of either neighbour (a mid identical to the frame before it is not interpolating; identical to the frame after it is not warping). What neither artifact can say is whether it is the RIGHT in-between: that is occlusion and disocclusion, which the 320x180 field cannot express (docs/interpolation.md, point 2), and it stays a judgement call."
+}

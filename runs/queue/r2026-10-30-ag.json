@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-ag",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--motion-small", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "Motion at reduced resolution, 1440p, no pixels. Full motion costs 5.0 ms of the send (10.1 with, 5.1 without) and the composite needs it - serve.cpp uses the field for history reprojection and falls back to identity only when it is absent. --motion-small may keep temporal reuse at a fraction of the CPU cost. Compare the median against af's 21.8 ms (no motion) and z's 29.1 ms (full motion)."
+}

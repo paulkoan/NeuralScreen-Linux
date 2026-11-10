@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-aa",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "1280x720",
+           "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "Sweep repeat, point 1 of 3: 720p, reference model, fused, no pixels, patch 0aabc30e. Compare this client median against x's 9.4 ms and z's 29.1 ms at 1440p to decide whether w (35.3 ms) is the outlier."
+}

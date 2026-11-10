@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-ai",
+  "entry": "minimal",
+  "args": ["--frames", "30", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--motion-small", "--save-after", "motionsmall.png", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": ["motionsmall.png"],
+  "note": "Retry of ag, which hung before the device line (serve started, then 60s of silence on frame 0). Same shape but 30 frames and with the picture, so a second failure is reproducible and a success gives both the timing and something to compare against ad/ah. If it hangs again, read serve's stderr for a Vulkan allocation failure - motion at reduced size allocates a second buffer pair."
+}

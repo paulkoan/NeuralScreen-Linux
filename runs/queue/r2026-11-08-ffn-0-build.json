@@ -1,0 +1,8 @@
+{
+  "id": "r2026-11-08-ffn-0-build",
+  "entry": "port-build",
+  "args": [],
+  "timeout_s": 900,
+  "artifacts": [],
+  "note": "Re-run of the FFN sweep's build, queued explicitly BEFORE the pair this time. The first attempt (r2026-11-08-ffn-build) landed, but it landed AFTER the two profile runs: tools/auto_runner.py:446 sorts runs/queue/*.json by name, and 'r2026-11-08-ffn-build' sorts last of the three, so r2026-11-08-ffn-1080p and -720p profiled the pre-change binary. Their own evidence says so - both still print the old kernel name ffn_ptx *x256 e8 r3 (720p 1.437 ms, 1080p 0.692 ms) and the 1080p total is 6.530 ms against the previous binary's 6.494/6.522. The three ids in this queue are named so the order is the name: '0-build' < '1-720p' < '2-1080p'. Read the stamp (must name f687b434 and say in sync) and the counts (16 shader modules / 78 PTX kernels)."
+}

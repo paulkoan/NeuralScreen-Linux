@@ -1,0 +1,8 @@
+{
+  "id": "r2026-10-30-g",
+  "entry": "port-build",
+  "args": [],
+  "timeout_s": 600,
+  "artifacts": [],
+  "note": "Rebuild the staged port so the box's worker carries commit 284b11d (patch 9e90de0d48d0: one host copy, one upload submit, proxy split into [copy, submit]). r2026-10-30-h must not measure the previous binary. Require exit 0 and a stamp line naming 9e90de0d48d0 and 'in sync'; if it names an older sha, h would measure the old upload path again."
+}

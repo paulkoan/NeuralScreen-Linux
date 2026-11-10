@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-ab",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "1920x1080",
+           "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "Sweep repeat, point 2 of 3: 1080p, reference model, fused, no pixels, patch 0aabc30e. Compare this client median against y's 19.9 ms; it is the middle point of the linear fit."
+}

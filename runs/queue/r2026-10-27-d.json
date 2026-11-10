@@ -1,0 +1,13 @@
+{
+  "id": "r2026-10-27-d",
+  "entry": "minimal",
+  "args": ["--source", "image",
+           "--input-image", "fixtures/stream-1440p-jpeg-q20.png",
+           "--headless",
+           "--frames", "3",
+           "--worker-log", "--shm", "--no-motion", "--send-ahead", "2",
+           "--save-before", "before.png", "--save-after", "after.png"],
+  "timeout_s": 300,
+  "artifacts": ["before.png", "after.png"],
+  "note": "The restoration question. Every run so far fed the network input it had no reason to change: a synthetic test card (runs 11-b/c/e/g, 12-b/d) and one native 1440p GeForce Now capture (27-c). A denoiser given a clean frame correctly outputs almost nothing, which is why those runs looked like a near-passthrough and why the 'dead network' reading was wrong. This run gives it something to fix: youtube-1440p.png re-encoded as JPEG at quality 20 (fixtures/stream-1440p-jpeg-q20.png), i.e. 4:2:0 chroma with visible blocking and ringing, the way a stream actually arrives. Same resolution as the source, so the only variable is the damage. Three frames on a still image with no motion means each frame's history is identical to its input, so the temporal blend converges and the output shows the network's spatial behaviour without motion confounds. Read: does after.png reduce blocking and restore edge detail relative to before.png, or does it merely add contrast/ringing? Judge on block-boundary energy and edge coherence, NOT on edge-filter response - JPEG ringing inflates edge energy, so a rise there means artifacts, not detail. artifacts are the frame pair."
+}

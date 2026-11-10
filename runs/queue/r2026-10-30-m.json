@@ -1,0 +1,8 @@
+{
+  "id": "r2026-10-30-m",
+  "entry": "ngx-live",
+  "args": [],
+  "timeout_s": 300,
+  "artifacts": ["ngx-live.png"],
+  "note": "Retry of r2026-10-30-l after the launcher fix: a relative NS_WORKER_CMD script now resolves against the repo root, so xvfb-run's cwd no longer matters. Exit 0 plus a non-blank ngx-live.png means the 310.9.16 small network runs on the real evaluate path (EvaluateVideo -> g_nr_evaluate). 'evaluate failed' in the worker log means the problem is real and not the gate's --test path."
+}
