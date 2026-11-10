@@ -47,6 +47,18 @@ anything there.
   developer's line. The other parked lever is unchanged: the FFN sweep's cap-80 question waits on a
   word rather than a file.
 
+  **The policy now travels with every result, which is how the entries above get checked from here.**
+  `tools/auto_runner.py` copies the deployed `/opt/neuralscreen/policy.toml` beside each run as
+  `runs/done/<id>/policy.toml` - verbatim, with anything credential-shaped redacted - and names its
+  digest in the report. Until now that file was invisible from the repository, and that is why three
+  runs were spent establishing that `port-profile-small` sets `NS_WORKER_CMD` (a name
+  `tools/port_profile.sh` never reads) while the ordinary `port-profile` had been pointed at
+  `model-small`. So the rule is: **read `runs/done/<id>/policy.toml` from the results branch to see
+  what the box is actually running**, and when a policy change is requested, the next run's copy is
+  the proof it landed. The three entries known wrong on 2026-11-10: `port-profile` must not point at
+  `model-small`; `port-profile-small` needs `NEURALSCREEN_MODEL_DIR`, not `NS_WORKER_CMD`; and
+  `minimal-small` is defined twice, where the `xvfb-run` copy is the one that wins.
+
 * learned: the 31-block small network has been re-measured on the port and it is **1.88x** the large
   one at profile scale (2026-11-10 tick, read of `r2026-11-10-profile-small-c`, exit 0 in 4.1 s,
   entry `port-profile-small`, `bash tools/port_profile.sh 1920 1080`, revision `3ecf0542b68b`, card
