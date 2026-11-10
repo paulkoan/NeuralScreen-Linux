@@ -1,0 +1,40 @@
+{
+  "exit_code": 0,
+  "seconds": 22.283,
+  "argv": [
+    "uv",
+    "run",
+    "python",
+    "-m",
+    "minimal",
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "1.0",
+    "--headless",
+    "--frames",
+    "300",
+    "--shm",
+    "--worker-log",
+    "--save-after",
+    "small-ws100-after.png"
+  ],
+  "artifacts": [
+    "small-ws100-after.png"
+  ],
+  "runner": "f98364851fa4",
+  "entry_env": [
+    "NS_WORKER_CMD"
+  ],
+  "policy": {
+    "path": "/opt/neuralscreen/policy.toml",
+    "sha256": "28b387ec388f6f5fcab0bd734f3c63a20a0b6a73e06fbc254cec3c825c48e907"
+  },
+  "gpu_before": "BUSY (utilization 86%; Telegram (pid 16290, 30.0 MiB); signal-desktop (pid 18889, 155.0 MiB); msedge (pid 1300500, 282.0 MiB); chromium (pid 3132450, 104.0 MiB); DyingLightGame_TheBeast_x64_rwdi.exe (pid 3842045, 5518.0 MiB))",
+  "gpu_after": "BUSY (utilization 98%; Telegram (pid 16290, 30.0 MiB); signal-desktop (pid 18889, 155.0 MiB); msedge (pid 1300500, 282.0 MiB); chromium (pid 3132450, 104.0 MiB); DyingLightGame_TheBeast_x64_rwdi.exe (pid 3842045, 5518.0 MiB))",
+  "idle_waited_s": 297.9
+}

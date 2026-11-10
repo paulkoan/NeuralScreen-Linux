@@ -1,0 +1,26 @@
+{
+  "id": "r2026-11-10-8-small-ws100",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "1.0",
+    "--headless",
+    "--frames",
+    "300",
+    "--shm",
+    "--worker-log",
+    "--save-after",
+    "small-ws100-after.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-ws100-after.png"
+  ],
+  "note": "The missing point on the small network's internal-size curve: r2026-11-10-6-small-video's argv and timeout character for character with --work-scale 0.75 -> 1.0 and --save-after small-ws100-after.png, entry `minimal-small` unchanged, so this run differs from the 0.75 sample only in the work scale and at 1.0 the port records no resize at all (fullWidth == workWidth). It exists because the 0.5 sample (r2026-11-10-7-small-ws50) read 31.3 ms / 31.9 fps against 0.75's 24.1 / 41.6 while the worker's network+composite stayed flat at 5.9-8.1 against 5.1-8.7 - so the two bilinear resizes look frame-sized and the internal-size lever looks spent, and the one point that prices the resize is 1.0, where there is none. Read, in this order: (1) the worker banner's model line must read `/opt/neuralscreen/model-small` and must carry NO work-scale line - at 1.0 the port records no resize, so a work-scale line naming 2560x1440 means the argument did not take and the run is void; (2) median and steady rate against 0.75's 24.1 ms / 41.6 fps and 0.5's 31.3 ms / 31.9 fps on this exact shape - within ~1 ms of 0.75 means the resize is a wash and --work-scale should be dropped (no quality loss, one less setting), clearly worse means the resize is doing real work and 0.75 is the optimum; (3) the worker's own line and its component split (proxy, network+composite, readback, reply) against 0.75's 14.48 ms mean and 2.5-3.9 / 5.1-8.7 / 2.7-3.6 / 1.2-1.7, which is what says whether the two resize dispatches are the ~1 ms the 0.5 sample implies; (4) the artifact `small-ws100-after.png` must be 2560x1440 RGBA (colortype 6) and must differ from both r2026-11-10-6-small-video's `small-ws-after.png` and r2026-11-10-7-small-ws50's `small-ws50-after.png` - report the mean absolute difference and the share of pixels moved. Card gate as always: read gpu_before / gpu_after and idle_waited_s out of the report, quote the spread beside the median, and do not compare the runs if a gate reads BUSY before the run or the idle wait is non-zero."
+}

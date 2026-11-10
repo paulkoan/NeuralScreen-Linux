@@ -1,0 +1,31 @@
+warning: The `native-tls` setting is deprecated and will be removed in a future release. Use `system-certs` instead.
+[worker] serve: 2560x1440, model /opt/neuralscreen/model-small, shaders /opt/neuralscreen/port/build/shaders, seed 0
+[worker] serve: built from port 9d08f41 (19 modified) patch f1908586c80c992da865c66cb5bc196dc6121c7c
+[worker] serve: frame channel open (29.5 MB, NeuralScreen_3887439_8dd9cd54)
+[main] shared memory: frames in and pixels out through /dev/shm (frame 29.5MB, pixels 14.7MB)
+[worker] serve: pixel channel open (2560x1440, 14.7 MB, NeuralScreenOut_3887439_52c96a)
+[worker] serve: mid-frame channel open (14.7 MB, NeuralScreenOut_3887439_52c96am)
+[worker] serve: the caller declared no motion field: the reprojection is the identity
+[worker] serve: and the five-tap history filter is the centre tap, which is the pixel
+[worker] serve: itself - so no published byte can move for it
+[worker] serve: device NVIDIA GeForce RTX 4080 SUPER
+[worker] serve: blend scale 0.7671 (block30.layer0.blend_scale)
+[worker] serve: graph fused (DLSS5VK_UNFUSED not set)
+[worker] serve: warming up (the PTX modules are JIT-compiled on first use)
+[worker] serve: warm-up 3820 ms
+[worker] serve: frame 0 carries reset: no history for this frame, and this frame primes the next
+[worker] serve: head -14.0391..0.5762 mean -1.49363; residual mean -0.0040 -0.0286 -0.0002 (rgb, head/4), logit mean -5.8431; non-finite 0 of 14745600; first 8 0.0217 -0.0110 -0.2451 -6.3281 0.0367 0.0088 -0.2224 -6.4531
+[worker] serve frame 0: 152.4 ms (proxy 3.0 [copy 1.7, submit 1.4], network+composite 51.6, readback 91.2, reply 6.6)
+[worker] serve frame 1: 29.3 ms (proxy 5.1 [copy 1.4, submit 3.7], network+composite 18.2, readback 4.4, reply 1.8)
+[worker] serve frame 2: 30.9 ms (proxy 5.2 [copy 2.7, submit 2.5], network+composite 16.8, readback 7.0, reply 1.9)
+[worker] serve frame 29: 25.8 ms (proxy 3.3 [copy 1.7, submit 1.7], network+composite 16.0, readback 5.0, reply 1.5)
+[worker] serve frame 59: 28.0 ms (proxy 6.2 [copy 3.4, submit 2.7], network+composite 15.4, readback 4.0, reply 2.4)
+[worker] serve frame 89: 25.0 ms (proxy 2.7 [copy 1.6, submit 1.1], network+composite 15.4, readback 5.2, reply 1.8)
+[worker] serve frame 119: 30.1 ms (proxy 6.6 [copy 3.1, submit 3.5], network+composite 15.8, readback 4.0, reply 3.7)
+[worker] serve frame 149: 30.2 ms (proxy 6.1 [copy 2.9, submit 3.1], network+composite 15.3, readback 5.3, reply 3.5)
+[worker] serve frame 179: 28.7 ms (proxy 5.1 [copy 1.5, submit 3.6], network+composite 18.7, readback 3.5, reply 1.4)
+[worker] serve frame 209: 26.5 ms (proxy 5.6 [copy 2.3, submit 3.3], network+composite 15.8, readback 3.3, reply 1.9)
+[worker] serve frame 239: 29.9 ms (proxy 5.7 [copy 2.9, submit 2.8], network+composite 16.4, readback 4.0, reply 3.8)
+[worker] serve frame 269: 31.1 ms (proxy 7.2 [copy 3.8, submit 3.3], network+composite 17.0, readback 5.4, reply 1.5)
+[worker] serve frame 299: 32.8 ms (proxy 7.1 [copy 3.5, submit 3.6], network+composite 17.4, readback 6.3, reply 2.0)
+[worker] serve: input stream closed after 300 frame(s), 29.62 ms mean\n
