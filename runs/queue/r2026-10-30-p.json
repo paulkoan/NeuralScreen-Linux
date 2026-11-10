@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-p",
+  "entry": "ngx-new",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--save-after", "ngx-new-120.png", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": ["ngx-new-120.png"],
+  "note": "Preset 2 (the 310.9.16 small network) at 120 frames on the live path. Compare with r2026-10-30-o: median frame time, worker clock, and the PNG diff. If the pictures are identical the hint did not switch the network and the speed difference is unmeasurable this way."
+}

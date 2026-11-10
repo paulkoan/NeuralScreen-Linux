@@ -218,13 +218,20 @@ def wrap_for_container(entry: dict, policy: dict, argv: list[str], worktree: Pat
     return command + [image, *argv]
 
 
-def gpu_probe(worktree: Path, timeout: int = 30) -> dict | None:
-    """One reading from tools/gpu_status.py, or None when the probe cannot answer at all."""
+def gpu_probe(worktree: Path, timeout: int = 30, busy_util: float | None = None) -> dict | None:
+    """One reading from tools/gpu_status.py, or None when the probe cannot answer at all.
+
+    `busy_util` is the policy's bar, passed through so the machine's tolerance is set in the
+    machine's file rather than in this repository.
+    """
     script = worktree / "tools" / "gpu_status.py"
     if not script.exists():
         return None
+    command = [sys.executable, str(script), "--json"]
+    if busy_util is not None:
+        command += ["--busy-util", str(busy_util)]
     try:
-        done = subprocess.run([sys.executable, str(script), "--json"], cwd=str(worktree),
+        done = subprocess.run(command, cwd=str(worktree),
                               capture_output=True, text=True, timeout=timeout)
         return json.loads(done.stdout or "{}")
     except (OSError, subprocess.TimeoutExpired, ValueError):
@@ -232,10 +239,24 @@ def gpu_probe(worktree: Path, timeout: int = 30) -> dict | None:
 
 
 def describe_gpu(reading: dict | None) -> str:
+    """Verdict, reasons, and the utilisation the verdict was reached at.
+
+    The utilisation belongs in every report line, not only in the busy one: passing a 25% bar at
+    24% and passing it at 3% are different numbers, and a result that says only "WARN" hides which
+    one it was. The bar itself is carried too, so a result stays readable after the bar moves.
+    """
     if reading is None:
         return "UNKNOWN (the probe could not answer)"
     reasons = "; ".join(reading.get("reasons") or []) or "nothing else is using the card"
-    return f"{reading.get('verdict', 'UNKNOWN')} ({reasons})"
+    util = (reading.get("gpu") or {}).get("util_percent")
+    bar = reading.get("busy_util")
+    if util is None:
+        where = ""
+    elif bar is None:
+        where = f" [util {util:.0f}%]"
+    else:
+        where = f" [util {util:.0f}% of the {bar:.0f}% bar]"
+    return f"{reading.get('verdict', 'UNKNOWN')}{where} ({reasons})"
 
 
 def wait_for_idle(worktree: Path, entry: dict, policy: dict) -> tuple[dict | None, float]:
@@ -249,9 +270,12 @@ def wait_for_idle(worktree: Path, entry: dict, policy: dict) -> tuple[dict | Non
     """
     limit = float(entry.get("idle_wait_s", policy.get("idle_wait_s", 300)))
     poll = float(entry.get("idle_poll_s", policy.get("idle_poll_s", 15)))
+    # The bar is the machine's, not this file's: a browser held open as a live source is a cost
+    # the policy owner has decided not to count as contention.
+    bar = policy.get("busy_util")
     deadline = time.monotonic() + limit
     waited = 0.0
-    reading = gpu_probe(worktree)
+    reading = gpu_probe(worktree, busy_util=bar)
     while (reading or {}).get("verdict") == "BUSY":
         left = deadline - time.monotonic()
         if left <= 0:
@@ -260,7 +284,7 @@ def wait_for_idle(worktree: Path, entry: dict, policy: dict) -> tuple[dict | Non
         log(f"gpu busy: {describe_gpu(reading)} - holding up to {left:.0f}s more")
         time.sleep(min(poll, left))
         waited += min(poll, left)
-        reading = gpu_probe(worktree)
+        reading = gpu_probe(worktree, busy_util=bar)
     if waited:
         log(f"gpu clear after {waited:.0f}s: {describe_gpu(reading)}")
     return reading, waited
@@ -315,7 +339,8 @@ def run_request(request: dict, policy: dict, worktree: Path, run_dir: Path,
             shutil.copy2(source, run_dir / Path(artifact).name)
         else:
             log(f"artifact {artifact} was not produced")
-    gpu_after = gpu_probe(worktree) if (entry.get("require_idle", policy.get("require_idle", False))) else None
+    gpu_after = (gpu_probe(worktree, busy_util=policy.get("busy_util"))
+                 if (entry.get("require_idle", policy.get("require_idle", False))) else None)
     # The policy this run happened under, verbatim and redacted. It is the one input a request
     # cannot carry, and until now the deployed file was invisible from the repository - an entry
     # setting the wrong env name could only be found by spending runs on it. Every result now

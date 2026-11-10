@@ -1,0 +1,23 @@
+{
+  "id": "r2026-10-11-e",
+  "entry": "minimal",
+  "args": [
+    "--source",
+    "image",
+    "--input-image",
+    "fixtures/youtube-1440p.png",
+    "--headless",
+    "--size",
+    "1280x720",
+    "--frames",
+    "60",
+    "--worker-log",
+    "--shm",
+    "--no-motion",
+    "--send-ahead",
+    "2"
+  ],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "Half the work size, to separate the part of serve's 22ms that scales with pixels from the part that does not. The report's first line says what capture -> work it actually used; if it still says 2560x1440 that is this request's fault and will be visible immediately."
+}

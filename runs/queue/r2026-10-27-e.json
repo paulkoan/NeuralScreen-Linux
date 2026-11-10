@@ -1,0 +1,14 @@
+{
+  "id": "r2026-10-27-e",
+  "entry": "minimal",
+  "args": ["--source", "image",
+           "--input-image", "fixtures/stream-1440p-jpeg-q20.png",
+           "--headless",
+           "--frames", "3",
+           "--worker-log", "--shm", "--no-motion", "--send-ahead", "2",
+           "--save-before", "before.png", "--save-after", "after.png",
+           "--bypass"],
+  "timeout_s": 300,
+  "artifacts": ["before.png", "after.png"],
+  "note": "Isolate the source of the tone shift: the network or the composite. Run the same synthetic card with the composite blend bypassed (via --bypass, which disables the NGX path) and diff its after.png against the preceding run's output. If the tone shift disappears, the composite is the source; if it remains, the network or colour transform is. Still do not queue more clean-input runs to prove restoration."
+}

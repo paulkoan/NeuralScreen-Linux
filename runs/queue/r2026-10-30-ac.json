@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-ac",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "Sweep repeat, point 3 of 3: 1440p, reference model, fused, no pixels, patch 0aabc30e. If this lands ~29 ms again against w's 35.3 ms then w is the outlier and the fit stands; ~35 ms means the spread is the story."
+}

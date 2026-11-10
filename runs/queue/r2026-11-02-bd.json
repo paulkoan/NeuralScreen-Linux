@@ -1,0 +1,9 @@
+{
+  "id": "r2026-11-02-bd",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--send-ahead", "2", "--shm", "--save-after", "bd-1440p.png", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": ["bd-1440p.png"],
+  "note": "bc proved the pipe serialises the pipeline: with --send-ahead 2 and no shm, the client's send median rose to 35.1 ms (the worker's own ~33 ms) while recv fell to 0.0, and the steady median got worse (44.7 vs bb's 39.7 ms serial). The client blocks writing frame N+1 into the pipe until the worker reads it, and the worker only reads after finishing N, so no overlap is possible on the pipe path. This run takes the same 1440p-with-pixels shape and puts the frame in shared memory instead: the client's send becomes a copy into the section rather than a blocking pipe write, so if the worker's shm read does not itself wait on the client, frames should overlap and the median should fall toward the worker's ~26-33 ms. Read it against bc's 44.7 ms median and bb's 39.7 ms. bd's after.png should be byte-identical to bc's and bb's (both sha 4dc4d07bec92f58134ec01e8221e25e049557c4f) - the wire change must move no pixel. If bd is not faster, the serialisation is in the worker's own frame loop and no client-side flag will fix it."
+}

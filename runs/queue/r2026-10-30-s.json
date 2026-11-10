@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-s",
+  "entry": "minimal",
+  "args": ["--frames", "3", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--save-after", "fused.png", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": ["fused.png"],
+  "note": "The fused half of the parity pair. r2026-10-30-r served three frames through the unfused reference kernels (serve: graph unfused, exit 0, unfused.png). Same card, same deterministic synthetic source, same port binary (patch 0aabc30e). If fused.png matches unfused.png the generic schedule computes what the reference kernels compute and step 1 is done; a real difference means fusion is wrong and must not be carried into the small network."
+}

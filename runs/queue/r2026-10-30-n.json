@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-n",
+  "entry": "ngx-old",
+  "args": ["--frames", "3", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--save-after", "ngx-old.png", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": ["ngx-old.png"],
+  "note": "Probe for the preset-1 entry on the live path. r2026-10-30-m proved preset 2 runs (exit 0, worker clock 54ms/frame, real picture). This checks that the same entry shape exists for preset 1 and that the model hint actually selects the old network. A 126 means the ngx-old entry is not in the policy; exit 0 plus a non-blank ngx-old.png means the pair is ready for the 120-frame speed comparison."
+}

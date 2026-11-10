@@ -1,0 +1,10 @@
+{
+  "id": "r2026-11-07-videosrc",
+  "entry": "minimal",
+  "args": ["--source", "video", "--input-video", "fixtures/stream-1440p-2s.mp4",
+           "--size", "2560x1440", "--headless", "--frames", "120", "--shm",
+           "--motion-guides", "--worker-log", "--save-after", "videosrc-after.png"],
+  "timeout_s": 900,
+  "artifacts": ["videosrc-after.png"],
+  "note": "The first run whose frames come from a file, and so the first one that can be compared against a repeat of itself. The clip is fixtures/stream-1440p-2s.mp4, 2s of testsrc2 at 2560x1440 encoded at crf 32 - deliberately not a clean render, because a clip with no compression artefacts measures the pass on content that has nothing wrong with it. tools/make_test_clip.sh writes another. Frames come out in order as fast as the loop asks for them and the file loops; 120 frames is two passes of the 60-frame clip, so the loop seam is crossed and the guide generator's scene detector sees it. Read it three ways: it completes (the source decodes and the loop consumes it), the timing line shows where a file source sits against the portal's capture leg (the live runs read 10-15ms with the gstreamer chain, this has a decode and a copy), and repeating this request under a new id reproduces the frame count and the same videosrc-after.png hash. That last one is the point of the whole change: until now no two runs were the same run."
+}

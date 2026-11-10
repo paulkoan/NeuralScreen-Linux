@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-z",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "Resolution sweep, point 3 of 3: 1440p, reference model, fused, no pixels - a same-session repeat of w (35.3 ms) and the top of the fit. If it does not land near 35 ms, the run-to-run spread is the story and the fit is not usable."
+}

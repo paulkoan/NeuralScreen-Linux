@@ -1,0 +1,8 @@
+{
+  "id": "r2026-10-30-i",
+  "entry": "port-build",
+  "args": [],
+  "timeout_s": 600,
+  "artifacts": [],
+  "note": "Rebuild the staged port so the box's worker carries 02d5184 (patch 0aabc30ec374: serve honours DLSS5VK_UNFUSED=1 and prints 'serve: graph fused|unfused'). This is the build half of plan step 1; the parity run itself cannot be queued yet because a run request carries no env and the policy's 'minimal' entry does not set DLSS5VK_UNFUSED. Require exit 0 and a stamp line naming 0aabc30ec374 and 'in sync'. No measurement is expected from this run - it only makes the next parity run measure the right binary."
+}

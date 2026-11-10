@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-v",
+  "entry": "minimal-small",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "Small network, no pixels - the fair speed number. r2026-10-30-u measured 56.4 ms median but on the pixel path (save-after), which is comparable to the reference's 50.4 ms pixel path (r2026-10-29-e), not to its 24.7 ms no-pixel number (r2026-10-29-f). No save-after means the readback gate stays shut. Compare against r2026-10-30-w, same shape, reference model."
+}

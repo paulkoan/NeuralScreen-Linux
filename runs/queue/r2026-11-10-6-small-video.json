@@ -1,0 +1,26 @@
+{
+  "id": "r2026-11-10-6-small-video",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--shm",
+    "--worker-log",
+    "--save-after",
+    "small-ws-after.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-ws-after.png"
+  ],
+  "note": "The small network's fps and pixel-parity half, on exactly the shape the large network's own sample was taken on: this is r2026-11-10-5-ws-video's argv and timeout character for character, with entry `minimal-small` instead of `minimal`, so the two runs differ only in the model the worker serves. That entry now exists on the box: the runner's own published copy `runs/policy.toml` (digest 28b387ec388f) is `ops/policy.toml` byte for byte and carries `minimal-small` = `uv run python -m minimal` (plain, no xvfb wrapper) with NS_WORKER_CMD `serve --model /opt/neuralscreen/model-small`. Read, in this order: (1) the worker banner's model line must read `/opt/neuralscreen/model-small` - if it reads `/opt/neuralscreen/model` the small network did not run and nothing below counts; (2) median and steady rate against the large network's 30.2 ms / 33.2 fps steady on this same shape (r2026-11-10-5-ws-video, median, headline 22.3), and for reference against r2026-11-08-1440p-window's 48.3 ms / 20.7 fps (1440p internal, a person's picker); the port's pass is 1.88x cheaper on the small network at profile scale (r2026-11-10-profile-small-c 3.446 ms against b/c's 6.494 / 6.522), so a pass saving that does not show in the frame time says the client chain or the capture is the whole of the frame; (3) the artifact `small-ws-after.png` must come back 2560x1440 RGBA (colortype 6) - an after PNG at 1920x1080 means the pass's upscale did not happen; (4) parity against the large network's published frame `runs/done/r2026-11-10-5-ws-video/ws-video-after.png`, same shape and same fixture: the weights differ, so the pixels MUST differ - report the mean absolute difference and the share of pixels moved, and treat byte-identical PNGs as the model having failed to swap rather than as parity. Card gate as always: read gpu_before / gpu_after and idle_waited_s out of the report, quote the spread beside the median, and do not compare the two runs if a gate reads BUSY or the idle wait is non-zero."
+}

@@ -1,0 +1,10 @@
+{
+  "id": "r2026-11-07-video-a",
+  "entry": "minimal",
+  "args": ["--source", "video", "--input-video", "fixtures/stream-1440p-2s.mp4",
+           "--size", "2560x1440", "--headless", "--frames", "600", "--shm",
+           "--save-after", "video-a.png"],
+  "timeout_s": 900,
+  "artifacts": ["video-a.png"],
+  "note": "The repeatability pair, arm A. Same clip as arm B and nothing else different: 600 frames is ten passes of the 60-frame fixtures/stream-1440p-2s.mp4, A/B off, no motion field. What it is for: the last four live runs of one unchanged pipeline read 15.8 / 17.1 / 17.3 and 27.2 fps enhanced, which is a spread wider than any change under test, and until now there was no way to tell a real difference from a session difference. These two runs differ by nothing at all, so video-a.png and video-b.png must be byte-identical and the frame times must agree within the box's own noise. If the hash differs, the source is not deterministic and this whole approach is dead. The number to quote for throughput is the median frame and the enhanced rate; the file source roughly doubled the live enhanced rate (27.2 fps against 19.4) by removing the portal chain and the CPU contention it caused."
+}

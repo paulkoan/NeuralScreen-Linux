@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-ad",
+  "entry": "minimal",
+  "args": ["--frames", "30", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--save-after", "after.png", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": ["after.png"],
+  "note": "Regression check for the loop's channel-order change: the synthetic card is RGBA, so this must still produce after.png sha256 9f13979b168dc3a0. If it does not, the loop half of the BGRA work changed the RGBA path and must be reverted before anything else. No screen, no human."
+}

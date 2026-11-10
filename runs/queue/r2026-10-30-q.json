@@ -1,0 +1,8 @@
+{
+  "id": "r2026-10-30-q",
+  "entry": "port-build",
+  "args": [],
+  "timeout_s": 900,
+  "artifacts": [],
+  "note": "Rebuild dlss5vk from the current linux-port.patch. The patch now carries both the dangling-image fix (817997f, stamp 4b934233) and the generic schedule, and serve reads DLSS5VK_UNFUSED=1, but /opt/neuralscreen/port/build predates it. Step 1 of the small-network integration needs this binary: it compares an unfused served frame against verify/parity on the same card."
+}

@@ -1,0 +1,11 @@
+{
+  "id": "r2026-11-10-6-ws-window-b",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--source", "window", "--size", "2560x1440", "--work-scale", "0.75",
+           "--shm", "--save-before", "ws-window-b-before.png",
+           "--save-after", "ws-window-b-after.png", "--worker-log"],
+  "timeout_s": 900,
+  "artifacts": ["ws-window-b-before.png", "ws-window-b-after.png"],
+  "manual": true,
+  "note": "The repeat of r2026-11-10-4-ws-window, run now because the box is free of whatever the human had loaded on it - and because that run's sample was muddied by something other than the pass. Its argv character for character; only the saved PNG names differ. What went wrong there: median 93.9 ms / 10.6 fps steady, with capture median 13.5 ms and recv median 66.8 ms, against the same-build control r2026-11-08-1440p-window's 48.3 ms / 20.7 fps - and a single **5745.3 ms capture stall at frame 93 of 120**, which the run's own spread line flags as 'not the warm-up, so worth looking at'. So the number is not a reading of the pass: either that stall is a one-off this repeat will not show, or the live window path has a stalls-of-seconds failure that no amount of pass tuning will touch, and that is the more valuable of the two answers. Read in this order: **whether a capture stall over 1 s appears at all** (if none, the median against 48.3 ms is the reading; if one does, its frame number and duration are the finding, and the median is discarded); **the capture split** against the control's 9.0 ms wait / 0.5 ms read - a read near 5 ms means the capture chain is still scaling and the request did not reach the pass; and **the saved PNGs**, both of which must be 2560x1440. The worker log must carry 'serve: work scale: the client's frame is 2560x1440 and the network runs at 1920x1080'. Card gate as always, and the box is believed idle - so a BUSY reading now is itself worth reporting. `manual: true` because the window source wants a picker clicked on the box."
+}

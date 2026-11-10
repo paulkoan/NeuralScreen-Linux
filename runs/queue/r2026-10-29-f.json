@@ -1,0 +1,18 @@
+{
+  "id": "r2026-10-29-f",
+  "entry": "minimal",
+  "args": [
+    "--frames",
+    "120",
+    "--headless",
+    "--source",
+    "synthetic",
+    "--size",
+    "2560x1440",
+    "--shm",
+    "--worker-log"
+  ],
+  "timeout_s": 300,
+  "artifacts": [],
+  "note": "Confirm 29-b's steady 34.7 fps survives the fix and the rebuild. Quote both the headline and steady numbers from the frames line; the headline is dominated by frame 0's 3.3s PTX warm-up."
+}

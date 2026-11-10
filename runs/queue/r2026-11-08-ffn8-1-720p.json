@@ -1,0 +1,8 @@
+{
+  "id": "r2026-11-08-ffn8-1-720p",
+  "entry": "port-profile",
+  "args": ["1280", "720"],
+  "timeout_s": 600,
+  "artifacts": [],
+  "note": "The 720p half of the FFN sweep's SIXTH pair, on the binary r2026-11-08-ffn8-0-build produces (C=256 R4 entry at .maxnreg 80; C=64 R4 at 80, C=128 R4 at 64, C=256 R3 at 80). By the plan's standing rule THIS is the reading and the 1080p half is corroboration only, because three 1080p attempts on the fourth pair each read gpu_before BUSY and on a shared desktop the 1080p half of a pair may never be clean. The rows the change moves are the C=256 expert FFN - ffn_ptx 4032x256 e8 r4 at 720p and its +proj sibling - read against r2026-11-08-ffn7-1-720p (total 3.385 ms, probe 0.409, that row 0.310, its +proj 0.247) and against r2026-11-08-ffn4-1-720p (total 3.388, probe 0.408, the last clean pre-change 720p table). A cap change on one FFN row is worth a fraction of a millisecond, so a move inside 0.03 ms on a row is noise and the direction is the reading; every row the change does not touch must come back inside ~0.02 ms of the baseline. Quote only if this run's rows land at baseline scale at all (720p samples on 2026-11-08 otherwise read 1.7-3x on every row with the fixed-cost probe held, which is a contaminated card and carries no number), and quote the '400 trivial dispatches + barriers' probe (0.406-0.409 ms in every sample since 2026-11-03) with gpu_before WARN and idle_waited_s 0.0 as part of the reading. If this sample reads worse by more than 0.03 ms with the untouched rows inside the bar, the reading is that 80 is worse than 64 on the C=256 R4 entry at this size and the next tick reverts \"256 4 80\" -> \"256 4 64\" in both files rather than taking the next candidate."
+}

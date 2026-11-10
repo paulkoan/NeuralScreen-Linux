@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-30-u",
+  "entry": "minimal-small",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--save-after", "small-120.png", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": ["small-120.png"],
+  "note": "The port on the 31-block small network, 120 frames, after r2026-10-30-t extracts it. Compare with the reference network's 40.5 fps / 24.7 ms steady (r2026-10-29-f) and with NGX preset 2 at 52.7 ms. The served line must show 'blend scale 0.767' - 0.7397 means it loaded the reference model, not the small one. If it loads and runs, this is the first port measurement of the FP8 network, and the parity test already proved fusion is safe to carry into it."
+}

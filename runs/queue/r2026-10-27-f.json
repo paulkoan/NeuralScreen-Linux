@@ -1,0 +1,8 @@
+{
+  "id": "r2026-10-27-f",
+  "entry": "port-build",
+  "args": [],
+  "timeout_s": 600,
+  "artifacts": [],
+  "note": "Apply the current linux-port.patch to the staged port and rebuild dlss5vk. This must run and exit 0 before r2026-10-27-g: g measures with the binary this produces. The check that matters is the script's final line - `build/dlss5vk stamp` - which names the port base and the patch sha it carries. A build that exits 0 but stamps the previous patch is the failure this guards: the apply is idempotent, so a run that only applied and never rebuilt looks fine and measures the old binary. Quote the stamp line. If the stamp names a patch other than the one in the repo, stop and report that rather than proceeding to read g."
+}

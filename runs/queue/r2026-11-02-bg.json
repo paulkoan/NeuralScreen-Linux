@@ -1,0 +1,9 @@
+{
+  "id": "r2026-11-02-bg",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "1920x1080",
+           "--shm", "--save-after", "bg-1080p.png", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": ["bg-1080p.png"],
+  "note": "Complete the shm finding. At 1440p with pixels, --shm took bb's 39.7 ms to be's 26.4 ms - 13.3 ms off, same picture (both 28292742c88b8e01). az measured 1080p with pixels at 31.6 ms on the pipe path; if the handoff is the same fixed ~13 ms, bg should land near 18-19 ms. That would make the shippable 1080p path comfortably under the 16.7 ms 60 fps budget - and it is a flag, not a build. Same build, same 120-frame shape as az so the pair is directly comparable."
+}

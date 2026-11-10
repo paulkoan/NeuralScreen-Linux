@@ -1,0 +1,11 @@
+{
+  "id": "r2026-10-27-c",
+  "entry": "minimal",
+  "args": ["--source", "window", "--size", "2560x1440", "--frames", "120",
+           "--worker-log", "--shm", "--send-ahead", "2",
+           "--save-before", "gfn-before.png", "--save-after", "gfn-after.png"],
+  "timeout_s": 300,
+  "artifacts": ["gfn-before.png", "gfn-after.png"],
+  "manual": true,
+  "note": "the real GeForce Now session, third attempt and the first that should actually reach the pipeline. r2026-10-27-a and -b were both eaten by the timer while the installed runner was the old copy that ignored the manual flag; both died in under 0.1s on a venv permission error (ProtectHome=yes hid the 3.11 uv-managed interpreter under /home/paul). The unit is now ProtectHome=read-only and the installed runner understands the flag, so the timer leaves this one in the queue. Run it with /opt/neuralscreen/run_manually.sh from a terminal in the graphical session and click the portal dialog. The deliverable is the frame pair plus the 'capture split: wait ... read ...' line, quoted with the resolution."
+}

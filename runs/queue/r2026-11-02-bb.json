@@ -1,0 +1,9 @@
+{
+  "id": "r2026-11-02-bb",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--save-after", "bb-1440p.png", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": ["bb-1440p.png"],
+  "note": "Measure-first run for the reply path: 1440p WITH pixels on az's build. az (1080p with pixels) read recv 56.3 ms; as/au on older clients read 60.3/64.8 at 1440p. If recv scales with payload bytes (14.7 MB at 1440p vs 8.3 MB at 1080p), bb-vs-az gives the per-megabyte cost and says whether halving the reply (FP8 output) is worth a wire-format change. If recv is flat, the cost is fixed overhead and FP8 would not help. No code change: same flags as as/au."
+}

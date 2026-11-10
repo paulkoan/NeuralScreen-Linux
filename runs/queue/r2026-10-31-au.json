@@ -1,0 +1,9 @@
+{
+  "id": "r2026-10-31-au",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--headless", "--source", "synthetic", "--size", "2560x1440",
+           "--save-before", "before.png", "--save-after", "after.png", "--worker-log"],
+  "timeout_s": 300,
+  "artifacts": ["before.png", "after.png"],
+  "note": "Bound the 1440p live-path number at a held-constant client. The two pixel-path samples disagree by 8 ms and were run on different checkouts: r2026-10-31-as (120 frames, client b44da39) measured 35.7 ms median / 28.03 fps steady, r2026-10-31-at (30 frames, client d666a51) measured 43.8 ms / 22.8 fps - and at's worker log shows the 30-frame median is warm-up-bound (frames 1 and 2 took 48.4 / 46.2 ms against r2026-10-30-ah's 22.1 / 22.7), so at is not the live-path figure. This run is as's shape (120 frames, 1440p, synthetic, default path, no work-scale, no motion flag) at the current checkout, with --save-before added so the input is checkable: the synthetic fixture moves a 320px bar with the grab index, 120 frames ends at n=119 for both runs, so its after.png can be diffed against as's same-input after.png (MAD 0.0 if the client commits since as moved no default-path pixel). Expect 120 done / 0 skipped, a median near 36 ms, and after.png byte-identical to as's and to r2026-10-30-ah's nomotion.png."
+}

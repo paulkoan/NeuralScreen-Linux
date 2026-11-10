@@ -1,0 +1,8 @@
+{
+  "id": "r2026-10-30-t",
+  "entry": "model-small-extract",
+  "args": [],
+  "timeout_s": 600,
+  "artifacts": [],
+  "note": "Cut the 31-block small network out of the 310.9.16 DLL that is already on the box (native/nvngx_dlssnr.dll, 276,162,560 bytes, magic 0x06c9dfdf) into /opt/neuralscreen/model-small. The reference model at /opt/neuralscreen/model stays untouched. Expect '31 blocks / 77 tensors / 108.6 MiB' and a field split pinned at blend_scale 0.767; anything else means the DLL is not the one measured here."
+}

@@ -1,0 +1,8 @@
+{
+  "id": "r2026-11-08-ffn8-2-1080p",
+  "entry": "port-profile",
+  "args": ["1920", "1080"],
+  "timeout_s": 600,
+  "artifacts": [],
+  "note": "The 1080p half of the FFN sweep's SIXTH pair, on the binary r2026-11-08-ffn8-0-build produces (C=256 R4 entry at .maxnreg 80; C=64 R4 at 80, C=128 R4 at 64, C=256 R3 at 80). Corroboration only: the plan's standing rule, sharpened by the fourth pair's three unusable 1080p attempts, is that a 1080p sample counts only when its total is at BASELINE SCALE and every row the change does not touch is inside the bar - a BUSY gpu_before is not by itself the test, and a table that inflates 2-15x with the fixed-cost probe held is a contended card wearing a WARN gate and is quoted nowhere. Baseline: r2026-11-08-ffn7-2-1080p (total 6.267 ms, probe 0.408, ffn_ptx 8640x256 e8 r4 0.607, its +proj sibling 0.314 against r2026-11-08-ffn5-0-1080p's 0.312, ffn_ptx 138240x64 e2 r4 0.086, block32_ptx 34560w f74 and the '400 trivial dispatches + barriers' probe 0.406-0.409 as controls). The rows the change moves are the two C=256 R4 rows (ffn_e4m3_C256_R4.ptx and its +proj sibling). A move inside 0.03 ms is noise and the direction is the reading; every untouched row must come back inside ~0.02 ms. If the table comes back inflated (a 2-15x total), say so in one line and quote nothing - on this pair the 720p half is already the reading, so an unusable 1080p half does not block the item."
+}
