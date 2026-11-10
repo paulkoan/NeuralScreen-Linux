@@ -1,0 +1,7 @@
+{
+  "id": "r2026-11-10-15-gap4-2-720p",
+  "entry": "port-profile",
+  "args": ["1280", "720"],
+  "timeout_s": 600,
+  "note": "Replaces the void small-size sample: the chainMask-2 run at this size (r2026-11-10-13-gap2-2-720p) landed on a contended card (barrier total 21.030 ms against 3.393 with chaining on, while its own fixed-cost probe held at 0.411 - the contended-card signature), so the c32 chain alone has never been read at 720p. Same argv as r2026-11-10-14-gap3-2-720p, on the binary that carries chainMask 2. Quote these two lines verbatim: `total T ms (sum of per-dispatch spans, 1280x720), N dispatches, a barrier after every launch` and `production schedule (counter chaining): N dispatches, GPU X ms (min of 7, same graph and size, no client in the loop)`. The numbers to read against, both 249 dispatches: chaining fully on T 3.393 / X 3.277 (r2026-11-10-11-gap-720p) and chains off T 3.385 / X 3.558 (r2026-11-10-14-gap3-2-720p) - so the question this run answers is whether the c32 chain alone carries the 0.281 ms the small size gained with chaining fully on, or whether that win needs the expert chain too. Check the gate first (gpu_before / gpu_after / idle_waited_s: a BUSY before or a non-zero idle wait and the sample is quoted nowhere), then the fixed-cost probe line as the control that says the card was at baseline scale - it reads 0.406-0.421 ms on every clean run. If the run dies with `vkQueueWaitIdle(queue_) failed: -4`, stop queueing and report the card rather than escalating."
+}

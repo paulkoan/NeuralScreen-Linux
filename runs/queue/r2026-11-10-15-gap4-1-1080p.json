@@ -1,0 +1,7 @@
+{
+  "id": "r2026-11-10-15-gap4-1-1080p",
+  "entry": "port-profile",
+  "args": ["1920", "1080"],
+  "timeout_s": 600,
+  "note": "The size the shipping pass actually runs the network at: the app presents 1440p output with the work at 0.75 scale, so 1080p is the internal size the chainMask default governs, and chaining's sign there is unmeasured - it is a win at 720p (X 3.277 chained against 3.558 chains off) and a loss at 1440p (X 9.525 at chainMask 2 against 9.041 chains off). Quote these two lines verbatim: `total T ms (sum of per-dispatch spans, 1920x1080), N dispatches, a barrier after every launch` and `production schedule (counter chaining): N dispatches, GPU X ms (min of 7, same graph and size, no client in the loop)`. There is no chains-off 1080p sample on the record, so this run reads against itself: X at or below T means the c32 chain pays at the shipping internal size and the default is right; X above T means chaining is the wrong route there too and the default goes back to 0. Report the dispatch count (the 720p and 1440p samples are all 249) and check the gate first (gpu_before / gpu_after / idle_waited_s: a BUSY before or a non-zero idle wait and the sample is quoted nowhere), then the fixed-cost probe line as the control that says the card was at baseline scale - it reads 0.406-0.421 ms on every clean run. If the run dies with `vkQueueWaitIdle(queue_) failed: -4`, stop queueing and report the card rather than escalating."
+}
