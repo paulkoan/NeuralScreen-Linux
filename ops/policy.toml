@@ -155,8 +155,8 @@ description = "cut the 31-block small network out of the 310.9.16 DLL"
 
 [[entry]]
 name = "minimal-small"
-argv = ["xvfb-run", "-a", "uv", "run", "python", "-m", "minimal"]
-description = "the port on the small network"
+argv = ["uv", "run", "python", "-m", "minimal"]
+description = "the port on the 31-block 310.9.16 network; plain, exactly like `minimal`, so the fps/parity pair differs only in the model the worker is serving"
 [entry.env]
 NS_WORKER_CMD = "/opt/neuralscreen/port/build/dlss5vk serve --model /opt/neuralscreen/model-small"
 [[entry]]

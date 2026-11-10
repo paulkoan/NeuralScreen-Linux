@@ -64,3 +64,17 @@ def test_an_entry_named_for_the_small_network_names_the_small_model():
         env = entry.get("env") or {}
         named = env.get("NEURALSCREEN_MODEL_DIR") or env.get("NS_WORKER_CMD") or ""
         assert "model-small" in named, f"{entry['name']} does not name the small model: {env}"
+
+
+def test_the_small_network_pair_differs_only_in_the_model():
+    """The fps and parity pair is an A/B, so the wrapper must not differ along with the model.
+
+    `minimal-small` was defined twice and the `xvfb-run` copy won - so the only small-network entry
+    the runner could use wrapped the client in a virtual X server while `minimal`, its comparison,
+    did not. That pair would differ by two things at once, which is not a measurement, and it left a
+    tick with nothing it was allowed to queue.
+    """
+    by_name = {entry["name"]: entry for entry in entries()}
+    assert by_name["minimal-small"]["argv"] == by_name["minimal"]["argv"], (
+        "the pair differs by more than the model: "
+        f"{by_name['minimal']['argv']} against {by_name['minimal-small']['argv']}")
