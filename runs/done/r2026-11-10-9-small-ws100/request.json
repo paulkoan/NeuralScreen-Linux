@@ -1,0 +1,26 @@
+{
+  "id": "r2026-11-10-9-small-ws100",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "1.0",
+    "--headless",
+    "--frames",
+    "300",
+    "--shm",
+    "--worker-log",
+    "--save-after",
+    "small-ws100-after.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-ws100-after.png"
+  ],
+  "note": "Requeue of r2026-11-10-8-small-ws100 - entry, argv and timeout character for character, only the id differs - because that sample was taken on a contended card and the standing gate rule quotes it nowhere. The 8 run read median 48.1 ms / 20.8 fps steady against 0.75's 24.1 / 41.6, but gpu_before was BUSY at 86% with DyingLightGame_TheBeast_x64_rwdi.exe holding 5518 MiB, gpu_after BUSY at 98% and idle_waited_s 297.9, and the worker's own line carried the same mud (29.62 ms mean against 0.75's 14.48, every component up by its own ~2x factor). This tick queues it because the card is quiet again: the newest run's probe (r2026-11-10-6-ws-window-b, 20:31Z) read gpu_before WARN with only Telegram / signal-desktop / msedge / chromium resident and no game process, where the game had held 86-98% from 19:47 on. The deployed policy at /opt/neuralscreen (digest 28b387ec388f, published as runs/policy.toml on results) carries `minimal-small` plain, with NS_WORKER_CMD pointing the worker at /opt/neuralscreen/model-small, so this entry runs the 31-block network. Read, in this order: (1) gpu_before / gpu_after / idle_waited_s out of this run's own report - if either probe reads BUSY the sample is discarded exactly as the 8 run's was, and a second busy sample is the answer 'the box is not yours', not a reading; (2) the worker banner must read `serve: 2560x1440, model /opt/neuralscreen/model-small` and must carry NO work-scale line, since at 1.0 the port records no resize at all (fullWidth == workWidth) - a work-scale line naming 2560x1440 means the argument did not take and the run is void; (3) median and steady rate against 0.75's **24.1 ms / 41.6 fps** (r2026-11-10-6-small-video) and 0.5's **31.3 / 31.9** (r2026-11-10-7-small-ws50) on this exact shape - within ~1 ms of 0.75 means the two bilinear resizes are a wash and `--work-scale` should be dropped (no quality cost, one less setting), clearly worse means 0.75 is the optimum and the lever is spent; (4) the worker's own line and its component split (proxy, network+composite, readback, reply) against 0.75's **14.48 ms mean** and **2.5-3.9 / 5.1-8.7 / 2.7-3.6 / 1.2-1.7**, which is what prices the two resize dispatches the 0.5 sample put at ~1 ms; (5) the artifact `small-ws100-after.png` must be 2560x1440 RGBA (colortype 6) and must differ from both r2026-11-10-6-small-video's `small-ws-after.png` and r2026-11-10-7-small-ws50's `small-ws50-after.png` - report the mean absolute difference per channel and the share of pixels moved. 900 s because the 8 run's 300 frames took 22.3 s and this shape's runs have taken 13-22 s: the timeout is slack, not an estimate."
+}
