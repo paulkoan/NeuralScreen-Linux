@@ -59,6 +59,34 @@ anything there.
   `model-small`; `port-profile-small` needs `NEURALSCREEN_MODEL_DIR`, not `NS_WORKER_CMD`; and
   `minimal-small` is defined twice, where the `xvfb-run` copy is the one that wins.
 
+  **2026-11-10 tick, and the ask is now checkable because the policy travels with every result:**
+  in `runs/done/r2026-11-10-profile-large-1080p/policy.toml` (digest `e735408303da`, the copy the
+  runner pushes beside each report) the ordinary `port-profile` entry carries
+  `NEURALSCREEN_MODEL_DIR = "/opt/neuralscreen/model"`, so the swap named above is fixed and the 6.5 ms
+  baseline means the large network again. The only client entry that points at the small network is
+  `minimal-small`, and its argv is `xvfb-run -a uv run python -m minimal` (defined twice, the
+  `xvfb-run` copy winning). What is still needed is a plain `minimal`-shaped entry beside
+  `port-profile-small` whose `NS_WORKER_CMD` names `serve --model /opt/neuralscreen/model-small`, so
+  a headless 1080p run reaches the small network under the same client argv the large network's
+  numbers were taken on - one line in `/opt/neuralscreen/policy.toml`, and that file is the box's.
+
+* learned: the ordinary profile runs the large network again and its own sample dates the card rather
+  than the code - `r2026-11-10-profile-large-1080p` (2026-11-10 tick, exit 0 in 4.5 s, 4.46 s wall,
+  entry `port-profile`, `bash tools/port_profile.sh 1920 1080`, repo `87a5e7b`, policy `e735408303da`)
+  has the `model:` line reading `/opt/neuralscreen/model` and the large network's own kernel table,
+  so the first half of the request is answered: the entry is not swapped. **Its total is not a
+  reading of anything**: **17.056 ms** against `r2026-11-08-profile-1080p-b` / `-c`'s clean
+  **6.494 / 6.522**, with the fixed-cost probe at **0.410** against their 0.406-0.409 - i.e. every
+  row up by its own ~2.5-3x factor (`block32_ptx 34560w f74` **1.036** against the 0.351/0.352 the
+  sweep reads at baseline, `ffn_ptx 8640x256 e8 r4` **1.656**) while the dispatch-bound control does
+  not move, the same cold/throttled signature the 13.733 ms run wore, and `idle_waited_s` **90.0**
+  against b / c's 0.0 - which is the request's own "a non-zero idle_waited_s means say so and do not
+  compare" branch, so it is quoted nowhere. Card WARN before and after (Telegram, signal-desktop,
+  msedge, chromium resident, none contending). What else the copy settles: `port-profile-small`
+  carries `NEURALSCREEN_MODEL_DIR = "/opt/neuralscreen/model-small"`, matching the 3.446 ms small
+  sample, and `minimal-small` is still defined twice with the `xvfb-run` copy winning. NOT verified:
+  there is no comparable large-network total at 1080p this tick - the pair b / c stays the baseline.
+
 * learned: the 31-block small network has been re-measured on the port and it is **1.88x** the large
   one at profile scale (2026-11-10 tick, read of `r2026-11-10-profile-small-c`, exit 0 in 4.1 s,
   entry `port-profile-small`, `bash tools/port_profile.sh 1920 1080`, revision `3ecf0542b68b`, card
