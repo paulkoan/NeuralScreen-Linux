@@ -27,6 +27,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -78,9 +79,39 @@ def git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProce
     return result
 
 
+def redact_policy(text: str) -> str:
+    """The deployed policy, with anything that looks like a credential taken out.
+
+    Every run now carries the policy it ran under, because the policy is the one input a request
+    cannot carry and the deployed file is otherwise invisible from the repository: on 2026-11-10
+    three runs were spent establishing that an entry named `port-profile-small` set NS_WORKER_CMD (a
+    name tools/port_profile.sh never reads) while the ordinary `port-profile` had been pointed at the
+    small model. Nothing in the deployed policy is a secret today - a deploy-key path, model paths,
+    a display and a wine prefix - but this is published to a branch by a program nobody is watching,
+    and a future entry naming a token would otherwise be committed by it.
+    """
+    out = []
+    for line in text.splitlines():
+        match = re.match(r"^(\s*)([A-Za-z0-9_]+)(\s*=\s*)(.*)$", line)
+        if match and _SECRETISH.search(match.group(2)):
+            out.append(f"{match.group(1)}{match.group(2)}{match.group(3)}<redacted>")
+        else:
+            out.append(line)
+    return "\n".join(out) + "\n"
+
+
+# Names that get redacted. Deliberately a short list of words rather than a clever pattern: a false
+# positive costs a value in a log and a false negative costs a leak.
+_SECRETISH = re.compile(r"TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|_KEY$", re.I)
+
+
 def load_policy(path: Path) -> dict:
-    with open(path, "rb") as handle:
-        policy = tomllib.load(handle)
+    raw = path.read_bytes()
+    policy = tomllib.loads(raw.decode("utf-8"))
+    # Kept so a result can carry the file it ran under. `text` is the file verbatim, which is what
+    # makes a policy change visible in the diff of a run's own artefact.
+    policy["_source"] = {"path": str(path), "sha256": hashlib.sha256(raw).hexdigest(),
+                         "text": raw.decode("utf-8", "replace")}
     for key in ("repo_url", "worktree", "results_branch"):
         if key not in policy:
             raise SystemExit(f"the policy at {path} is missing {key!r}")
@@ -285,10 +316,18 @@ def run_request(request: dict, policy: dict, worktree: Path, run_dir: Path,
         else:
             log(f"artifact {artifact} was not produced")
     gpu_after = gpu_probe(worktree) if (entry.get("require_idle", policy.get("require_idle", False))) else None
+    # The policy this run happened under, verbatim and redacted. It is the one input a request
+    # cannot carry, and until now the deployed file was invisible from the repository - an entry
+    # setting the wrong env name could only be found by spending runs on it. Every result now
+    # carries the file, so a change to it is visible as a diff in the artefact.
+    source = policy.get("_source") or {}
+    if source.get("text"):
+        (run_dir / "policy.toml").write_text(redact_policy(source["text"]))
     (run_dir / "result.json").write_text(json.dumps(
         {"exit_code": code, "seconds": round(elapsed, 3), "argv": argv,
          "artifacts": artifacts, "runner": fingerprint(Path(__file__)),
          "entry_env": sorted((entry.get("env") or {}).keys()),
+         "policy": {"path": source.get("path"), "sha256": source.get("sha256")},
          "gpu_before": describe_gpu(gpu_before) if gpu_before is not None or idle_waited else None,
          "gpu_after": describe_gpu(gpu_after) if gpu_after is not None else None,
          "idle_waited_s": round(idle_waited, 1)}, indent=2) + "\n")
@@ -299,6 +338,8 @@ def run_request(request: dict, policy: dict, worktree: Path, run_dir: Path,
         f"# run {run_dir.name}\n\n"
         f"runner `{fingerprint(Path(__file__))}` · entry `{entry['name']}` "
         f"· env from policy: {', '.join(sorted((entry.get('env') or {}).keys())) or 'none'}\n\n"
+        f"policy `{(source.get('sha256') or 'unknown')[:12]}` at {source.get('path') or '?'}"
+        f" · the file itself is beside this report as policy.toml\n\n"
         f"`{' '.join(argv)}`\n\n"
         f"exit **{code}** after {elapsed:.1f}s\n\n"
         + (f"gpu before: {describe_gpu(gpu_before)}"

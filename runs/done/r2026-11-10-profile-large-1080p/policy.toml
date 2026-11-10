@@ -1,0 +1,189 @@
+# The auto-runner's policy. Install this OUTSIDE the repository, in /opt/neuralscreen:
+#
+#   install -d -m 0755 /opt/neuralscreen /opt/neuralscreen/state
+#   install -m 0644 tools/runner_policy.example.toml /opt/neuralscreen/policy.toml
+#   $EDITOR /opt/neuralscreen/policy.toml                    # the entries, if you want fewer
+#
+# No root, and nothing in /etc: the runner is a systemd USER unit reading this file. The
+# unit's sandbox - not a privileged install - is what bounds a run (see
+# tools/neuralscreen-runner.service).
+#
+# It has to live outside the repo because it is the thing that decides what may run: if it
+# were versioned, a commit could name a new entry point and grant itself the machine. This
+# copy, in /opt/neuralscreen, is the one that counts.
+#
+# Everything below is a starting point. The entries are the whole of what this runner will
+# execute; a request naming anything else is refused and the refusal is pushed like any
+# other result.
+
+repo_url = "git@github.com:paulkoan/NeuralScreen-Linux.git"
+# SSH with a deploy key scoped to this one repository, not a token: the runner only ever
+# pushes one branch, and a key can be revoked without touching anything else you have.
+# The key is generated ON THE MACHINE THAT USES IT (the private half never travels) and
+# lives at /opt/neuralscreen/deploy_key, mode 0600, owned by you and read by nothing else.
+# GIT_SSH_COMMAND pointing at it is set in the unit - see neuralscreen-runner.service.
+worktree = "/opt/neuralscreen/state/repo"        # the runner's OWN clone, not your checkout
+request_branch = "main"                          # run requests come from here
+results_branch = "results"                       # results go here, and only the runner writes it
+max_timeout_s = 900
+default_timeout_s = 300
+pause_file = "/opt/neuralscreen/PAUSE"           # touch this and nothing runs
+
+
+require_idle = true
+idle_wait_s = 300
+idle_poll_s = 15
+
+# Runs happen directly as you, inside the user unit's sandbox - no sudo, no system files, no
+# container. That is the default because the container needs nvidia-container-toolkit, which
+# is a system package, and you asked for nothing in /etc.
+#
+# If you ever want the stronger bound (checkout read-only, one writable directory, no
+# network at all), build tools/runner_container/Dockerfile somewhere outside the repo, point
+# podman at a user-level CDI spec, and flip this to true. Until then `container = false` is
+# the honest description of what runs: this user, these files, this sandbox.
+container = false
+# image = "localhost/neuralscreen-runner:1"
+# device = "nvidia.com/gpu=all"
+
+# Everything the runner is allowed to run. argv is a prefix; a request supplies the rest as
+# a list of strings and they go to execve as they are - there is no shell at any point.
+[[entry]]
+name = "minimal"
+argv = ["uv", "run", "python", "-m", "minimal"]
+description = "the MVP pipeline, fed a fixture: --source image requires --input-image"
+# Machine properties belong here rather than in a commit. Point this at the native port built
+# on this machine; leave it out to run the Wine worker instead.
+[entry.env]
+# Both paths are staged copies under /opt/neuralscreen, not the developer's dev tree - which
+# is what lets the unit say ProtectHome=yes and stops a run reading the home directory.
+# Install the policy only AFTER the copies exist:
+#   cp -a /home/paul/dev/OpenDLSS-NR /opt/neuralscreen/port
+#   cp -a /home/paul/dev/odl-model   /opt/neuralscreen/model
+NS_WORKER_CMD = "/opt/neuralscreen/port/build/dlss5vk serve --model /opt/neuralscreen/model"
+
+[[entry]]
+name = "pytest"
+argv = ["uv", "run", "pytest", "tests/", "-q"]
+description = "the test suite"
+
+[[entry]]
+name = "m1-gate"
+argv = ["bash", "tools/m1_pipeline_gate.sh"]
+description = "the M1 gate; needs the screen-cast dialog, so it is not for unattended runs"
+
+# A fixture-driven run looks like this (see runs/README.md):
+#
+#   {"id": "r2026-10-12-a", "entry": "minimal",
+#    "args": ["--input-image", "fixtures/youtube-1440p.png", "--headless",
+#             "--frames", "60", "--worker-log", "--shm", "--no-motion", "--send-ahead", "2"],
+#    "timeout_s": 300, "artifacts": ["before.png", "after.png"],
+#    "note": "does the loop now sit under 60ms?"}
+
+# Before the first run, prime the virtualenv in the runner's own clone (as you, once - the
+# service can only reach GitHub, so it can never populate one itself):
+#
+#   cd /opt/neuralscreen/state/repo && uv sync
+#
+# A fixture-driven request then looks like:
+#
+#   {"id": "r2026-10-12-a", "entry": "minimal",
+#    "args": ["--source", "image", "--input-image", "fixtures/youtube-1440p.png",
+#             "--headless", "--frames", "60", "--worker-log", "--shm", "--no-motion",
+#             "--send-ahead", "2"],
+#    "timeout_s": 300, "artifacts": ["before.png", "after.png"],
+#    "note": "does the loop now sit under 60ms?"}
+
+[[entry]]
+name = "port-build"
+argv = ["bash", "experiments/opendlss_port/rebuild.sh"]
+description = "apply the port patch to the staged copy and rebuild dlss5vk"
+# The NGX reference arm: NVIDIA's runtime under Wine, not the port. Two entries rather than one
+# because the preset is an environment value the worker reads at feature creation, and a run
+# request cannot carry env - only args.
+
+# Unfused port: same worker and model as `minimal`, fusions off. Step 1 of the 31-block
+# integration needs a served unfused frame compared against verify/parity.
+[[entry]]
+name = "minimal-unfused"
+argv = ["uv", "run", "python", "-m", "minimal"]
+description = "the port with DLSS5VK_UNFUSED=1 (reference kernels, no fusion)"
+[entry.env]
+NS_WORKER_CMD = "/opt/neuralscreen/port/build/dlss5vk serve --model /opt/neuralscreen/model"
+DLSS5VK_UNFUSED = "1"
+
+# The 310.9.16 small network, staged separately so the 71-block model stays the reference.
+[[entry]]
+name = "minimal-small"
+argv = ["uv", "run", "python", "-m", "minimal"]
+description = "the port on the 31-block 310.9.16 network"
+[entry.env]
+NS_WORKER_CMD = "/opt/neuralscreen/port/build/dlss5vk serve --model /opt/neuralscreen/model-small"
+
+# NGX reference arm: NVIDIA's runtime under Wine. Two entries because the preset is env, and a
+# run request cannot carry env. native/nvngx_dlssnr.dll is 310.9.16 and holds both networks:
+# preset 1 is byte-identical to the old 310.8.0 network, preset 2 is the small one.
+[[entry]]
+name = "ngx-old"
+argv = ["uv", "run", "python", "-m", "minimal"]
+description = "Wine/NGX worker, preset 1 (the 310.8.0 network)"
+[entry.env]
+NS_NR_PRESET = "1"
+NS_WORKER_CMD = "bash native/run_worker.sh --prefix /opt/neuralscreen/wine"
+DISPLAY = ":0"
+
+[[entry]]
+name = "ngx-new"
+argv = ["uv", "run", "python", "-m", "minimal"]
+description = "Wine/NGX worker, preset 2 (the 310.9.16 small network)"
+[entry.env]
+NS_NR_PRESET = "2"
+NS_WORKER_CMD = "bash native/run_worker.sh --prefix /opt/neuralscreen/wine"
+DISPLAY = ":0"
+[[entry]]
+name = "ngx-matrix"
+argv = ["xvfb-run", "-a", "uv", "run", "python", "tools/ngx_matrix.py", "--baseline"]
+description = "NGX gate control matrix under a private X server"
+[entry.env]
+WINEPREFIX = "/opt/neuralscreen/wine"
+[[entry]]
+name = "ngx-live"
+argv = ["xvfb-run", "-a", "uv", "run", "python", "-m", "minimal",
+        "--frames", "3", "--headless", "--source", "synthetic", "--size", "2560x1440",
+        "--save-after", "ngx-live.png", "--worker-log"]
+description = "the NGX worker on its real evaluate path, 3 frames"
+[entry.env]
+NS_NR_PRESET = "2"
+NS_WORKER_CMD = "bash native/run_worker.sh --prefix /opt/neuralscreen/wine"
+
+[[entry]]
+name = "model-small-extract"
+argv = ["uv", "run", "python", "experiments/opendlss_weights/extract.py",
+        "--dll", "native/nvngx_dlssnr.dll", "--magic", "0x06c9dfdf",
+        "--out", "/opt/neuralscreen/model-small"]
+description = "cut the 31-block small network out of the 310.9.16 DLL"
+
+[[entry]]
+name = "minimal-small"
+argv = ["xvfb-run", "-a", "uv", "run", "python", "-m", "minimal"]
+description = "the port on the small network"
+[entry.env]
+NS_WORKER_CMD = "/opt/neuralscreen/port/build/dlss5vk serve --model /opt/neuralscreen/model-small"
+[[entry]]
+name = "gpu-status"
+argv = ["uv", "run", "python", "tools/gpu_status.py", "--watch", "20"]
+description = "card state before and after a measurement run"
+[[entry]]
+name = "port-profile"
+argv = ["bash", "tools/port_profile.sh"]
+
+[entry.env]
+NEURALSCREEN_MODEL_DIR = "/opt/neuralscreen/model"
+
+[[entry]]
+name = "port-profile-small"
+argv = ["bash", "tools/port_profile.sh"]
+
+[entry.env]
+NEURALSCREEN_MODEL_DIR = "/opt/neuralscreen/model-small"
+

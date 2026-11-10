@@ -1,0 +1,22 @@
+{
+  "exit_code": 0,
+  "seconds": 4.464,
+  "argv": [
+    "bash",
+    "tools/port_profile.sh",
+    "1920",
+    "1080"
+  ],
+  "artifacts": [],
+  "runner": "cfeacf64d2c0",
+  "entry_env": [
+    "NEURALSCREEN_MODEL_DIR"
+  ],
+  "policy": {
+    "path": "/opt/neuralscreen/policy.toml",
+    "sha256": "e735408303daa063ae01e4ddc4ea4cfefeffe398dd1696d6c94f9e99852f17c8"
+  },
+  "gpu_before": "WARN (resident but not contending: Telegram (pid 16290, 30.0 MiB); resident but not contending: signal-desktop (pid 18889, 155.0 MiB); resident but not contending: msedge (pid 1300500, 283.0 MiB); resident but not contending: chromium (pid 3132450, 108.0 MiB))",
+  "gpu_after": "WARN (resident but not contending: Telegram (pid 16290, 30.0 MiB); resident but not contending: signal-desktop (pid 18889, 155.0 MiB); resident but not contending: msedge (pid 1300500, 283.0 MiB); resident but not contending: chromium (pid 3132450, 108.0 MiB))",
+  "idle_waited_s": 90.0
+}

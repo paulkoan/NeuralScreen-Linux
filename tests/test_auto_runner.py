@@ -8,6 +8,7 @@ swallowed. There is no GPU here and none is needed: the entries are stubs.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -156,6 +157,52 @@ def test_a_request_runs_and_lands_on_the_results_branch(world: World):
     # .gitkeep is along for the ride. What must not be there is the request itself.
     assert f"runs/queue/{run_id}.json" not in tree, "the request was published with the result"
     assert world.log().strip(), "nothing was pushed"
+
+
+def test_the_policy_travels_with_the_result(world: World):
+    """Every run carries the bounds it ran under, verbatim.
+
+    The policy is the one input a run request cannot carry, and the deployed file is invisible from
+    the repository - which is how three runs were spent on 2026-11-10 establishing that an entry set
+    NS_WORKER_CMD (a name tools/port_profile.sh never reads) where NEURALSCREEN_MODEL_DIR was wanted.
+    Publishing it beside the result makes "what is the box actually running" readable, and a change
+    to the file a diff inside an artefact.
+    """
+    run_id = world.queue({"id": "r-policy", "entry": "with-env", "args": [], "timeout_s": 20})
+    assert world.run().returncode == 0
+
+    done = world.done_dir(run_id)
+    published = done / "policy.toml"
+    assert published.exists(), "the run did not carry the policy it ran under"
+    assert published.read_text() == world.policy.read_text(), "published, but not verbatim"
+    assert "NS_FIXTURE_WORKER" in published.read_text(), "the entry's env should be in there"
+
+    report = (done / "report.md").read_text()
+    assert "policy `" in report, "the report should name the policy's digest"
+    assert "policy.toml" in report, "and say where the file is"
+
+
+def test_a_credential_in_the_policy_is_not_published(world: World):
+    """The policy is published to a branch, so a value that looks like a secret is not.
+
+    Nothing in the deployed policy is a secret today - a deploy-key path, model paths, a display and
+    a wine prefix - but it is published by a program nobody is watching, and a future entry naming a
+    token would otherwise be committed by it.
+    """
+    spec = importlib.util.spec_from_file_location("auto_runner_under_test", RUNNER)
+    assert spec is not None and spec.loader is not None, f"cannot load {RUNNER}"
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+
+    redacted = runner.redact_policy(
+        'repo_url = "ssh://example.invalid/repo.git"\n'
+        'NS_WORKER_CMD = "serve --model /opt/neuralscreen/model-small"\n'
+        'GITHUB_TOKEN = "ghp_notarealtoken"\n'
+        'deploy_key = "not-a-real-key"\n')
+    assert "ghp_notarealtoken" not in redacted, "a token was published"
+    assert "not-a-real-key" not in redacted, "a key was published"
+    assert 'NS_WORKER_CMD = "serve --model /opt/neuralscreen/model-small"' in redacted, \
+        "an ordinary value must survive, or the file stops being evidence"
 
 
 def test_a_manual_request_waits_for_a_human_run(world: World):
