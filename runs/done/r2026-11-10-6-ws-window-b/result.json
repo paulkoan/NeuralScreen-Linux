@@ -1,0 +1,40 @@
+{
+  "exit_code": 2,
+  "seconds": 121.842,
+  "argv": [
+    "uv",
+    "run",
+    "python",
+    "-m",
+    "minimal",
+    "--frames",
+    "120",
+    "--source",
+    "window",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--shm",
+    "--save-before",
+    "ws-window-b-before.png",
+    "--save-after",
+    "ws-window-b-after.png",
+    "--worker-log"
+  ],
+  "artifacts": [
+    "ws-window-b-before.png",
+    "ws-window-b-after.png"
+  ],
+  "runner": "f98364851fa4",
+  "entry_env": [
+    "NS_WORKER_CMD"
+  ],
+  "policy": {
+    "path": "/opt/neuralscreen/policy.toml",
+    "sha256": "28b387ec388f6f5fcab0bd734f3c63a20a0b6a73e06fbc254cec3c825c48e907"
+  },
+  "gpu_before": "WARN (resident but not contending: Telegram (pid 16290, 30.0 MiB); resident but not contending: signal-desktop (pid 18889, 155.0 MiB); resident but not contending: msedge (pid 1300500, 282.0 MiB); resident but not contending: chromium (pid 3132450, 104.0 MiB))",
+  "gpu_after": "BUSY (utilization 17%; Telegram (pid 16290, 30.0 MiB); signal-desktop (pid 18889, 155.0 MiB); msedge (pid 1300500, 263.0 MiB); chromium (pid 3132450, 104.0 MiB))",
+  "idle_waited_s": 30.0
+}
