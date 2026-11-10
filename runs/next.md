@@ -33,33 +33,43 @@ anything there.
 
 ## 1. Next work
 
-* **Next: read `r2026-11-10-1-profile` and `r2026-11-10-2-shm-window` and act on the branch the second
-  one names. This item edits nothing but `runs/next.md`, and it re-queues nothing: both runs are
-  already in `runs/queue` behind the rebuild.**
-  `r2026-11-10-0-rebuild` landed exit 0 with the stamp the item asked for - `/opt/neuralscreen/port`
-  at `9d08f41`, 18 modified files, patch `a522cd30bbb2cb65c0f9ee46053c25aa3b2a9c23`, "16 shader
-  modules / 78 PTX kernels", and `rebuilt ... is patch a522cd30bbb2..., which is the patch applied -
-  runs will be in sync` - so the binary that loses the device is no longer the one the box runs.
-  * `runs/done/r2026-11-10-1-profile` (entry `port-profile 1920 1080`): the smoke test. Exit 0 at
-    ~6.5 ms (`r2026-11-08-profile-1080p-b`/`-c` read **6.494 / 6.522**), card WARN and `idle_waited_s`
-    recorded. If it dies with `vkQueueWaitIdle(queue_) failed: -4` (VK_ERROR_DEVICE_LOST), the same
-    signature on a fresh binary from a reverted patch is the card or the driver, not a code question:
-    stop queuing, record blocked, and it needs the developer.
-  * `runs/done/r2026-11-10-2-shm-window` (`manual: true` - the window source wants a picker clicked;
-    `minimal`'s argv is `--frames 120 --source window --size 1920x1080 --shm --capture-transport shm`
-    plus the two PNGs). Its control is `r2026-11-08-1080p-window-c`: **30.5 ms / 32.8 fps steady,
-    capture split wait 0.5 / read 5.1 ms**, gst chain 25% of one core. The reading is `read`, the
-    second is the `capture cpu:` line, and the caps are unchanged (RGBA 1920x1080), so the
-    before/after PNG hashes must match the control's - a changed hash is a defect, not a trade.
-    If `read` falls, the memfd is the lever and the next item is the port's `fullWidth != workWidth`
-    refusal so `--work-scale` moves the 1080p resize off gst and into the pass; **that item must name
-    `experiments/opendlss_port/linux-port.patch`**, cut from `/opt/data/tmp/odl-src/src/serve.cpp`
-    (edit the source, amend its one commit, `git format-patch -1` into the patch) - naming the file is
-    the authorisation, and a branch left unnamed is how the capture item stalled on 2026-11-09.
-    If `read` does not fall, the transport is settled as not the lever, the capture leg closes for
-    good, and that goes at the top of Learned rather than into another shape.
-  * If the profile has landed cleanly and the shm-window request is still sitting in `runs/queue`, it
-    is waiting on a person at the picker: say that in one line and stop.
+* **Next: make the port accept `fullWidth != workWidth`, so `--work-scale` moves the 1080p pass' resize
+  off gst and into the pass. The one file this item authorises editing is
+  `experiments/opendlss_port/linux-port.patch`; its source of truth is `/opt/data/tmp/odl-src`, where
+  `src/serve.cpp` holds the refusal (edit the source, amend its one commit, `git format-patch -1`
+  back into the patch), plus the emitter list in `scripts/build_linux.sh` only if the port needs
+  another entry - and nothing else.**
+  What the item stands on, so it is not mistaken for the transport branch: the transport settled as
+  no lever (see the learned line below), so this does *not* ride on it. It rides on lever 1's own
+  measured half - the client now runs the pass at 1080p and presents it stretched into 1440p
+  (`r2026-11-08-1080p-window-c` **30.5 ms / 32.8 fps steady** against `r2026-11-08-1440p-window`'s
+  48.3 ms / 20.7 fps, same patch `f2cd1f27`) - and the price that route still pays is the
+  capture-side `videoscale`, ~2.3 ms (`r2026-11-08-1080p-video`: capture 6.4 -> 8.7 ms). `serve.cpp`
+  refuses the mismatch outright ("No NGX upscaling"), so the resize cannot move inside the pass
+  today. The change is a real upscale path (accept fullWidth, work at workWidth, output scaled back
+  to fullWidth) and it needs a device to verify - which the box has again, since
+  `r2026-11-10-1-profile` and `r2026-11-10-2-shm-window` both landed exit 0 on the rebuilt worker.
+  Verification: queue `port-build`, then the same window run at `--size 2560x1440 --work-scale 0.75`,
+  reading the median fps against `r2026-11-08-1440p-window`'s 48.3 ms / 20.7 fps and the capture
+  split's `read` against its 9.0 ms - if the resize leaves gst, `read` falls and the frame holds or
+  improves; if it does not, the port refusal is settled as not the lever and the item retires there.
+
+* learned: the shm-window reading closes the capture leg - the memfd's read is not cheaper than the
+  pipe's (2026-11-10 tick, read of `r2026-11-10-2-shm-window`, exit 0, 120 frames, entry `minimal`,
+  `--source window --size 1920x1080 --shm --capture-transport shm`, repo `20c4f6b`, worker in sync on
+  patch `a522cd30b`, card WARN before and after, `idle_waited_s` 15). Median **30.3 ms / 33.0 fps
+  steady** (headline 13.74; the 69.3 ms mean is frame 0's 4602.6 ms recv) against its control
+  `r2026-11-08-1080p-window-c`'s **30.5 ms / 32.8 fps**, and the named reading is the capture split:
+  **read 6.6 ms against the control's 5.1** (wait 0.0 against 0.5) - so the frame is unchanged and the
+  read did not fall, which is the item's "does not fall" branch. The transport is therefore settled
+  as not the lever and the capture leg is closed for good rather than tried in another shape. The
+  `capture cpu:` line reads 75% of one core against the control's 25% (window-b read 90%), so that
+  field is not a stable comparison either. The portal picker was clicked and the run landed, so
+  nothing here waits on a person any more; the other half of the item, `r2026-11-10-1-profile`,
+  landed exit 0 at 6.296 ms against b / c's 6.494 / 6.522 and is already on the record. One caveat of
+  record only: both PNGs are new blobs (`b1b7a96b` before, `14740a1b` after against the control's
+  `b1e9aa01` / `7b9c9cf5`), and a live window at a different moment could not have matched them - so
+  the pixel-equality check the item wanted is not available from hashes and no pixel claim is made.
 
 * learned: the rebuilt worker is fixed - the 1080p smoke test landed **exit 0 at 6.296 ms** against
   `-profile-1080p-b` / `-c`'s 6.494 / 6.522, so the patch `a522cd3` build at port `9d08f41` is the one
