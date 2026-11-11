@@ -97,22 +97,26 @@ anything there.
   9.240 c32; 2560x1440 9.041 off / 9.525 c32 / 10.074 fully on. NOT verified: no device here, so the
   new default has not been timed, and the 1080p chains-off control behind it is the item below.
 
-* **Read the chains-off 1080p control on a warm card: does the production schedule sit near its own
-  barrier total at chainMask 0 the way it does at the other two sizes, or is that 2.855 ms gap the
-  schedule's cost at 1080p rather than the chain's?** Requeued as
-  `runs/queue/r2026-11-10-17-gap6-1-1080p.json` because the first attempt
-  (`runs/queue/r2026-11-10-16-gap5-1-1080p`) landed cold and its barrier total is quoted nowhere - the
-  same entry, argv and binary as before (`port-profile`, `bash tools/port_profile.sh 1920 1080`,
-  600 s, patch `e2c9ae674997` at port `9d08f41`, in sync). The default is no longer the question: the
-  cold sample's own schedule number, 7.164 ms, is an upper bound that already sits below the clean c32
-  X of 9.240 at the same size, so this run exists for the intra-run reading alone - `X` near its own
-  `T` means the production schedule is at baseline at 1080p, an X that stays near 9.2 means the
-  schedule itself is dear at the shipping size, which is a finding about `src/nr_schedule.cpp` in
-  `experiments/opendlss_port/linux-port.patch` and not about the default. Quote the gate lines
-  (`gpu_before`, `gpu_after`, `idle_waited_s`) and the fixed-cost probe (0.406-0.421 ms on a clean
-  card) as the control that says the card was at baseline scale; a BUSY before or a non-zero idle wait
-  and neither number is compared. If a run dies with `vkQueueWaitIdle(queue_) failed: -4`, stop
-  queueing and report the card rather than escalating.
+* learned: the chains-off 1080p control landed on a warm card and it closes the last open question -
+  the production schedule is at baseline at the shipping size, so the 2.855 ms the c32 sample read
+  above its own barrier total was that chain's cost and not `src/nr_schedule.cpp` (2026-11-10 tick,
+  read of `r2026-11-10-17-gap6-1-1080p`, exit 0 after 5.6 s, entry `port-profile`, `bash
+  tools/port_profile.sh 1920 1080`, 600 s, on the binary `r2026-11-10-16-gap5-0-build` stamped **in
+  sync** at patch `e2c9ae674997`, port `9d08f41`, 17 shader modules / 78 PTX kernels, policy
+  `92cc2c01922f`). The two lines read `total 6.295 ms (sum of per-dispatch spans, 1920x1080), 249
+  dispatches, a barrier after every launch` and `production schedule (counter chaining): 249
+  dispatches, GPU 6.534 ms (min of 7, same graph and size, no client in the loop)`, so at chainMask 0
+  **X sits 0.239 ms above T** where the same size reads X 2.855 ms above T with the c32 chain
+  (`r2026-11-10-15-gap4-1-1080p`) - the item's first branch, X near its own T, and no finding against
+  the schedule. The gate passes and the controls hold: `gpu_before` WARN (util 12% of the 25% bar),
+  `gpu_after` WARN (util 3%), `idle_waited_s` 0.0, the fixed-cost probe reads **0.410 ms** for 400
+  trivial dispatches + barriers, inside the usual 0.406-0.421 window, and the barrier table is at
+  baseline scale (`block32_ptx 34560w f74` 0.355 against 0.353, `ffn_ptx 8640x256 e8 r4` 0.608 against
+  0.610). The 1920x1080 ladder is now whole at the shipping size, all 249 dispatches: [X] **6.534**
+  chains off / **9.240** c32 / **7.164** cold-bound, against barrier totals 6.295 / 6.385 / 17.062
+  (cold) - so the chains-off default the earlier ticks settled on the cold bound is confirmed by its
+  own warm sample, and the cold `r2026-11-10-16-gap5-1-1080p` number is no longer load-bearing. NOT
+  verified: no device here, so nothing was re-timed this tick.
 
 * learned: the chains-off 1080p control landed on a cold card, so its barrier total is not a reading -
   but its schedule number is an upper bound, and that is enough to settle the default (2026-11-10 tick,
