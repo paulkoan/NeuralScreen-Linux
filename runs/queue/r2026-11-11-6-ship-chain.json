@@ -1,0 +1,30 @@
+{
+  "id": "r2026-11-11-6-ship-chain",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--shm",
+    "--worker-env",
+    "DLSS5VK_SERVE_SPLIT=1",
+    "--worker-env",
+    "DLSS5VK_CHAIN_MASK=3",
+    "--worker-log",
+    "--save-after",
+    "small-ship-after-e.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-ship-after-e.png"
+  ],
+  "note": "The chainMask lever on the model that ships, which the record has never read: the default is chainMask 0 and its whole ladder (1920x1080 large network: 6.534 chains off / 9.240 c32 / <= 7.164 cold) was read through port-profile, while the pass that ships is the 31-block model-small at a 1920x1080 work size and has no chained sample at any size. src/nr_graph.cpp's routesFromEnvironment takes the mask from the environment (DLSS5VK_CHAIN_MASK), so no rebuild is needed and the client's --worker-env carries it to the worker - the same route that carried DLSS5VK_SERVE_SPLIT in r2026-11-11-5-ship-split, so the argv here is that run's character for character plus --worker-env DLSS5VK_CHAIN_MASK=3, split only in --save-after. Read: (1) the 'serve frame N:' lines at frames 0-2 and every 30th as 'network X, composite Y' - X against r2026-11-11-5-ship-split's chainMask-0 split (network 8.2-9.2 ms across frames 29-299, composite 0.5 ms flat). A move of more than about 0.3 ms is the mask taken, and its sign is the reading: chainMask 3 dearer keeps the default, cheaper means the c32-only mask (2) is the next request before any default move. A stage unchanged to within 0.3 ms must NOT be read as 'chaining is neutral on the small network' - it means the mask has not been shown to take, and the next request must be the positive control DLSS5VK_CHAIN=0 (the barrier route, a fallback the code names) before any conclusion. (2) The artifact small-ship-after-e.png must come back 2560x1440 RGBA (colortype 6) and byte-identical to the blob every shipping-frame sample has published (3,494,079 bytes, sha256 7e6e13de): a route change must not move a pixel, and the mask reaching src/nr_graph.cpp's route selection must not change the arithmetic. (3) Quote gpu_before / gpu_after / idle_waited_s, and do not compare a sample whose before-gate is BUSY or whose idle wait is non-zero. Do NOT quote this run's frame rate or median: the split's two BOTTOM_OF_PIPE timestamps flush the queue by design, so only the worker's stage lines are readings. This run writes nothing but its own artifacts."
+}

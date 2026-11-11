@@ -224,6 +224,31 @@ anything there.
   `idle_waited_s` 0.0. NOT verified: no device here, so the split's own inflation is unmeasured and the
   flat-against-rising disagreement with -4 is unresolved.
 
+* **Read the chainMask lever on the model that ships - the default rests on the wrong network's samples and the
+  shipping shape has never carried this flag.** The port ships `chainMask 0` (`src/nr_graph.cpp`'s
+  `routesFromEnvironment` in `experiments/opendlss_port/linux-port.patch`), and every sample behind that default is
+  the *large* network through `port-profile` (1920x1080: X 6.534 chains off / 9.240 c32 / <= 7.164 cold) - while the
+  pass that ships is the 31-block `model-small` at a 1920x1080 work size, which has no chained sample at any size on
+  either route. The mask comes from the environment (`DLSS5VK_CHAIN_MASK`), so no rebuild and no policy entry is
+  needed: the client's `--worker-env` carries it to the worker, the same route `r2026-11-11-5-ship-split` used for
+  `DLSS5VK_SERVE_SPLIT=1`, and the split's stage lines are the instrument that can read it. One request is queued:
+  `runs/queue/r2026-11-11-6-ship-chain.json` (entry `minimal-small`, `r2026-11-11-5-ship-split`'s argv character for
+  character plus `--worker-env DLSS5VK_CHAIN_MASK=3`, argv split only in `--save-after small-ship-after-e.png`,
+  900 s). Read: (1) the same `serve frame N:` lines' `network X` at frames 29-299 against `-5`'s chainMask-0 split
+  (network 8.2-9.2 ms flat, composite 0.5 ms) - a move of more than about 0.3 ms is the mask taken and its sign is
+  the reading: chainMask 3 dearer keeps the default, cheaper means `DLSS5VK_CHAIN_MASK=2` is the next request before
+  any default move, and a stage unchanged to within 0.3 ms is NOT a reading of chaining at all - it means the mask
+  has not been shown to take, and the next request must be the positive control `DLSS5VK_CHAIN=0` (the barrier
+  route, a fallback the code names), because a flag that never arrived reads exactly like a flag that did nothing;
+  (2) `small-ship-after-e.png` must come back 2560x1440 RGBA (colortype 6) and byte-identical to the `7e6e13de` blob
+  every shipping-frame sample has published - a route change must not move a pixel; (3) quote `gpu_before` /
+  `gpu_after` / `idle_waited_s` and do not compare a sample whose before-gate is BUSY or whose idle wait is non-zero,
+  and do not quote this run's median or fps, since the split's two timestamps flush the queue by design. If the
+  chained route does win on `model-small`, the default lives in the patch's `src/nr_graph.cpp` - a fenced file - so
+  the change needs an item written for it here, not a tick's own edit. This item edits no code and no fenced file:
+  the only file it writes is the queue file named above. NOT verified: no device here, so the small network's
+  chained route is unread.
+
 * learned: the chains-off 1080p control landed on a cold card, so its barrier total is not a reading -
   but its schedule number is an upper bound, and that is enough to settle the default (2026-11-10 tick,
   read of `r2026-11-10-16-gap5-1-1080p`, exit 0 after 4.7 s, entry `port-profile 1920 1080`, on the
