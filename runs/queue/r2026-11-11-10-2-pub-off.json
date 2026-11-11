@@ -1,0 +1,27 @@
+{
+  "id": "r2026-11-11-10-2-pub-off",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--worker-env",
+    "DLSS5VK_SERVE_SPLIT=1",
+    "--worker-log",
+    "--save-after",
+    "small-pub-off-after.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-pub-off-after.png"
+  ],
+  "note": "The control for r2026-11-11-10-1-pub-on, one variable apart and on the same route: r2026-11-11-8-ship-chain-c's argv with `--shm` removed and no new flag. Read: (1) small-pub-off-after.png must come back 2560x1440 RGBA (colortype 6) and byte-identical to the 3,494,079-byte, sha256 7e6e13de blob every shipping-frame sample has published - the switch must not touch the default path, so no pixel may move; if it does not match, the publish-work change has leaked into the default path and the patch comes back out; (2) this run's median / steady rate and its worker `readback` / `reply` and client copy / display lines, quoted beside r2026-11-11-10-1-pub-on's as a pair only - not against r2026-11-11-8-ship-chain-c's 24.7 ms / 40.5 fps, which ran the shared-memory route, and the frame's own spread is 5.8 ms wide; (3) gpu_before / gpu_after / idle_waited_s, and if either half's before-gate is BUSY or its idle wait is non-zero, say so and compare nothing from the pair. Nothing is written by this run but its own artifacts."
+}

@@ -1,0 +1,28 @@
+{
+  "id": "r2026-11-11-10-1-pub-on",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--worker-env",
+    "DLSS5VK_SERVE_SPLIT=1",
+    "--publish-work",
+    "--worker-log",
+    "--save-after",
+    "small-pub-on-after.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-pub-on-after.png"
+  ],
+  "note": "The switched half of the publish-work pair, re-aimed off --shm. Its first shape (r2026-11-11-9-1-pub-on, --shm) is void: on the shared-memory route the CLIENT opens the picture channel at the frame size (minimal/worker.py's `self.shm.open_out(self.width, self.height)` and the OUTS send_out beside it), so a work-size image is written into a 2560x1440 section and the reader's set_output_size cannot reach it. This run is r2026-11-11-8-ship-chain-c's argv character for character with `--shm` removed and `--publish-work` added, so the picture travels the PIPE, where the reply is framed by a byte count and set_output_size (protocol.py:805) is the check that governs it (protocol.py:793). Read: (1) small-pub-on-after.png must come back 1920x1080 RGBA (colortype 6) - the artifact IS the published image, so its size is the check that the switch took; (2) this run's median / steady rate and the four terms in its own logs - readback and reply in the worker's `serve frame N:` lines, the copy in the client's `recv split`, the upload in its `timing` line - quoted as a pair only with r2026-11-11-10-2-pub-off and never against r2026-11-11-8-ship-chain-c's 24.7 ms / 40.5 fps, which ran the shared-memory route: the frame's own spread is 5.8 ms wide and the route differs; (3) gpu_before / gpu_after / idle_waited_s, and if either half's before-gate is BUSY or its idle wait is non-zero, say so and compare nothing from the pair. The --headless run exercises the byte saving only: the SDL stretch itself is what a window run would show and it is unread here. Nothing is written by this run but its own artifacts."
+}
