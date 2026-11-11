@@ -68,6 +68,24 @@ else
     [ -f "$fmarker" ] && rm -f "$fmarker"
 fi
 
+# ---- a declared state: the box is off --------------------------------------------------------
+# Nothing runs and nothing publishes while the machine is powered down, and the tick's item sits
+# blocked on a run that cannot happen. That is not a fault, so it is declared rather than inferred:
+# the declaration records the reason and clears itself the moment the box publishes again, and the
+# loop resumes with nobody having to say so. Freshness is still checked above, because the tick
+# itself must keep running in order to notice the box coming back. The two reports below are the
+# ones a powered-down box would otherwise trigger, repeatedly and pointlessly.
+box_off=""
+boff_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/ns-box-off.py"
+if [ -f "$boff_script" ] && command -v python3 >/dev/null 2>&1; then
+    boff_note=$(python3 "$boff_script" status 2>/dev/null)
+    case "$boff_note" in
+        "The box is back:"*) echo "$boff_note" ;;      # news worth sending
+        "") : ;;                                       # the box is on; nothing to say
+        *) box_off="$boff_note" ;;                     # the box is off; stay quiet below
+    esac
+fi
+
 # An EMPTY plan is the quietest stall of all: every tick finds nothing to do, writes a no_change
 # stub, and the change detector never fires because the plan genuinely did not change. Freshness
 # looks perfect and the project sits still for hours - which is exactly what happened on
@@ -82,7 +100,7 @@ if [ -d "$repo/.git" ]; then
     bullets=$(git -C "$repo" show origin/main:runs/next.md 2>/dev/null \
               | sed -n '/^## 1\. Next work/,/^## /p' \
               | grep -E '^\s*\* ' | grep -vcE '^\s*\* learned:' || true)
-    if [ "${bullets:-0}" -eq 0 ]; then
+    if [ "${bullets:-0}" -eq 0 ] && [ -z "$box_off" ]; then
         # Once, not every fifteen minutes: a marker ages out after six hours and it says so again.
         if [ ! -f "$plan_marker" ] || [ $(( ($(date +%s) - $(stat -c %Y "$plan_marker")) / 60 )) -gt 360 ]; then
             touch "$plan_marker"
@@ -128,7 +146,7 @@ state_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/ns-tick-
 smarker="$(dirname "$dir")/.stopped-notified"
 if [ -f "$state_script" ] && command -v python3 >/dev/null 2>&1; then
     stopped=$(python3 "$state_script" report 2>/dev/null)
-    if [ -n "$stopped" ]; then
+    if [ -n "$stopped" ] && [ -z "$box_off" ]; then
         if [ ! -f "$smarker" ] || [ "$(cat "$smarker" 2>/dev/null)" != "$stopped" ]; then
             printf '%s\n' "$stopped" > "$smarker" 2>/dev/null || true
             echo "$stopped"

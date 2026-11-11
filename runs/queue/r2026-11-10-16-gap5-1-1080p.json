@@ -1,0 +1,7 @@
+{
+  "id": "r2026-11-10-16-gap5-1-1080p",
+  "entry": "port-profile",
+  "args": ["1920", "1080"],
+  "timeout_s": 600,
+  "note": "The chains-off control at the size the port ships the network at: the 1080p sample on the chainMask-2 build read its production schedule 2.855 ms above its own barrier total (`GPU 9.240` against `total 6.385`, `r2026-11-10-15-gap4-1-1080p`), where nothing-chained samples at the other two sizes put the same two instruments 0.173 ms apart at 720p and 0.395 ms apart at 1440p. X near T here means the schedule is at baseline at 1080p and the new chains-off default is confirmed; X near 9.2 means the production schedule is dear at 1080p whatever is chained, which is a finding about `src/nr_schedule.cpp` rather than about the default. Quote these two lines verbatim: `total T ms (sum of per-dispatch spans, 1920x1080), N dispatches, a barrier after every launch` and `production schedule (counter chaining): N dispatches, GPU X ms (min of 7, same graph and size, no client in the loop)`. Report the dispatch count (the 720p and 1440p samples are all 249) and check the gate first (gpu_before / gpu_after / idle_waited_s: a BUSY before or a non-zero idle wait and the sample is quoted nowhere), then the fixed-cost probe line as the control that says the card was at baseline scale - it reads 0.406-0.421 ms on every clean run. If the run dies with `vkQueueWaitIdle(queue_) failed: -4`, stop queueing and report the card rather than escalating."
+}

@@ -21,6 +21,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 RUNNER = REPO / "tools" / "auto_runner.py"
 BOX_STATE = REPO / "hermes" / "ns-box-state.py"
+BOX_OFF = REPO / "hermes" / "ns-box-off.py"
 
 
 def load(name: str, path: Path):
@@ -42,3 +43,41 @@ def test_an_unreadable_subject_says_so_rather_than_guessing():
     box = load("box_state_under_test", BOX_STATE)
     assert box.deployed_hash("") == "unknown"
     assert box.deployed_hash("run r2026-11-10-6-sma: exit 0 on abc123") == "unknown"
+
+
+def test_the_box_off_marker_clears_itself_when_a_result_lands(tmp_path, monkeypatch, capsys):
+    """Declared, not inferred - and it ends by itself, so nobody has to report the box coming back.
+
+    While the box is off the tick's item is blocked on a run that cannot happen, and reporting that
+    as a stall is noise about a machine being switched off. The one message worth sending is the one
+    that says it is over, and the arrival of a result is what says it.
+    """
+    box = load("box_off_under_test", BOX_OFF)
+    monkeypatch.setattr(box, "MARKER", tmp_path / ".box-off")
+    monkeypatch.setattr(box, "newest_result", lambda: "aaa111")
+
+    box.mark("the box is off for the night")
+    capsys.readouterr()
+    assert box.MARKER.exists()
+
+    box.status()
+    assert capsys.readouterr().out.strip() == "the box is off for the night"
+
+    monkeypatch.setattr(box, "newest_result", lambda: "bbb222")
+    box.status()
+    assert "The box is back" in capsys.readouterr().out
+    assert not box.MARKER.exists(), "the declaration outlived the box coming back"
+
+
+def test_a_failed_fetch_does_not_read_as_the_box_being_back(tmp_path, monkeypatch, capsys):
+    """A network blip must not clear the declaration, or the noise returns on the next tick."""
+    box = load("box_off_under_test", BOX_OFF)
+    monkeypatch.setattr(box, "MARKER", tmp_path / ".box-off")
+    monkeypatch.setattr(box, "newest_result", lambda: "aaa111")
+    box.mark("the box is off")
+    capsys.readouterr()
+
+    monkeypatch.setattr(box, "newest_result", lambda: "")
+    box.status()
+    assert capsys.readouterr().out == ""
+    assert box.MARKER.exists()
