@@ -180,24 +180,48 @@ anything there.
   chaining-3 small-network sample to put beside it. NOT verified: no device here, so nothing was re-timed and the
   frame's spread is two runs, not a distribution.
 
-* **Bound the shipping frame's run-to-run spread before anything else is read off it.** The frame now reads
-  27.0 ms / 37.1 fps (`r2026-11-11-2-ship-frame-b`) where an identical run read 32.7 / 30.6
-  (`r2026-11-11-1-ship-frame`) - a 5.7 ms spread between two samples of one binary on one argv - while the port's
-  own pass is stable to 0.008 ms across the same pair (`3.438` against `3.446`), so the client-side frame's scatter
-  is the largest single term in every frame reading the plan holds and it is the instrument, not the code, that
-  wants one more sample. One request is queued: `runs/queue/r2026-11-11-4-ship-frame-c.json` (entry `minimal-small`,
-  `r2026-11-11-2-ship-frame-b`'s argv character for character with `--save-after small-ship-after-c.png`, 900 s).
-  Read: (1) its median and steady rate against 27.0 / 37.1 and 32.7 / 30.6, and the three numbers as a set - a third
-  sample inside 27.0-32.7 says the frame's spread is that wide and no chains-off claim may rest on it, a sample well
-  outside it says the frame cannot carry small deltas at all, and either way the plan's 24.1 / 41.6 headline is to be
-  re-stated from these samples rather than kept; (2) its worker's `input stream closed` mean against 16.20 and 20.23
-  and its capture / send / display spread medians against 4.5 / 2.4 / 2.7; (3) the artifact `small-ship-after-c.png`
-  must come back 2560x1440 RGBA (colortype 6) and byte-identical to the `7e6e13de` blob both other samples
-  published, and the stamp must read patch `e2c9ae674997` **in sync** with the worker's model line on
-  `/opt/neuralscreen/model-small`; quote `gpu_before` / `gpu_after` / `idle_waited_s` and do not compare a sample
-  whose before-gate is BUSY or whose idle wait is non-zero. This item edits no code and no fenced file: the only file
-  it writes is the queue file named above. NOT verified: no device here, so the box's frame spread is still two
-  points wide.
+* learned: the third shipping-frame sample landed on the low edge of the spread - 26.9 ms / 37.1 fps against
+  27.0 / 37.1 and 32.7 / 30.6 - so the frame's own scatter is 5.8 ms wide and no chains-off claim may rest on it,
+  while the shipping frame's cost re-states from 24.1 / 41.6 to **27.0 ms / 37.1 fps** (2026-11-11 tick, read of
+  `r2026-11-11-4-ship-frame-c`, exit 0 after 14.4 s, entry `minimal-small`, 300 frames,
+  `r2026-11-11-2-ship-frame-b`'s argv character for character with `--save-after small-ship-after-c.png`, worker
+  stamped patch `e2c9ae674997` at port `9d08f41` **in sync**, policy `92cc2c01922f`). **It is the item's first
+  branch**: median **26.9 ms / 37.1 fps steady** (headline 24.03, mean 40.8 ms = 24.5 fps; the 3870.1 ms recv max is
+  frame 0's warm-up), i.e. 0.1 ms under the window's floor and on -2's side of it, so the frame cannot carry a small
+  delta, nothing is reverted and `chainMask` stays 0. What says the wobble is the frame and not the box at large: the
+  worker's own `input stream closed` line reads **16.61 ms mean** against -2's 16.20 and -1's 20.23, and the client's
+  stages came back at -2's level (capture spread median 4.1 against 4.5, send 2.3 against 2.4, display 2.4 against
+  2.7, recv split copy 1.7 + waiting 29.4 mean), with the frame-43 capture one-off **35.2 ms** - the shape the 1440p
+  runs carry, outside the warm-up and out of the median. The artifact check passes harder than asked:
+  `small-ship-after-c.png` is **2560x1440 RGBA** (colortype 6, 3,494,079 bytes, sha256 `7e6e13de`),
+  **byte-identical to both** `r2026-11-11-1-ship-frame`'s `small-ship-after.png` and -2's `small-ship-after-b.png`,
+  so the chains-off binary has now published exactly the same pixels three times. Gate: `gpu_before` WARN (util 16%
+  of the 25% bar), `gpu_after` WARN (0%), `idle_waited_s` 0.0. Two of three samples agree to 0.1 ms while the port
+  pass holds to 0.008 ms across the same pair, so the scatter is the client-side frame and the next reading belongs
+  to the worker's own stages - the item below. NOT verified: no device here, so nothing was re-timed and the spread
+  is three samples, not a distribution.
+
+* **Separate the worker's lumped `network+composite` on the shipping shape - the probe is built and has never been
+  switched on for the model that ships.** The frame's own scatter (5.8 ms) is now bounded, and the worker's one
+  lumped stage on that shape reads **5.3 -> 8.9 ms** rising across `r2026-11-11-4-ship-frame-c`'s frames 29-299
+  while the port's per-dispatch pass at the same work size is 3.438 ms (`r2026-11-11-3-profile-small-1080p`), so the
+  residue is either the network's own gap, the composite, or the two resize dispatches the work-scale 0.75 path adds
+  - and the frame's total cannot say which. The patch already carries the instrument: `src/serve.cpp`'s `splitTiming`
+  prints `network X, composite Y` when `DLSS5VK_SERVE_SPLIT` is set, and it has only ever been read on the large
+  network's synthetic 1440p shape (`r2026-11-03-split`: network 10.5-11.1 ms, composite 0.3 ms). One request is
+  queued: `runs/queue/r2026-11-11-5-ship-split.json` (entry `minimal-small`, `r2026-11-11-4-ship-frame-c`'s argv
+  character for character plus `--worker-env DLSS5VK_SERVE_SPLIT=1` and `--save-after small-ship-after-d.png`,
+  900 s). Read: (1) the `serve frame N:` lines (frames 0-2 and every 30th) as `network X` and `composite Y`, X and Y
+  against the same indices' lumped figure in -4 (5.3 / 7.1 / 8.3 / 8.6 / 8.7 / 8.9 ms at frames 29 / 59 / 119 / 149 /
+  209 / 269 / 299) and against the large-network split's 10.5-11.1 / 0.3 - if Y carries the rise, the composite and
+  the resize are the residue; if X does, it is the pass's own gap and the profile's span sum is not the pass's cost;
+  (2) the artifact `small-ship-after-d.png` must come back 2560x1440 RGBA (colortype 6) and byte-identical to the
+  `7e6e13de` blob all three earlier samples published, and the stamp must read patch `e2c9ae674997` **in sync** with
+  the worker's model line on `/opt/neuralscreen/model-small`; (3) quote `gpu_before` / `gpu_after` / `idle_waited_s`
+  and do not compare a sample whose before-gate is BUSY or whose idle wait is non-zero. **Do not quote this run's
+  frame rate or median**: the two timestamps flush the queue by design, so its frame time is inflated and only the
+  worker's stage lines are readings here. This item edits no code and no fenced file: the only file it writes is the
+  queue file named above. NOT verified: no device here, so the shipping shape's split is unread.
 
 * learned: the chains-off 1080p control landed on a cold card, so its barrier total is not a reading -
   but its schedule number is an upper bound, and that is enough to settle the default (2026-11-10 tick,

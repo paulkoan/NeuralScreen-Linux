@@ -1,0 +1,28 @@
+{
+  "id": "r2026-11-11-5-ship-split",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--shm",
+    "--worker-env",
+    "DLSS5VK_SERVE_SPLIT=1",
+    "--worker-log",
+    "--save-after",
+    "small-ship-after-d.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-ship-after-d.png"
+  ],
+  "note": "The shipping shape with the worker's own split probe switched on, which the record has never done: r2026-11-03-split read it on the large network's synthetic 1440p shape (network 10.5-11.1 ms, composite 0.3 ms) and no run since has set DLSS5VK_SERVE_SPLIT. The argv is r2026-11-11-4-ship-frame-c's character for character plus --worker-env DLSS5VK_SERVE_SPLIT=1, split only in --save-after. The flag goes in through the client's --worker-env, not the policy's env, because the two BOTTOM_OF_PIPE timestamps flush the queue and that cost should not be paid by every run - which also means this run's frame rate and median are inflated by design and must not be quoted; only the worker's stage lines are readings. Read: the 'serve frame N:' lines, printed at frames 0-2 and every 30th, as 'network X, composite Y' - X and Y against the same indices' lumped 'network+composite' in r2026-11-11-4-ship-frame-c (5.3 / 7.1 / 8.3 / 8.6 / 8.7 / 8.9 ms at frames 29 / 59 / 119 / 149 / 209 / 269 / 299) and against the large-network split's 10.5-11.1 / 0.3. If Y (composite) carries the rise, the composite and the work-scale path's two resize dispatches are the residue; if X (network) does, it is the pass's own gap on the production schedule and the profile's per-dispatch span sum (3.438 ms at 1920x1080, r2026-11-11-3-profile-small-1080p) is not the pass's cost. Also check the artifact small-ship-after-d.png comes back 2560x1440 RGBA (colortype 6) and byte-identical to the blob all three earlier samples published (3,494,079 bytes, sha256 7e6e13de) - the probe must not move a pixel - the stamp reads patch e2c9ae674997 in sync with the worker's model line on /opt/neuralscreen/model-small, and quote gpu_before / gpu_after / idle_waited_s, not comparing the sample if the before-gate is BUSY or the idle wait is non-zero. Nothing is written by this run but its own artifacts."
+}
