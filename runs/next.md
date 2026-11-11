@@ -341,21 +341,25 @@ anything there.
   device here, so nothing is timed, the 8.6 ms is one run's stage arithmetic, and the visual cost of moving the
   upscale from the port's bilinear to SDL's is unmeasured until the pair lands.
 
-* blocked (2026-11-11 tick, read of `r2026-11-11-9-0-pub-build`, `-9-1-pub-on` and `-9-2-pub-off`): the change
-  above is not made and its pair is already spent. `-9-0` built patch **`e2c9ae674997`** - the pre-switch patch -
-  so `-9-1` never reached the worker: exit **2** at argparse, `unrecognized arguments: --publish-work`. `-9-2`
-  is a clean control (`small-pub-off-after.png` **2560x1440 RGBA**, 3,494,079 bytes, sha256 `7e6e13de`,
-  byte-identical to the blob every shipping sample publishes), so the default path is untouched - but nothing
-  here read the switch. What this item is missing is a fifth file on the route its own pair runs: the switched
-  run keeps `--shm`, and on that route the **client** opens the picture channel at the *frame* size -
-  `minimal/worker.py`'s `self.shm.open_out(self.width, self.height)` and the OUTS `send_out` beside it - so a
-  work-size publish lands in a full-size section and `reader.set_output_size` cannot reach it (that hook is the
-  pipe path's byte-count check, `protocol.py:793`). The port's own OUTS handler already says so out loud:
-  "the client sizes it for the frame it wants back ... which with a work scale is not the work size"
-  (`src/serve.cpp`). The item names four files and this is not one of them, so the tick may not build it. To
-  unblock: the interactive session writes an item naming `minimal/worker.py` (open the channel at
-  `self.work_w/work_h` and hand back a work-size frame when the switch is on), or the pair is re-aimed to run
-  without `--shm`. Either way the pair needs **fresh ids** - `-9-0`, `-9-1` and `-9-2` are in `runs/done`.
+* blocked (2026-11-11 tick, read of `r2026-11-11-9-0-pub-build`, `-9-1-pub-on` and `-9-2-pub-off`): the
+  change above is **made and pushed** - the patch re-cut to **`58e98d824bce`** (commit `b34faa2`, `serve.cpp`
+  1074 -> 1095 lines), `minimal/__main__.py`'s `--publish-work`, `minimal/loop.py`'s `set_output_size` and
+  `minimal/display.py`'s smaller-frame texture with it, suite **600 passed / 9 failed / 38 skipped** (the same
+  nine libGL/SDL2 environment failures) - and its rebuild is queued as
+  `runs/queue/r2026-11-11-10-0-pub-build.json`. What is not done is the reading, because the pair cannot give
+  one as written: `-9-0` built the **pre-switch** patch `e2c9ae674997`, so `-9-1` never reached the worker
+  (exit **2** at argparse, `unrecognized arguments: --publish-work`), and `-9-2` is a clean control
+  (`small-pub-off-after.png` **2560x1440 RGBA**, 3,494,079 bytes, sha256 `7e6e13de`, byte-identical to the blob
+  every shipping sample publishes), so the default path is untouched. **The one thing needed is a fence
+  decision, not a measurement**: the pair runs `--shm`, and on that route the **client** opens the picture
+  channel at the *frame* size - `minimal/worker.py`'s `self.shm.open_out(self.width, self.height)` and the OUTS
+  `send_out` beside it, a file this item does not name - so the work-size image lands in a full-size section and
+  `reader.set_output_size` (`protocol.py:805`; the pipe path's byte-count check is `protocol.py:793`) cannot
+  reach it. Either write an item naming `minimal/worker.py` (open the channel at `self.work_w/work_h` and hand
+  back a work-size frame when the switch is on), or re-aim the pair to run without `--shm`; either way with
+  **fresh ids**, `-9-0`, `-9-1` and `-9-2` being in `runs/done`. Do not queue the pair on `--shm` off the new
+  build: the section stays frame-sized, so the switched run would save a frame-size PNG and the pair would read
+  as the switch failing rather than the route.
 
 * learned: the chains-off 1080p control landed on a cold card, so its barrier total is not a reading -
   but its schedule number is an upper bound, and that is enough to settle the default (2026-11-10 tick,
