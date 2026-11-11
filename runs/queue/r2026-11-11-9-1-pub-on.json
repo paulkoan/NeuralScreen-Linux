@@ -1,0 +1,29 @@
+{
+  "id": "r2026-11-11-9-1-pub-on",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--shm",
+    "--worker-env",
+    "DLSS5VK_SERVE_SPLIT=1",
+    "--publish-work",
+    "--worker-log",
+    "--save-after",
+    "small-pub-on-after.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-pub-on-after.png"
+  ],
+  "note": "The shipping shape with the pass publishing its own 1920x1080 image instead of the upscaled 2560x1440 one, so the pixel channel carries 8.3 MB a frame instead of 14.7. r2026-11-11-8-ship-chain-c's argv character for character plus --publish-work, which is also what puts DLSS5VK_PUBLISH_WORK=1 into the worker's environment. Read: (1) this run's median and steady rate against its control r2026-11-11-9-2-pub-off and against -8's 24.7 ms / 40.5 fps, quoted as a pair and never alone (the frame's own spread is 5.8 ms); (2) the four terms that carry the pixel channel in this run's own logs - the worker's `serve frame N:` lines' `readback` and `reply`, the client's `recv split` copy and its `timing` line's display - against -8's readback 3.1 / 3.2 / 3.7 / 4.0 / 4.7 ms, reply 1.5-2.6, copy mean 1.6, display 2.2: about 0.56 of each is what the switch should show if those terms are per-byte, and a list that does not move means the pixel channel is a per-frame round trip instead; (3) small-pub-on-after.png must come back 1920x1080 RGBA (colortype 6) - the artifact is the published image, so its size is the check that the switch took, and no byte-identity with the 7e6e13de blob is expected because the image is a different size and was not upscaled; (4) quote gpu_before / gpu_after / idle_waited_s, and compare nothing against the control whose before-gate is BUSY or whose idle wait is non-zero. This run is --headless, so it exercises the byte saving and not the present's stretch. Nothing is written by this run but its own artifacts."
+}

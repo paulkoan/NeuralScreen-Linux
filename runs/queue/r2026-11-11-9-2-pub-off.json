@@ -1,0 +1,28 @@
+{
+  "id": "r2026-11-11-9-2-pub-off",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--shm",
+    "--worker-env",
+    "DLSS5VK_SERVE_SPLIT=1",
+    "--worker-log",
+    "--save-after",
+    "small-pub-off-after.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-pub-off-after.png"
+  ],
+  "note": "The control for r2026-11-11-9-1-pub-on: the shipping shape's documented argv character for character (r2026-11-11-8-ship-chain-c, no new flag), run in the same card state as the switched sample so the pair is one variable apart. Read: (1) small-pub-off-after.png must come back 2560x1440 RGBA (colortype 6) and byte-identical to the 3,494,079-byte, sha256 7e6e13de blob every shipping-frame sample has published - the switch must not touch the default path, so no pixel may move; if it does not match, the publish-work change has leaked into the default path and the patch comes back out; (2) this run's median / steady rate and its worker `readback` / `reply` and client copy / display lines, quoted beside -9-1-pub-on's and against -8's 24.7 ms / 40.5 fps, as a pair only (the frame's own spread is 5.8 ms); (3) quote gpu_before / gpu_after / idle_waited_s, and if either run's before-gate is BUSY or its idle wait is non-zero, say so and compare nothing from the pair. Nothing is written by this run but its own artifacts."
+}

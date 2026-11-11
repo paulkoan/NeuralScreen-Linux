@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "seconds": 11.498,
+  "argv": [
+    "bash",
+    "experiments/opendlss_port/rebuild.sh"
+  ],
+  "artifacts": [],
+  "runner": "415e2181914a",
+  "entry_env": [],
+  "policy": {
+    "path": "/opt/neuralscreen/policy.toml",
+    "sha256": "92cc2c01922f9c548eacef313d94c12886c9dd6daee00715c02e5333b8dedf7a"
+  },
+  "gpu_before": "WARN [util 8% of the 25% bar] (resident but not contending: Telegram (pid 16290, 30.0 MiB); resident but not contending: signal-desktop (pid 18889, 159.0 MiB); resident but not contending: msedge (pid 1300500, 293.0 MiB); resident but not contending: chromium (pid 3132450, 251.0 MiB))",
+  "gpu_after": "WARN [util 9% of the 25% bar] (resident but not contending: Telegram (pid 16290, 30.0 MiB); resident but not contending: signal-desktop (pid 18889, 149.0 MiB); resident but not contending: msedge (pid 1300500, 293.0 MiB); resident but not contending: chromium (pid 3132450, 249.0 MiB))",
+  "idle_waited_s": 0.0
+}

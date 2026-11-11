@@ -1,0 +1,7 @@
+{
+  "id": "r2026-11-11-9-0-pub-build",
+  "entry": "port-build",
+  "args": [],
+  "timeout_s": 900,
+  "note": "Rebake the port with `src/serve.cpp` able to publish the pass's work-size image instead of upscaling it back to the frame size, behind `DLSS5VK_PUBLISH_WORK=1`. Read the stamp: it must name the patch in sync at port `9d08f41`, 17 shader modules / 78 PTX kernels, and the module count is the check that the patch applied whole. Anything else and both runs behind it are measuring the old binary - say so and do not compare their pair."
+}
