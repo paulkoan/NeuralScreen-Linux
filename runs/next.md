@@ -250,24 +250,48 @@ anything there.
   one card state: `runs/queue/r2026-11-11-7-ship-chain-b.json`, `-6`'s argv character for character. NOT
   verified: no device here, so nothing was re-timed.
 
-* **Re-read the chainMask lever on the model that ships - `r2026-11-11-6-ship-chain` was void on a
-  non-idle card.** The one request is queued: `runs/queue/r2026-11-11-7-ship-chain-b.json` (entry
-  `minimal-small`, `-6`'s argv character for character - `--size 2560x1440 --work-scale 0.75 --headless
-  --frames 300 --shm --worker-env DLSS5VK_SERVE_SPLIT=1 --worker-env DLSS5VK_CHAIN_MASK=3 --worker-log
-  --save-after small-ship-after-e.png` - 900 s). Read: (1) the split's `serve frame N:` `network` at frames
-  0-2 and every 30th against `-5`'s chainMask-0 split (**9.1 / 9.2 / 8.4 / 8.2 / 8.2 / 8.4 / 8.5 / 8.5 /
-  8.5 / 8.6** ms, composite 0.5 flat) and against `-6`'s own warm-up, which sat 2x below `-5`'s - a move of
-  more than about 0.3 ms with the warm-up flat is the mask taken and its sign is the reading: chainMask 3
-  dearer keeps the default, cheaper makes the c32-only `DLSS5VK_CHAIN_MASK=2` the next request before any
-  default move; do NOT reach for the `DLSS5VK_CHAIN=0` positive control (it is read only by `runProfile`);
-  (2) `small-ship-after-e.png` must come back 2560x1440 RGBA (colortype 6) and byte-identical to the
-  `7e6e13de` blob every shipping-frame sample has published - a route change must not move a pixel;
-  (3) quote `gpu_before` / `gpu_after` / `idle_waited_s`, compare nothing whose before-gate is BUSY or whose
-  idle wait is non-zero, and quote no median or fps (the split's timestamps flush the queue by design). If
-  this sample is void the same way, queue nothing further and write here that the card is what stands in the
-  way. If the chained route does win on `model-small`, the default lives in the patch's `src/nr_graph.cpp` -
-  a fenced file - so the change needs an item written for it here, not a tick's own edit. This item edits no
-  code: the only file it writes is the queue file named above.
+* learned: the mask-3 shipping-shape sample is clean on the gate and reads ~2.5 ms cheaper at the steady
+  frames, but its warm-up sits 18 ms below the chains-off run's, so the pair does not separate the mask
+  from the card (2026-11-11 tick, read of `r2026-11-11-7-ship-chain-b`, exit 0 after 15.2 s, entry
+  `minimal-small`, `r2026-11-11-6-ship-chain`'s argv character for character, worker stamped patch
+  `e2c9ae674997` at port `9d08f41` **in sync**, model line `/opt/neuralscreen/model-small`, policy
+  `92cc2c01922f`). Clause (3) passes where `-6` failed it: `idle_waited_s` **0.0** with `gpu_before` WARN
+  (util 0% of the 25% bar) and `gpu_after` WARN (5%), so the card was idle and the sample is not void.
+  The artifact check passes harder than asked: `small-ship-after-e.png` is **2560x1440 RGBA** (colortype 6,
+  3,494,079 bytes, sha256 `7e6e13de`), byte-identical to the blob `-5`'s `-d`, `-4`'s `-c` and `-1`'s `-a`
+  published, so the route change moves no pixel. **The steady frames read the chained route cheaper**: the
+  split's `network` at frames 29 / 59 / 89 / 119 / 149 / 179 / 209 / 239 / 269 / 299 reads **8.8 / 8.5 /
+  4.4 / 5.1 / 4.4 / 4.9 / 5.9 / 6.2 / 7.3 / 4.6** ms (composite 0.2-1.1) against `-5`'s chains-off
+  **9.1 / 9.2 / 8.4 / 8.2 / 8.2 / 8.4 / 8.5 / 8.5 / 8.5 / 8.6** - ~**2.5 ms** on the means, five times the
+  item's 0.3 ms bar and in the cheaper direction. **What stops it being a reading of the mask is the
+  warm-up**: frames 1-2 read network **11.8 / 11.8** against `-5`'s **30.3 / 30.4**, 18 ms low, and `-6`'s
+  warm-up wore the same low shape (12.2 / 13.6 / 13.5) while its steady state was only 0.5 ms off `-5`. So
+  both chained runs sit low against the one chains-off run, which is either the chained route acting on the
+  ramp or the card state `-5` caught as the first GPU work after the overnight power-down - its own 22 ms
+  ramp over its own steady is exactly the cold-clock shape the plan already knows - and this pair cannot
+  tell them apart. No default moves: `chainMask` stays 0 and the patch's `src/nr_graph.cpp` was not touched
+  this tick. The control that decides it is queued in the item below. NOT verified: no device here, so
+  nothing was re-timed and the pair is two runs, not a distribution.
+
+* **Settle the chainMask pair's confound with a fresh chains-off control on the shipping shape -
+  `r2026-11-11-7-ship-chain-b`'s sample is clean, but its level is not `r2026-11-11-5-ship-split`'s.**
+  The one request is queued: `runs/queue/r2026-11-11-8-ship-chain-c.json` (entry `minimal-small`, `-5`'s
+  argv character for character, mask 0 - `--size 2560x1440 --work-scale 0.75 --headless --frames 300 --shm
+  --worker-env DLSS5VK_SERVE_SPLIT=1 --worker-log --save-after small-ship-after-f.png` - 900 s). It is the
+  missing half of the one-variable pair: `-5` (mask 0, idle card) against `-7` (mask 3, idle card), whose
+  steady frames differ by ~2.5 ms but whose warm-up frames 1-2 differ by 18 ms. Read: (1) the split's
+  `network` at frames 0-2 and every 30th - if this fresh chains-off run ramps to `-5`'s 30.3 / 30.4 and
+  holds 8.2-9.2 at the steady frames, the level tracks the chained route across three runs and `-7`'s sign
+  stands as read; if it ramps to `-7`'s ~12 and holds 4.5-8.8, then `-5` was the cold card, the 2.5 ms is
+  the box rather than the mask, and the chainMask lever on the shipping size closes as unreadable at this
+  instrument - in which case queue nothing further and write that here; (2) `small-ship-after-f.png` must
+  come back 2560x1440 RGBA (colortype 6) and byte-identical to the `7e6e13de` blob every shipping-frame
+  sample has published - only the chaining route changes, so no pixel may move; (3) quote `gpu_before` /
+  `gpu_after` / `idle_waited_s`, compare nothing whose before-gate is BUSY or whose idle wait is non-zero,
+  and quote no median or fps (the split's timestamps flush the queue by design). If the default does move,
+  it lives in the patch's `src/nr_graph.cpp` - a fenced file - so that change needs an item written for it
+  here, not a tick's own edit. This item edits no code: the only file it writes is the queue file named
+  above.
 
 * learned: the chains-off 1080p control landed on a cold card, so its barrier total is not a reading -
   but its schedule number is an upper bound, and that is enough to settle the default (2026-11-10 tick,

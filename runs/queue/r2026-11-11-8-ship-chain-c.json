@@ -1,0 +1,28 @@
+{
+  "id": "r2026-11-11-8-ship-chain-c",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--shm",
+    "--worker-env",
+    "DLSS5VK_SERVE_SPLIT=1",
+    "--worker-log",
+    "--save-after",
+    "small-ship-after-f.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-ship-after-f.png"
+  ],
+  "note": "The chains-off control the chainMask pair is missing, on the model that ships: the mask-0 half of r2026-11-11-5-ship-split's argv character for character, split only in --save-after. r2026-11-11-7-ship-chain-b (mask 3, idle card, exit 0) read its split's network at frames 29-299 as 8.8 / 8.5 / 4.4 / 5.1 / 4.4 / 4.9 / 5.9 / 6.2 / 7.3 / 4.6 against -5's mask-0 9.1 / 9.2 / 8.4 / 8.2 / 8.2 / 8.4 / 8.5 / 8.5 / 8.5 / 8.6 - ~2.5 ms cheaper, over the 0.3 ms bar - but its warm-up frames 1-2 read network 11.8 / 11.8 against -5's 30.3 / 30.4, and r2026-11-11-6-ship-chain's warm-up wore the same low shape (12.2 / 13.6 / 13.5) while its steady state was only 0.5 ms off -5, so the two mask-3 runs sit low against the one mask-0 run and this run decides whether that is the mask or the card (r2026-11-11-5-ship-split is the first GPU work after the overnight power-down, and its own 22 ms ramp over its own steady is the cold-clock shape the plan already knows). Read: (1) the 'serve frame N:' lines' 'network X' at frames 0-2 and every 30th against -7's and -5's lists above - if this run ramps to -5's 30.3 / 30.4 and holds 8.2-9.2 steady, the low ramp and the cheaper steady track the chained route across three runs, so the mask-3 sample's sign stands as read; if it ramps to -7's ~12 and holds 4.5-8.8, then -5 caught a cold card after the overnight power-down, the 2.5 ms is the box rather than the mask, and the chainMask lever on the shipping shape closes as unreadable at this instrument - then queue nothing further and write that in runs/next.md. (2) The artifact small-ship-after-f.png must come back 2560x1440 RGBA (colortype 6) and byte-identical to the blob every shipping-frame sample has published (3,494,079 bytes, sha256 7e6e13de) - only the chaining route changes, so no pixel may move. (3) Quote gpu_before / gpu_after / idle_waited_s, compare nothing whose before-gate is BUSY or whose idle wait is non-zero, and quote no frame rate or median: the split's two BOTTOM_OF_PIPE timestamps flush the queue by design, so only the worker's stage lines are readings. Nothing is written by this run but its own artifacts."
+}
