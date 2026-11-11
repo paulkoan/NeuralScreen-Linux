@@ -1,0 +1,43 @@
+warning: The `native-tls` setting is deprecated and will be removed in a future release. Use `system-certs` instead.
+[worker] serve: 1920x1080, model /opt/neuralscreen/model-small, shaders /opt/neuralscreen/port/build/shaders, seed 0
+[worker] serve: work scale: the client's frame is 2560x1440 and the network runs at 1920x1080, so the colour is resized down on the way in and the published image back up (one bilinear dispatch each way)
+[worker] serve: publish work (DLSS5VK_PUBLISH_WORK): the image is published at 1920x1080 and the client's present does the upscale to 2560x1440
+[worker] serve: built from port 9d08f41 (19 modified) patch 58e98d824bce70856b56ae4c7f1456d53e1889e6
+[worker] serve: the caller declared no motion field: the reprojection is the identity
+[worker] serve: and the five-tap history filter is the centre tap, which is the pixel
+[worker] serve: itself - so no published byte can move for it
+[worker] serve: device NVIDIA GeForce RTX 4080 SUPER
+[worker] serve: blend scale 0.7671 (block30.layer0.blend_scale)
+[worker] serve: graph fused (DLSS5VK_UNFUSED not set)
+[worker] serve: warming up (the PTX modules are JIT-compiled on first use)
+[worker] serve: warm-up 2920 ms
+[worker] serve: frame 0 carries reset: no history for this frame, and this frame primes the next
+[worker] serve: head -14.1719..0.6011 mean -1.53168; residual mean -0.0047 -0.0306 -0.0016 (rgb, head/4), logit mean -5.9793; non-finite 0 of 8294400; first 8 0.0710 0.0906 -0.2217 -3.4668 0.0382 0.0344 -0.1949 -3.6562
+pipeline failed: worker returned 8294400 bytes instead of 14745600
+Traceback (most recent call last):
+  File "/opt/neuralscreen/state/repo/minimal/__main__.py", line 415, in main
+    summary = pipe.run(frames=args.frames,
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/neuralscreen/state/repo/minimal/loop.py", line 598, in run
+    pair_before, last_after, index = self._serial_loop(frames, on_frame)
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/neuralscreen/state/repo/minimal/loop.py", line 735, in _serial_loop
+    after = self.process_one(index, present=True)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/neuralscreen/state/repo/minimal/loop.py", line 360, in process_one
+    return self._one_frame(index, timeout=timeout, present=present)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/neuralscreen/state/repo/minimal/loop.py", line 415, in _one_frame
+    result = self._timed("recv", self.worker.recv, index, timeout)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/neuralscreen/state/repo/minimal/loop.py", line 314, in _timed
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/neuralscreen/state/repo/minimal/worker.py", line 429, in recv
+    return self.reader.recv(index, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/neuralscreen/state/repo/protocol.py", line 1037, in recv
+    raise payload
+  File "/opt/neuralscreen/state/repo/protocol.py", line 794, in _run
+    raise RuntimeError(
+RuntimeError: worker returned 8294400 bytes instead of 14745600

@@ -1,0 +1,28 @@
+{
+  "id": "r2026-11-11-11-1-pub-pipe-off",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--worker-env",
+    "DLSS5VK_SERVE_SPLIT=1",
+    "--no-shm",
+    "--worker-log",
+    "--save-after",
+    "small-pub-pipe-off-after.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-pub-pipe-off-after.png"
+  ],
+  "note": "The control for r2026-11-11-11-0-pub-pipe-on, one variable apart: the same argv with `--publish-work` removed, so the worker runs its default path (the composite up-resized and published at the frame size) with the switch off. Read: (1) small-pub-pipe-off-after.png must come back 2560x1440 RGBA (colortype 6) and byte-identical to the `7e6e13de` blob every shipping sample has published, which is the check that the default path is untouched and the switch has not leaked; (2) its median / steady rate and the four terms (readback, reply, recv copy, display) against r2026-11-11-11-0-pub-pipe-on and nobody else - both halves take the pipe, whose medians sit above every --shm sample on the record; (3) gpu_before / gpu_after / idle_waited_s. Nothing is written by this run but its own artifacts."
+}

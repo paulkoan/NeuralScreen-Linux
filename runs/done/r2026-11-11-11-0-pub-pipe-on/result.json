@@ -1,0 +1,43 @@
+{
+  "exit_code": 3,
+  "seconds": 14.627,
+  "argv": [
+    "uv",
+    "run",
+    "python",
+    "-m",
+    "minimal",
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--worker-env",
+    "DLSS5VK_SERVE_SPLIT=1",
+    "--no-shm",
+    "--publish-work",
+    "--worker-log",
+    "--save-after",
+    "small-pub-pipe-on-after.png"
+  ],
+  "artifacts": [
+    "small-pub-pipe-on-after.png"
+  ],
+  "runner": "415e2181914a",
+  "entry_env": [
+    "NS_WORKER_CMD"
+  ],
+  "policy": {
+    "path": "/opt/neuralscreen/policy.toml",
+    "sha256": "92cc2c01922f9c548eacef313d94c12886c9dd6daee00715c02e5333b8dedf7a"
+  },
+  "gpu_before": "WARN [util 0% of the 25% bar] (resident but not contending: Telegram (pid 16290, 30.0 MiB); resident but not contending: signal-desktop (pid 18889, 150.0 MiB); resident but not contending: msedge (pid 1300500, 823.0 MiB); resident but not contending: chromium (pid 3132450, 99.0 MiB))",
+  "gpu_after": "BUSY [util 74% of the 25% bar] (utilization 74%; Telegram (pid 16290, 30.0 MiB); signal-desktop (pid 18889, 150.0 MiB); msedge (pid 1300500, 823.0 MiB); chromium (pid 3132450, 99.0 MiB))",
+  "idle_waited_s": 0.0
+}

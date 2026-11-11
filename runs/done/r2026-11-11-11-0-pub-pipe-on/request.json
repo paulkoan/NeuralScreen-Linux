@@ -1,0 +1,29 @@
+{
+  "id": "r2026-11-11-11-0-pub-pipe-on",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--worker-env",
+    "DLSS5VK_SERVE_SPLIT=1",
+    "--no-shm",
+    "--publish-work",
+    "--worker-log",
+    "--save-after",
+    "small-pub-pipe-on-after.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-pub-pipe-on-after.png"
+  ],
+  "note": "The switched half of the publish-work pair, re-aimed a second time and onto the pipe for real. The first re-aim (r2026-11-11-10-1-pub-on) removed the `--shm` token, which is a no-op: minimal/__main__.py declares `--shm` as `action=\"store_true\", default=True` and the real off switch is `--no-shm`. So that pair still ran the shared-memory route, where the client opens the picture channel at the frame size (minimal/worker.py's `self.shm.open_out(self.width, self.height)`), and the switched run's saved image came back a scrambled 2560x1440 frame (whole-frame MAD 117.8/115.7/122.1 per channel against its control, mean row-to-row difference 61.05 against the control's 1.19). This run is r2026-11-11-10-1-pub-on's argv character for character with `--no-shm` added before `--publish-work`, so the picture travels the PIPE, where the reply is framed by a byte count and set_output_size (protocol.py:805) is the check that governs it (protocol.py:793). Read: (1) small-pub-pipe-on-after.png must come back 1920x1080 RGBA (colortype 6) - the artifact IS the published image, so its size is the check that the switch took; (2) this run's median / steady rate and the four terms in its own logs - readback and reply in the worker's `serve frame N:` lines, the copy in the client's `recv split`, the display in its `timing` line - quoted as a pair only with r2026-11-11-11-1-pub-pipe-off, and not against any shared-memory sample: the pipe is the dearer route and its medians sit above every --shm sample on the record; (3) gpu_before / gpu_after / idle_waited_s, and if either half's before-gate is BUSY or its idle wait is non-zero, say so and compare nothing from the pair. The --headless run exercises the byte saving only: the SDL stretch itself is what a window run would show and it is unread here. Nothing is written by this run but its own artifacts."
+}
