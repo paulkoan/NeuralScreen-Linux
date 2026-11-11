@@ -273,25 +273,25 @@ anything there.
   this tick. The control that decides it is queued in the item below. NOT verified: no device here, so
   nothing was re-timed and the pair is two runs, not a distribution.
 
-* **Settle the chainMask pair's confound with a fresh chains-off control on the shipping shape -
-  `r2026-11-11-7-ship-chain-b`'s sample is clean, but its level is not `r2026-11-11-5-ship-split`'s.**
-  The one request is queued: `runs/queue/r2026-11-11-8-ship-chain-c.json` (entry `minimal-small`, `-5`'s
-  argv character for character, mask 0 - `--size 2560x1440 --work-scale 0.75 --headless --frames 300 --shm
-  --worker-env DLSS5VK_SERVE_SPLIT=1 --worker-log --save-after small-ship-after-f.png` - 900 s). It is the
-  missing half of the one-variable pair: `-5` (mask 0, idle card) against `-7` (mask 3, idle card), whose
-  steady frames differ by ~2.5 ms but whose warm-up frames 1-2 differ by 18 ms. Read: (1) the split's
-  `network` at frames 0-2 and every 30th - if this fresh chains-off run ramps to `-5`'s 30.3 / 30.4 and
-  holds 8.2-9.2 at the steady frames, the level tracks the chained route across three runs and `-7`'s sign
-  stands as read; if it ramps to `-7`'s ~12 and holds 4.5-8.8, then `-5` was the cold card, the 2.5 ms is
-  the box rather than the mask, and the chainMask lever on the shipping size closes as unreadable at this
-  instrument - in which case queue nothing further and write that here; (2) `small-ship-after-f.png` must
-  come back 2560x1440 RGBA (colortype 6) and byte-identical to the `7e6e13de` blob every shipping-frame
-  sample has published - only the chaining route changes, so no pixel may move; (3) quote `gpu_before` /
-  `gpu_after` / `idle_waited_s`, compare nothing whose before-gate is BUSY or whose idle wait is non-zero,
-  and quote no median or fps (the split's timestamps flush the queue by design). If the default does move,
-  it lives in the patch's `src/nr_graph.cpp` - a fenced file - so that change needs an item written for it
-  here, not a tick's own edit. This item edits no code: the only file it writes is the queue file named
-  above.
+* learned: the fresh chains-off control lands **below** the chained run rather than at `-5`'s level, so the
+  shipping shape's ~2.5 ms chainMask advantage was the card and not the mask - the lever closes as
+  unreadable at this instrument and nothing further is queued (2026-11-11 tick, read of
+  `r2026-11-11-8-ship-chain-c`, exit 0 after 13.5 s, entry `minimal-small`, `r2026-11-11-5-ship-split`'s
+  argv character for character, worker stamped patch `e2c9ae674997` at port `9d08f41` **in sync**, model
+  line `/opt/neuralscreen/model-small`, policy `92cc2c01922f`). **It is the item's second branch**: this
+  mask-0 run's split reads `network` **4.4 / 4.5 / 4.5** at frames 0-2 and **4.5 / 4.5 / 4.5 / 4.5 / 5.7 /
+  6.1 / 6.4 / 7.0 / 7.1 / 7.4** at every 30th frame (composite 0.2-0.5), i.e. it ramps to ~4.5 and holds
+  4.5-7.4 where `-5` ramps to 28.6 / 30.3 / 30.4 and holds 8.2-9.2 - a chains-off run sitting at the
+  chained run's low level, so the three shipping-shape samples order **-5 (mask 0) 18.98 ms mean > -7
+  (mask 3) 17.57 > -8 (mask 0) 14.85** on the worker's own `input stream closed` line, which tracks the
+  card and not the mask. The gate passes (`gpu_before` WARN, util 4% of the 25% bar; `gpu_after` WARN, 0%;
+  `idle_waited_s` 0.0), and the artifact check passes harder than asked - `small-ship-after-f.png` is
+  **2560x1440 RGBA** (colortype 6, 3,494,079 bytes, sha256 `7e6e13de`), byte-identical to `-7`'s `-e`,
+  `-5`'s `-d`, `-4`'s `-c` and `-1`'s `-a`, so no route moves a pixel and all seven shipping samples
+  publish one blob. `chainMask` stays **0** and the patch's `src/nr_graph.cpp` was not touched: the split's
+  two timestamps flush the queue by design, so only its stage lines read and they do not separate the mask
+  from the card across three runs - the lever would need a per-dispatch barrier route on the shipping
+  shape, which this instrument cannot give. NOT verified: no device here, so nothing was re-timed.
 
 * learned: the chains-off 1080p control landed on a cold card, so its barrier total is not a reading -
   but its schedule number is an upper bound, and that is enough to settle the default (2026-11-10 tick,
