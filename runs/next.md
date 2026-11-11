@@ -149,33 +149,55 @@ anything there.
   device here, so nothing was re-timed, and the 24.1 ms baseline is a different day, a different policy
   digest and a different patch.
 
-* **Separate the box from the binary on the shipping frame, and read the small network's chaining route at
-  the size it ships at.** The reading above came back 32.7 ms / 30.6 fps against the plan's 24.1 / 41.6
-  with every stage of the frame up - including capture, send and display, which `chainMask` cannot touch -
-  so a slower box and a dearer chains-off default are not separated, and the whole chainMask ladder behind
-  the default was read on `port-profile`'s large network while the shipping pass runs `model-small`. Two
-  requests are queued: `runs/queue/r2026-11-11-2-ship-frame-b.json` (entry `minimal-small`,
-  `r2026-11-11-1-ship-frame`'s argv character for character - `--source video --input-video
-  fixtures/stream-1440p-2s.mp4 --size 2560x1440 --work-scale 0.75 --headless --frames 300 --shm
-  --worker-log` - with `--save-after small-ship-after-b.png`, 900 s), which says whether 32.7 ms
-  reproduces; and `runs/queue/r2026-11-11-3-profile-small-1080p.json` (entry `port-profile-small`, `bash
-  tools/port_profile.sh 1920 1080`, 600 s), which reads the small network's own chains-off total and its
-  barrier probe at 1920x1080. Read in this order: (1) the repeat frame's median and steady rate against
-  32.7 / 30.6, its capture / send / display medians against 4.9 / 2.7 / 2.9 and its worker's `input stream
-  closed` mean against 20.23 - a warm box back at the old speed means the chains-off default is costing the
-  shipping frame and the next item has to name `experiments/opendlss_port/linux-port.patch`'s
-  `src/nr_graph.cpp` chainMask default to put it back to 3; a repeat sitting at 32.7 says the frame is the
-  binary's and the same follow-up applies; a number between the two says the box is not steady enough to
-  carry an 8.6 ms claim and the profile ladder stays the only reading; (2) the profile-small `total` and
-  fixed-cost probe against `r2026-11-10-profile-small-c`'s **3.446 ms** and the usual **0.406-0.421** ms
-  window - that is the small network's own chains-off number at the shipping work size, and with no
-  chaining-3 small-network sample to put beside it, quote it as a first reading and not as a delta; (3) in
-  both reports the stamp must read patch `e2c9ae674997` **in sync**, the worker's model line must read
-  `/opt/neuralscreen/model-small`, and the frame repeat's artifact must come back 2560x1440 RGBA (colortype
-  6). Card gate as always: quote `gpu_before` / `gpu_after` / `idle_waited_s`, and do not compare a sample
-  whose before-gate is BUSY or whose idle wait is non-zero. This item edits no code and no fenced file: the
-  only files it writes are the two queue files named above. NOT verified: no device here, so 32.7 ms is one
-  sample and the small network's chains-off total is unmeasured.
+* learned: the shipping frame's repeat landed between the two numbers and the small network's own ladder point
+  came back where the last one was, so the 8.6 ms question belongs to the box and not the binary (2026-11-11 tick,
+  read of `r2026-11-11-2-ship-frame-b` and `r2026-11-11-3-profile-small-1080p`, both exit 0 after 14.5 s / 3.9 s,
+  entries `minimal-small` / `port-profile-small`, worker stamped patch `e2c9ae674997` at port `9d08f41` **in sync**
+  on the frame run, policy `92cc2c01922f` on both). **The repeat is between the two numbers, which is the item's own
+  third branch**: on `r2026-11-11-1-ship-frame`'s argv character for character it reads median **27.0 ms / 37.1 fps
+  steady** (headline 23.94, mean 40.9 ms = 24.4 fps; the 3889.8 ms recv max is frame 0's warm-up) against -1's
+  32.7 / 30.6 and the plan's 24.1 / 41.6 - 5.7 ms apart between two runs of one binary on one argv, so the box is
+  not steady enough to carry an 8.6 ms claim, the chains-off default is neither vindicated nor accused, nothing is
+  reverted and `chainMask` stays 0. What says it is the box and not the binary: the worker's own `input stream
+  closed` line reads **16.20 ms mean** against -1's 20.23, and the client's own stages fell with it (capture spread
+  median 4.5 against 4.9, send 2.4 against 2.7, display 2.7 against 2.9, recv split copy 1.6 + waiting 29.1 mean),
+  so the whole frame was ~4 ms cheaper - `chainMask` cannot touch capture, send or display. The wobble sits in the
+  frame's own spread: capture median 4.5 with a **32.3 ms one-off at frame 131** (outside the warm-up, the
+  frame-43/87 shape the 1440p runs carry), send median 2.4, recv median 17.5, both maxima at frame 0. **The small
+  network's own ladder point is clean and it agrees**: `bash tools/port_profile.sh 1920 1080` on the small model
+  reads `total 3.438 ms (sum of per-dispatch spans, 1920x1080), 125 dispatches, a barrier after every launch` with
+  the fixed-cost probe at **0.411 ms** (inside the usual 0.406-0.421 window), 0.008 ms from
+  `r2026-11-10-profile-small-c`'s **3.446** - so the port-side pass is the stable instrument in this pair and the
+  client-side frame is not; its production-schedule line reads `125 dispatches, GPU 3.538 ms`, i.e. X sits 0.1 ms
+  above T at that size, the same direction the 1440p and 1080p large-network samples gave. Gates: frame
+  `gpu_before` WARN (16% of the 25% bar) / `gpu_after` WARN (0%) / `idle_waited_s` 0.0, profile WARN (0%) / WARN
+  (0%) / 0.0, so both pass. Two gaps of record: the artifact check passes on the frame half - `small-ship-after-b.png`
+  is **2560x1440 RGBA** (colortype 6, 3,494,079 bytes, sha256 `7e6e13de`), **byte-identical to -1's
+  `small-ship-after.png`**, so the chains-off binary publishes exactly the pixels the chaining-3 binary published -
+  and `port-profile`'s output carries no patch stamp at all (only `binary:` / `model:` / `size:`), so the in-sync
+  reading above is the frame run's alone and a port-profile run's sync cannot be checked from its own report. The
+  small network's 1080p total is quoted as a first reading and not as a delta, as the item said: there is still no
+  chaining-3 small-network sample to put beside it. NOT verified: no device here, so nothing was re-timed and the
+  frame's spread is two runs, not a distribution.
+
+* **Bound the shipping frame's run-to-run spread before anything else is read off it.** The frame now reads
+  27.0 ms / 37.1 fps (`r2026-11-11-2-ship-frame-b`) where an identical run read 32.7 / 30.6
+  (`r2026-11-11-1-ship-frame`) - a 5.7 ms spread between two samples of one binary on one argv - while the port's
+  own pass is stable to 0.008 ms across the same pair (`3.438` against `3.446`), so the client-side frame's scatter
+  is the largest single term in every frame reading the plan holds and it is the instrument, not the code, that
+  wants one more sample. One request is queued: `runs/queue/r2026-11-11-4-ship-frame-c.json` (entry `minimal-small`,
+  `r2026-11-11-2-ship-frame-b`'s argv character for character with `--save-after small-ship-after-c.png`, 900 s).
+  Read: (1) its median and steady rate against 27.0 / 37.1 and 32.7 / 30.6, and the three numbers as a set - a third
+  sample inside 27.0-32.7 says the frame's spread is that wide and no chains-off claim may rest on it, a sample well
+  outside it says the frame cannot carry small deltas at all, and either way the plan's 24.1 / 41.6 headline is to be
+  re-stated from these samples rather than kept; (2) its worker's `input stream closed` mean against 16.20 and 20.23
+  and its capture / send / display spread medians against 4.5 / 2.4 / 2.7; (3) the artifact `small-ship-after-c.png`
+  must come back 2560x1440 RGBA (colortype 6) and byte-identical to the `7e6e13de` blob both other samples
+  published, and the stamp must read patch `e2c9ae674997` **in sync** with the worker's model line on
+  `/opt/neuralscreen/model-small`; quote `gpu_before` / `gpu_after` / `idle_waited_s` and do not compare a sample
+  whose before-gate is BUSY or whose idle wait is non-zero. This item edits no code and no fenced file: the only file
+  it writes is the queue file named above. NOT verified: no device here, so the box's frame spread is still two
+  points wide.
 
 * learned: the chains-off 1080p control landed on a cold card, so its barrier total is not a reading -
   but its schedule number is an upper bound, and that is enough to settle the default (2026-11-10 tick,
