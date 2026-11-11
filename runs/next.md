@@ -293,6 +293,54 @@ anything there.
   from the card across three runs - the lever would need a per-dispatch barrier route on the shipping
   shape, which this instrument cannot give. NOT verified: no device here, so nothing was re-timed.
 
+* **Publish the pass's own 1080p image and let the present do the upscale - the shipping shape pays ~8.6 ms a
+  frame for a 1440p pixel channel its own bilinear dispatch has just produced.** `r2026-11-11-8-ship-chain-c`'s
+  argv already runs the network at 1920x1080 while the client's frame is 2560x1440, and the worker's own banner
+  says it resizes "the colour ... down on the way in and the published image back up (one bilinear dispatch each
+  way)" - so every frame carries 14.7 MB where the composite itself is 8.3: the worker's `readback` 3.1-4.7 ms
+  and `reply` 1.5-2.6, the client's `recv` copy mean 1.6 and its texture upload 2.2 - **8.6 ms of that run's
+  24.7 ms median / 40.5 fps steady**, for pixels the port's own up-resize made out of 8.3 MB. The plan's
+  first-ranked lever is this sentence exactly ("the client's present is `SDL_RenderCopy(renderer, texture, None,
+  None)`, which stretches the texture to the window - so a 1080p frame in a 1440p window costs nothing to
+  scale"), and the picture trade is a setting, which the standing rule allows. So this item is a change, made
+  behind a switch, with its verification pair queued behind it.
+  **Files edited, exactly.** (1) `experiments/opendlss_port/linux-port.patch` - its `src/serve.cpp`, where
+  `DLSS5VK_PUBLISH_WORK=1` together with a work size other than the frame size skips the composite's up-resize
+  and publishes the work-size image: readback, pixel channel and reply all at the work size. With the variable
+  unset the path must be byte-for-byte what it is now. The source of truth is `/opt/data/tmp/odl-src` (amend its
+  one commit, re-cut with `git format-patch -1`), so every port run stamps OUT OF SYNC until the build lands.
+  (2) `minimal/__main__.py` - a `--publish-work` flag wired the way `--capture-transport` is: it puts
+  `DLSS5VK_PUBLISH_WORK=1` into the worker's environment and carries the switch into the loop. (3)
+  `minimal/loop.py` - when the switch is on, `self.worker.reader.set_output_size(self.work_w, self.work_h)`
+  (the hook exists at `protocol.py:805` and nothing calls it; the reader's byte-count check is
+  `protocol.py:793`), leaving the capture's own size check alone. (4) `minimal/display.py` - `show()` accepts a
+  frame smaller than the window, building the streaming texture at the frame's size and leaving the renderer's
+  logical size at the window's, instead of raising at lines 144-146. Suite green before anything is pushed, then
+  the three queue files below, then this item retires to a learned line naming the pair and what it decides.
+  **Queued, the names carrying the order:** `runs/queue/r2026-11-11-9-0-pub-build.json` (`port-build`, `[]`,
+  900 s - read the stamp: patch in sync, 17 shader modules / 78 PTX kernels), `runs/queue/r2026-11-11-9-1-pub-on.json`
+  (entry `minimal-small`, `-8`'s argv character for character plus `--publish-work`, `--save-after
+  small-pub-on-after.png`, 900 s) and `runs/queue/r2026-11-11-9-2-pub-off.json` (the same argv with no new flag,
+  `--save-after small-pub-off-after.png`, the control). Both runs keep `--worker-env DLSS5VK_SERVE_SPLIT=1`, so
+  the worker's `serve frame N:` lines stay readable.
+  **Read:** (1) the pair's medians and steady rates against each other and against `-8`'s 24.7 ms / 40.5 fps -
+  quoted only as a pair, the frame's own spread being 5.8 ms wide - and the four terms above in each run's own
+  log (`readback` and `reply` in the worker's `serve frame N:` lines, the copy in the client's `recv split`, the
+  upload in its `timing` line): `-8` reads readback 3.1 / 3.2 / 3.7 / 4.0 / 4.7 ms and reply 1.5-2.6 behind a copy
+  mean of 1.6 and a display of 2.2, and the switched run's should be about 0.56 of each if those terms are
+  per-byte; (2) the switched run's `small-pub-on-after.png` must come back **1920x1080 RGBA** - the artifact is
+  the published image, so its size *is* the check that the switch took - while the control's
+  `small-pub-off-after.png` must be **2560x1440 RGBA** and byte-identical to the `7e6e13de` blob every shipping
+  sample has published, which is the check that the default path is untouched; (3) `gpu_before` / `gpu_after` /
+  `idle_waited_s` on both, and nothing compared whose before-gate is BUSY or whose idle wait is non-zero. If the
+  control misses the blob the switch has leaked into the default path and the patch comes back out; if the pair's
+  medians land inside the spread with the four terms unmoved, the pixel channel is a per-frame round trip rather
+  than per-byte, the switch stays off and the next reading is the download's own fence instead. The `--headless`
+  run exercises the byte saving only: the stretch itself is what a window run would show and it is unread here.
+  This item edits the four files named above and writes the three queue files; nothing else. NOT verified: no
+  device here, so nothing is timed, the 8.6 ms is one run's stage arithmetic, and the visual cost of moving the
+  upscale from the port's bilinear to SDL's is unmeasured until the pair lands.
+
 * learned: the chains-off 1080p control landed on a cold card, so its barrier total is not a reading -
   but its schedule number is an upper bound, and that is enough to settle the default (2026-11-10 tick,
   read of `r2026-11-10-16-gap5-1-1080p`, exit 0 after 4.7 s, entry `port-profile 1920 1080`, on the
