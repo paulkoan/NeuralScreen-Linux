@@ -1,0 +1,11 @@
+{
+  "id": "r2026-11-11-3-profile-small-1080p",
+  "entry": "port-profile-small",
+  "args": [
+    "1920",
+    "1080"
+  ],
+  "timeout_s": 600,
+  "artifacts": [],
+  "note": "The 31-block small network's own profile at the work size the shipping pass runs it at. Every chainMask sample on the record is entry port-profile - the 71-block large network: 1920x1080 reads 6.534 ms chains off / 9.240 c32 / 7.164 cold, and the 1440p and 720p rungs are the same entry - so the lever the chains-off default rests on has never been read on the network that actually ships. Read: the 'total ... ms (sum of per-dispatch spans, 1920x1080), N dispatches' line and the 'production schedule (counter chaining): ... GPU X ms' line against r2026-11-10-profile-small-c's 3.446 ms (entry port-profile-small, model /opt/neuralscreen/model-small), and the fixed-cost barrier probe against the usual 0.406-0.421 ms window. There is no chaining-3 small-network sample to put beside it, so X is a first reading and not a delta - say so when you quote it. The stamp must name patch e2c9ae674997 in sync and the model line must read /opt/neuralscreen/model-small, otherwise the run measured the wrong tree. Quote gpu_before / gpu_after / idle_waited_s; a BUSY before-gate or a non-zero idle wait voids the comparison. This run writes no file of its own."
+}
