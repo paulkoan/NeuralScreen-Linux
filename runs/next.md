@@ -201,27 +201,28 @@ anything there.
   to the worker's own stages - the item below. NOT verified: no device here, so nothing was re-timed and the spread
   is three samples, not a distribution.
 
-* **Separate the worker's lumped `network+composite` on the shipping shape - the probe is built and has never been
-  switched on for the model that ships.** The frame's own scatter (5.8 ms) is now bounded, and the worker's one
-  lumped stage on that shape reads **5.3 -> 8.9 ms** rising across `r2026-11-11-4-ship-frame-c`'s frames 29-299
-  while the port's per-dispatch pass at the same work size is 3.438 ms (`r2026-11-11-3-profile-small-1080p`), so the
-  residue is either the network's own gap, the composite, or the two resize dispatches the work-scale 0.75 path adds
-  - and the frame's total cannot say which. The patch already carries the instrument: `src/serve.cpp`'s `splitTiming`
-  prints `network X, composite Y` when `DLSS5VK_SERVE_SPLIT` is set, and it has only ever been read on the large
-  network's synthetic 1440p shape (`r2026-11-03-split`: network 10.5-11.1 ms, composite 0.3 ms). One request is
-  queued: `runs/queue/r2026-11-11-5-ship-split.json` (entry `minimal-small`, `r2026-11-11-4-ship-frame-c`'s argv
-  character for character plus `--worker-env DLSS5VK_SERVE_SPLIT=1` and `--save-after small-ship-after-d.png`,
-  900 s). Read: (1) the `serve frame N:` lines (frames 0-2 and every 30th) as `network X` and `composite Y`, X and Y
-  against the same indices' lumped figure in -4 (5.3 / 7.1 / 8.3 / 8.6 / 8.7 / 8.9 ms at frames 29 / 59 / 119 / 149 /
-  209 / 269 / 299) and against the large-network split's 10.5-11.1 / 0.3 - if Y carries the rise, the composite and
-  the resize are the residue; if X does, it is the pass's own gap and the profile's span sum is not the pass's cost;
-  (2) the artifact `small-ship-after-d.png` must come back 2560x1440 RGBA (colortype 6) and byte-identical to the
-  `7e6e13de` blob all three earlier samples published, and the stamp must read patch `e2c9ae674997` **in sync** with
-  the worker's model line on `/opt/neuralscreen/model-small`; (3) quote `gpu_before` / `gpu_after` / `idle_waited_s`
-  and do not compare a sample whose before-gate is BUSY or whose idle wait is non-zero. **Do not quote this run's
-  frame rate or median**: the two timestamps flush the queue by design, so its frame time is inflated and only the
-  worker's stage lines are readings here. This item edits no code and no fenced file: the only file it writes is the
-  queue file named above. NOT verified: no device here, so the shipping shape's split is unread.
+* learned: the shipping shape's split puts the whole lumped stage in the network and the composite at nothing -
+  Y is flat, so the composite and the work-scale resizes are not the residue, and the port's per-dispatch span
+  sum is not the pass's cost through the client (2026-11-11 tick, read of `r2026-11-11-5-ship-split`, exit 0 after
+  14.8 s, entry `minimal-small`, 300 frames, `r2026-11-11-4-ship-frame-c`'s argv character for character plus
+  `--worker-env DLSS5VK_SERVE_SPLIT=1` and `--save-after small-ship-after-d.png`, worker stamped patch
+  `e2c9ae674997` at port `9d08f41` **in sync**, model line on `/opt/neuralscreen/model-small`, policy
+  `92cc2c01922f`). **It is the item's X branch**: the worker's own `serve frame N` lines read `network` **9.1 / 9.2 /
+  8.4 / 8.2 / 8.2 / 8.4 / 8.5 / 8.5 / 8.5 / 8.6** ms with `composite` **0.5 ms flat** across frames 29 / 59 / 89 /
+  119 / 149 / 179 / 209 / 239 / 269 / 299 (frames 0-2 are the warm-up: network 28.6 / 30.3 / 30.4, composite 2.0 /
+  3.4 / 3.4, frame 0's readback 49.9 ms), so Y is ~6% of the stage at every index and the composite plus the two
+  resizes the work-scale 0.75 path adds are worth ~0.5 ms and cannot be the residue - X carries the lumped 8-9 ms,
+  which is the network's own cost through the client and 2.5x the 3.438 ms `r2026-11-11-3-profile-small-1080p`
+  reads for the same graph at 1920x1080, so the profile's span sum is not the pass's cost on the shipping shape.
+  One disagreement of record: the item set this against -4's lumped stage rising **5.3 -> 8.9** over the same
+  frames and against the large-network split's 10.5-11.1 / 0.3, and this run's split reads ~8.5 flat throughout -
+  the split's two timestamps flush the queue by design, so its frame rate is inflated and only the stage lines are
+  readings, and the cross-run shape does not reproduce; within the one run the composite is flat and tiny, which is
+  the answer the item wanted. The artifact check passes harder than asked: `small-ship-after-d.png` is **2560x1440
+  RGBA** (colortype 6, 3,494,079 bytes, sha256 `7e6e13de`), **byte-identical** to the blob all three earlier
+  shipping-frame samples published. Gate: `gpu_before` WARN (util 0% of the 25% bar), `gpu_after` WARN (0%),
+  `idle_waited_s` 0.0. NOT verified: no device here, so the split's own inflation is unmeasured and the
+  flat-against-rising disagreement with -4 is unresolved.
 
 * learned: the chains-off 1080p control landed on a cold card, so its barrier total is not a reading -
   but its schedule number is an upper bound, and that is enough to settle the default (2026-11-10 tick,
