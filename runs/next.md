@@ -118,6 +118,34 @@ anything there.
   own warm sample, and the cold `r2026-11-10-16-gap5-1-1080p` number is no longer load-bearing. NOT
   verified: no device here, so nothing was re-timed this tick.
 
+* **Re-price the settled shipping configuration end to end: what does the chains-off default buy on the
+  frame at 1440p output, and does the plan's 24.1 ms / 41.6 fps headline still hold on the binary the box
+  now runs?** The reading is queued as `runs/queue/r2026-11-11-1-ship-frame.json` (entry `minimal-small`,
+  `r2026-11-10-6-small-video`'s argv character for character - `--source video --input-video
+  fixtures/stream-1440p-2s.mp4 --size 2560x1440 --work-scale 0.75 --headless --frames 300 --shm
+  --worker-log` - with `--save-after small-ship-after.png`, 900 s) and lands as `runs/done/<id>`. Why it
+  is worth a run: the best frame on the record, **24.1 ms / 41.6 fps**, was taken on patch
+  `f1908586c80c`, where `routesFromEnvironment`'s `chainMask` default was **3** - chaining fully on, the
+  dearest route measured at 1440p (10.074 against 9.041) - while the box has since rebuilt onto
+  `e2c9ae674997` (**in sync**, chainMask **0**), and the 1920x1080 ladder says chains off is the cheapest
+  route at exactly the size the shipping pass runs the network at (0.75 of a 1440p output): X 6.534 chains
+  off against 9.240 with the c32 chain. So the number the plan's lever table stands on comes from a binary
+  that no longer exists, and the change that replaced it has never been read through the whole chain. Read
+  in this order: (1) the worker banner must read `model /opt/neuralscreen/model-small` and carry a
+  work-scale line naming 1920x1080, and the stamp must name patch `e2c9ae674997` **in sync** - otherwise
+  the run measured the wrong tree and nothing below counts; (2) median and steady rate against 24.1 ms /
+  41.6 fps on this exact shape, quoting the spread beside the median - **clearly better (>= ~2 ms) says
+  the chains-off default pays end to end at the shipping size; within ~1 ms says it is invisible on the
+  frame and the profile ladder is the only place it shows** - either way the plan's headline is replaced
+  by a number from the shipping binary; (3) the worker's own line and its component split against 14.48 ms
+  mean and 2.5-3.9 / 5.1-8.7 / 2.7-3.6 / 1.2-1.7, which says whether any saving landed in
+  `network+composite`; (4) the artifact `small-ship-after.png` must come back 2560x1440 RGBA (colortype
+  6). Card gate as always: read `gpu_before` / `gpu_after` / `idle_waited_s` out of the report, quote the
+  spread, and do not compare the sample if a gate reads BUSY before or the idle wait is non-zero. This item
+  edits no code and no fenced file: the only file it writes is
+  `runs/queue/r2026-11-11-1-ship-frame.json`. NOT verified: no device here, so no frame has been
+  re-measured this tick.
+
 * learned: the chains-off 1080p control landed on a cold card, so its barrier total is not a reading -
   but its schedule number is an upper bound, and that is enough to settle the default (2026-11-10 tick,
   read of `r2026-11-10-16-gap5-1-1080p`, exit 0 after 4.7 s, entry `port-profile 1920 1080`, on the

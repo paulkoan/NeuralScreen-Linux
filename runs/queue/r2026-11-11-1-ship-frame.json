@@ -1,0 +1,26 @@
+{
+  "id": "r2026-11-11-1-ship-frame",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--shm",
+    "--worker-log",
+    "--save-after",
+    "small-ship-after.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-ship-after.png"
+  ],
+  "note": "Re-price the settled shipping configuration on the binary that ships it. This is r2026-11-10-6-small-video's argv and timeout character for character - the run that read 24.1 ms / 41.6 fps steady, the best frame on the plan's record - split only in --save-after, so the two differ in nothing but the binary underneath them. That 24.1 ms sample ran on patch f1908586c80c, where routesFromEnvironment's chainMask default was 3 (chaining fully on, the dearest route measured at 2560x1440: 10.074 against 9.041 chains off); the box has since rebuilt onto e2c9ae674997, in sync, chainMask 0, and the 1920x1080 ladder reads 6.534 chains off against 9.240 with the c32 chain at exactly the size this pass runs the network at (0.75 of a 1440p output). So the chain work's end-to-end effect at the shipping size is unmeasured, and the headline the plan's lever table stands on comes from a binary that no longer exists. Read, in this order: (1) the worker banner's model line must read /opt/neuralscreen/model-small and must carry a work-scale line naming 1920x1080, and the stamp must name patch e2c9ae674997 in sync - otherwise the run measured the wrong tree and nothing below counts; (2) median and steady rate against 24.1 ms / 41.6 fps on this exact shape, spread quoted beside the median - clearly better (>= ~2 ms) means the chains-off default pays end to end at the shipping size, within ~1 ms means it is invisible on the frame and shows only in the profile ladder; (3) the worker's own line and component split (proxy, network+composite, readback, reply) against 14.48 ms mean and 2.5-3.9 / 5.1-8.7 / 2.7-3.6 / 1.2-1.7, which says whether any saving landed in network+composite; (4) the artifact small-ship-after.png must be 2560x1440 RGBA (colortype 6) - 1920x1080 would mean the pass's upscale did not happen. Card gate as always: read gpu_before / gpu_after and idle_waited_s out of the report, quote the spread, and do not compare the sample if a gate reads BUSY before or the idle wait is non-zero."
+}
