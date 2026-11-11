@@ -1,0 +1,16 @@
+warning: The `native-tls` setting is deprecated and will be removed in a future release. Use `system-certs` instead.
+usage: minimal [-h] [--frames FRAMES] [--monitor MONITOR] [--bgra]
+               [--source {auto,screen,wayland,window,synthetic,image,video}]
+               [--capture-no-scale] [--capture-transport {pipe,shm}]
+               [--size WxH] [--input-image PATH] [--input-video PATH]
+               [--interpolate] [--interp-pace-ms MS] [--gil-switch-ms MS]
+               [--param NAME=VALUE] [--work-scale F] [--hotkeys] [--indicator]
+               [--no-indicator] [--ab-alternate SECONDS] [--report-gpu]
+               [--report-diff] [--save-diff PATH] [--diff-gain DIFF_GAIN]
+               [--windowed] [--prefetch] [--worker-env KEY=VALUE] [--bypass]
+               [--send-ahead N] [--frame-timeout S] [--writev] [--shm]
+               [--no-shm] [--motion] [--no-motion] [--motion-guides]
+               [--motion-small] [--worker-log] [--headless]
+               [--save-before PATH] [--save-after PATH] [--save-mid PATH]
+               [--list-monitors]
+minimal: error: unrecognized arguments: --publish-work
