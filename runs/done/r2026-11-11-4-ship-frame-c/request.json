@@ -1,0 +1,26 @@
+{
+  "id": "r2026-11-11-4-ship-frame-c",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--shm",
+    "--worker-log",
+    "--save-after",
+    "small-ship-after-c.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-ship-after-c.png"
+  ],
+  "note": "Third identical shipping-frame sample, to bound the box's own run-to-run scatter before any speed claim is read off the frame. The shape is r2026-11-11-2-ship-frame-b's argv character for character, split only in --save-after. The two samples that exist differ by 5.7 ms on one binary and one argv - r2026-11-11-1-ship-frame median 32.7 ms / 30.6 fps steady against r2026-11-11-2-ship-frame-b's 27.0 / 37.1 - while the port's own pass is stable to 0.008 ms across the same pair (r2026-11-11-3-profile-small-1080p total 3.438 against r2026-11-10-profile-small-c's 3.446), so the frame's scatter is the instrument and not the code. Read: median and steady rate against 27.0 / 37.1 and 32.7 / 30.6, and the three as a set - inside 27.0-32.7 means the frame's spread is that wide and no chains-off claim may rest on it, well outside means the frame cannot carry small deltas at all; the worker's own 'input stream closed' mean against 16.20 (this sample's pair) and 20.23 (the first); the capture / send / display spread medians against 4.5 / 2.4 / 2.7; and the client's recv split (copy 1.6 + waiting 29.1 mean last time). Quote gpu_before / gpu_after / idle_waited_s and do not compare the sample if the before-gate is BUSY or the idle wait is non-zero. The artifact small-ship-after-c.png must be 2560x1440 RGBA (colortype 6) and byte-identical to the blob both earlier samples published (3,494,079 bytes, sha256 7e6e13de), and the stamp must read patch e2c9ae674997 in sync with the worker's model line on /opt/neuralscreen/model-small. Nothing is written by this run but its own artifacts."
+}
