@@ -115,6 +115,9 @@ class Display:
             sdl2.SDL_TEXTUREACCESS_STREAMING, self.width, self.height)
         if not self.texture:
             raise DisplayError(f"SDL_CreateTexture failed: {sdl2.SDL_GetError()}")
+        #: The size the streaming texture currently holds. show() rebuilds it when a frame
+        #: arrives at another size (--publish-work publishes the work-size picture).
+        self._texture_size = (self.width, self.height)
 
         self.frames_shown = 0
         self.clear()
@@ -137,14 +140,23 @@ class Display:
         sdl2.SDL_RenderPresent(self.renderer)
 
     def show(self, frame_rgba: np.ndarray) -> None:
-        """Upload one (H, W, 4) uint8 RGBA frame and present it."""
+        """Upload one (H, W, 4) uint8 RGBA frame and present it.
+
+        The frame may be *smaller* than the window - a run that publishes the work-size picture
+        and lets this present do the upscale - and never larger. The renderer's logical size
+        stays the window's, so SDL_RenderCopy stretches whatever the texture holds into the
+        window; the texture itself is rebuilt at the frame's own size, because SDL_UpdateTexture
+        reads the frame at that size and a stale larger texture would read past its end.
+        """
         if frame_rgba.dtype != np.uint8 or frame_rgba.ndim != 3:
             raise ValueError(f"expected uint8 (H, W, 4), got {frame_rgba.shape} {frame_rgba.dtype}")
         h, w = frame_rgba.shape[:2]
-        if (w, h) != (self.width, self.height):
+        if w > self.width or h > self.height:
             raise ValueError(
-                f"frame is {w}x{h}, the window is {self.width}x{self.height}")
+                f"frame is {w}x{h}, larger than the window's {self.width}x{self.height}: this "
+                "presents a smaller frame by stretching it, never a larger one")
 
+        self._fit_texture(w, h)
         ptr = frame_rgba.ctypes.data_as(ctypes.c_void_p)
         if sdl2.SDL_UpdateTexture(self.texture, None, ptr, w * 4) != 0:
             raise DisplayError(f"SDL_UpdateTexture failed: {sdl2.SDL_GetError()}")
@@ -159,6 +171,25 @@ class Display:
             self._draw_indicator()
         sdl2.SDL_RenderPresent(self.renderer)
         self.frames_shown += 1
+
+    def _fit_texture(self, w: int, h: int) -> None:
+        """Make the streaming texture `w` x `h`, rebuilding it when the frame size changes.
+
+        One texture, reused while the frames keep one size (the shipping shape), and rebuilt the
+        first time a different size arrives. The renderer's logical size is left alone, so the
+        window stays the window and SDL_RenderCopy does the upscale.
+        """
+        if self._texture_size == (w, h):
+            return
+        if self.texture:
+            sdl2.SDL_DestroyTexture(self.texture)
+            self.texture = None
+        self.texture = sdl2.SDL_CreateTexture(
+            self.renderer, sdl2.SDL_PIXELFORMAT_ABGR8888,
+            sdl2.SDL_TEXTUREACCESS_STREAMING, w, h)
+        if not self.texture:
+            raise DisplayError(f"SDL_CreateTexture failed: {sdl2.SDL_GetError()}")
+        self._texture_size = (w, h)
 
     def set_enhanced(self, on: bool) -> None:
         """Tell the badge whether the pass is running. Called every frame by the loop."""

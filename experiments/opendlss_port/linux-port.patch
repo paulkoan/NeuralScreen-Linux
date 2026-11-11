@@ -1,4 +1,4 @@
-From e2c9ae6749979e22819e9c479536b0e2defd7011 Mon Sep 17 00:00:00 2001
+From 58e98d824bce70856b56ae4c7f1456d53e1889e6 Mon Sep 17 00:00:00 2001
 From: paulkoan <paulkoan@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:51:24 +0000
 Subject: [PATCH] Linux: the four MSVC-only fixes, the full PTX list, and a
@@ -133,11 +133,11 @@ smear and disoccluded pixels fall back to no interpolation (docs/interpolation.m
 both, and the hold the client pays to present the mid).
 ---
  scripts/build_linux.sh       |  161 +++++
- shaders/composite_serve.comp |  196 +++++++
+ shaders/composite_serve.comp |  196 ++++++
  shaders/mid_warp.comp        |  146 +++++
  shaders/preprocess.comp      |   26 +-
  shaders/proxy_expand.comp    |   35 ++
- shaders/resize_rgba8.comp    |   66 +++
+ shaders/resize_rgba8.comp    |   66 ++
  src/kernels.cpp              |  101 +++-
  src/kernels.h                |   54 +-
  src/main.cpp                 |   96 ++-
@@ -147,10 +147,10 @@ both, and the hold the client pays to present the mid).
  src/nr_model.h               |    6 +
  src/nr_schedule.cpp          |  235 ++++++++
  src/nr_schedule.h            |   56 ++
- src/serve.cpp                | 1074 ++++++++++++++++++++++++++++++++++
+ src/serve.cpp                | 1095 ++++++++++++++++++++++++++++++++++
  src/vk_context.cpp           |   71 ++-
  src/vk_context.h             |   23 +
- 18 files changed, 2423 insertions(+), 62 deletions(-)
+ 18 files changed, 2444 insertions(+), 62 deletions(-)
  create mode 100755 scripts/build_linux.sh
  create mode 100644 shaders/composite_serve.comp
  create mode 100644 shaders/mid_warp.comp
@@ -1867,10 +1867,10 @@ index 0000000..8d64f1c
 +}  // namespace nr
 diff --git a/src/serve.cpp b/src/serve.cpp
 new file mode 100644
-index 0000000..06af4af
+index 0000000..2ede3f2
 --- /dev/null
 +++ b/src/serve.cpp
-@@ -0,0 +1,1074 @@
+@@ -0,0 +1,1095 @@
 +// dlss5vk serve: the NR pass as a worker process, on this side of Wine.
 +//
 +//   dlss5vk serve --model <nr model dir> [--shaders <dir>] [--frames N]
@@ -2306,6 +2306,16 @@ index 0000000..06af4af
 +    return 2;
 +  }
 +  const bool workScaled = frameWidth != workWidth || frameHeight != workHeight;
++  // DLSS5VK_PUBLISH_WORK: publish the picture at the work size and let the client's present do
++  // the upscale. With a work scale the pass otherwise pays a bilinear dispatch, a frame-size
++  // readback and a frame-size pixel channel every frame for pixels its own up-resize has just
++  // made out of the work-size composite - 14.7MB against 8.3MB at 2560x1440 with 0.75. The
++  // client's present is SDL_RenderCopy with the window's logical size, so a smaller texture is
++  // stretched by SDL at no GPU cost here; the reader has to be told the size that is coming
++  // (minimal/loop.py calls protocol's set_output_size), which is why this is a switch and not
++  // a change of behaviour. With the variable unset - every run before this one - nothing below
++  // moves: the down-resize, the up-resize and the frame-size reply are exactly what they were.
++  const bool publishWork = workScaled && getenv("DLSS5VK_PUBLISH_WORK") != nullptr;
 +
 +  const uint32_t seed = (uint32_t)atoi(getenv("DLSS5VK_SERVE_SEED") ? getenv("DLSS5VK_SERVE_SEED") : "0");
 +  fprintf(stderr, "serve: %ux%u, model %s, shaders %s, seed %u\n", workWidth, workHeight, modelDir.c_str(),
@@ -2315,6 +2325,10 @@ index 0000000..06af4af
 +                    "so the colour is resized down on the way in and the published image back up "
 +                    "(one bilinear dispatch each way)\n",
 +            frameWidth, frameHeight, workWidth, workHeight);
++  if (publishWork)
++    fprintf(stderr, "serve: publish work (DLSS5VK_PUBLISH_WORK): the image is published at %ux%u "
++                    "and the client's present does the upscale to %ux%u\n",
++            workWidth, workHeight, frameWidth, frameHeight);
 +  fprintf(stderr, "serve: built from %s\n", buildStamp());
 +  if (startup.intensity != 1.0f)
 +    fprintf(stderr, "serve: the header asks for intensity %.3f; this path has no intensity blend, it is ignored\n",
@@ -2776,7 +2790,11 @@ index 0000000..06af4af
 +        // And the published picture back up to the frame size, one dispatch, on the surface
 +        // the readback and the reply read. The mid-frame is published as a picture too, so it
 +        // gets the same upscale rather than being handed to the client at the work size.
-+        if (workScaled) {
++        // DLSS5VK_PUBLISH_WORK skips both resizes: the work-size image is what is published
++        // and the upscale is the client's present. imageBuffer and midBuffer are the work-size
++        // surfaces the composite and the mid warp have just written, and they are also what the
++        // next frame's history expands, so nothing else moves.
++        if (workScaled && !publishWork) {
 +          kernels->resizeRgba8(commands, imageBuffer, frameBuffer, workWidth, workHeight,
 +                               frameWidth, frameHeight);
 +          if (midPath)
@@ -2866,7 +2884,7 @@ index 0000000..06af4af
 +        double midMs = 0.0;
 +        if (midPath) {
 +          const std::chrono::steady_clock::time_point midBegan = std::chrono::steady_clock::now();
-+          midImage = workScaled
++          midImage = (workScaled && !publishWork)
 +              ? context->download(midFrameBuffer, (VkDeviceSize)frameWidth * frameHeight * 4)
 +              : context->download(midBuffer, (VkDeviceSize)workWidth * workHeight * 4);
 +          const std::vector<uint8_t>* midInline = nullptr;
@@ -2884,8 +2902,11 @@ index 0000000..06af4af
 +        }
 +        if (wantPixels) {
 +          // The frame size, not the work size: with a work scale the picture the client gets
-+          // is the upscaled one, and that is also what its pixel channel is sized for.
-+          image = workScaled
++          // is the upscaled one, and that is also what its pixel channel is sized for. Under
++          // DLSS5VK_PUBLISH_WORK the picture is the work-size image instead, and the client's
++          // reader has been told to expect that size (minimal/loop.py's set_output_size), so
++          // the reply is smaller by exactly the upscale's worth of pixels.
++          image = (workScaled && !publishWork)
 +              ? context->download(frameBuffer, (VkDeviceSize)frameWidth * frameHeight * 4)
 +              : context->download(imageBuffer, (VkDeviceSize)workWidth * workHeight * 4);
 +          afterDownload = std::chrono::steady_clock::now();

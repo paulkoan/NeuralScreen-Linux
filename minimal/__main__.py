@@ -125,6 +125,15 @@ def build_parser() -> argparse.ArgumentParser:
                         "the cost falls with the square of the scale. Lower it "
                         "if the pass is too slow, at the cost of the effect's "
                         "own resolution")
+    p.add_argument("--publish-work", action="store_true",
+                   help="publish the pass's own image at the work size and let the window's "
+                        "present do the upscale, instead of paying the port's bilinear "
+                        "up-resize plus a frame-size readback and pixel channel every frame "
+                        "(14.7MB against 8.3MB at 2560x1440 with --work-scale 0.75). Sets "
+                        "DLSS5VK_PUBLISH_WORK=1 in the worker and tells the reader to expect "
+                        "the work-size frame. Only meaningful with --work-scale below 1, and "
+                        "it is the picture that moves: SDL's linear stretch in place of the "
+                        "port's bilinear up-resize")
     p.add_argument("--hotkeys", action="store_true",
                    help="register global hotkeys: Ctrl+Alt+1 toggles the enhancement, "
                         "Ctrl+Alt+Q quits. Global, so they work while the game window has "
@@ -341,9 +350,16 @@ def main(argv: list[str] | None = None) -> int:
             if not key or not _:
                 raise SystemExit(f"--worker-env wants KEY=VALUE, got {item!r}")
             worker_extra[key] = value
+        # The switch is one flag, not two settings that can drift: the worker has to publish the
+        # work-size image and the reader has to expect that size, and either one alone is a
+        # picture the other end cannot read. --worker-env still overrides it, so a run can set
+        # the variable by hand and leave the reader's expectation where it was.
+        if args.publish_work:
+            worker_extra.setdefault("DLSS5VK_PUBLISH_WORK", "1")
         pipe = Pipeline(fullscreen=not args.windowed, headless=args.headless,
                         capture=source, params=params,
                         work_scale=args.work_scale,
+                        publish_work=args.publish_work,
                         motion_small=args.motion_small,
                         bypass=args.bypass,
                         send_ahead=args.send_ahead,

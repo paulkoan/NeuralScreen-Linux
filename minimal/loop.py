@@ -106,6 +106,7 @@ class Pipeline:
                  worker_cwd: Path | None = None, capture=None, display=None,
                  work_scale: float = 1.0, motion_small: bool = False,
                  no_motion: bool = False, shm: bool = False,
+                 publish_work: bool = False,
                  motion_guides: bool = False,
                  want_pixels: bool = True,
                  bypass: bool = False, send_ahead: int = 1,
@@ -240,6 +241,20 @@ class Pipeline:
             want_interp=self.interpolate,
             extra_env=worker_env_extra,
             echo_logs=worker_log)
+
+        # --publish-work: the worker answers with the work-size picture instead of the frame-size
+        # one, so the reader's own expectation has to move with it. This is the pipe path's
+        # byte-count check (protocol.py's set_output_size, called by nothing until now), and the
+        # capture's own size check is untouched - the colour still goes in at the frame size and
+        # the port does the down-resize. At work scale 1.0 the two sizes are the same picture and
+        # the flag changes nothing, so it is only armed with a work scale.
+        self.publish_work = bool(publish_work) and self.nr_small
+        if self.publish_work:
+            # getattr, not an attribute: Worker.reader is declared optional, and this is how
+            # the loop already reaches it (see the reader lookup further down).
+            reader = getattr(self.worker, "reader", None)
+            if reader is not None:
+                reader.set_output_size(self.work_w, self.work_h)
 
         if display is not None:
             self.display = display
