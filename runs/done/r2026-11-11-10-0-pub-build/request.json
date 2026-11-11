@@ -1,0 +1,7 @@
+{
+  "id": "r2026-11-11-10-0-pub-build",
+  "entry": "port-build",
+  "args": [],
+  "timeout_s": 900,
+  "note": "Rebake the port with the publish-work switch: `src/serve.cpp` now skips the composite's up-resize and the frame-size readback/reply when `DLSS5VK_PUBLISH_WORK` is set, so the pass publishes its own work-size image and the client's present does the upscale. This is a replacement for `r2026-11-11-9-0-pub-build`, which built the pre-switch patch `e2c9ae674997`; the patch has been re-cut to `58e98d824bce` and nothing below it is queued yet. Read the stamp: it must name patch `58e98d824bce` **in sync** at port `9d08f41`, 17 shader modules / 78 PTX kernels - the shader module count is the check that the patch applied whole, and 17 is unchanged because this change adds no shader. A compile error naming `publishWork` in `src/serve.cpp` is this change's fault. Its verification pair is deliberately not queued: the pair `-9-1` / `-9-2` ran on the `--shm` route, where the client opens the picture channel at the frame size (`minimal/worker.py`'s `self.shm.open_out(self.width, self.height)`), so a work-size publish cannot be read back there and the item that names only `minimal/__main__.py`, `minimal/loop.py`, `minimal/display.py` and the patch may not edit that file. Do not queue the pair on `--shm` off this build."
+}
