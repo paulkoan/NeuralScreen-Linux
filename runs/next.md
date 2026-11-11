@@ -97,26 +97,47 @@ anything there.
   9.240 c32; 2560x1440 9.041 off / 9.525 c32 / 10.074 fully on. NOT verified: no device here, so the
   new default has not been timed, and the 1080p chains-off control behind it is the item below.
 
-* **Read the chains-off 1080p control: does the production schedule sit near its own barrier total at
-  chainMask 0 the way it does at the other two sizes, or is that 2.855 ms gap the schedule's cost at
-  1080p rather than the chain's?** The reading is queued: `runs/queue/r2026-11-10-16-gap5-1-1080p`
-  behind the rebuild `runs/queue/r2026-11-10-16-gap5-0-build` (both queued 2026-11-10), and lands as
-  `runs/done/<id>`. The default the pair measures is one line of `src/nr_graph.cpp` inside
-  `experiments/opendlss_port/linux-port.patch` (source of truth `/opt/data/tmp/odl-src`, amend its one
-  commit and re-cut with `git format-patch -1`), which now ends `: 0` - **that file is what any further
-  move on this edits**, back to 2 or on to 3 if a later sample says so. What the run prints is `total T
-  ms (sum of per-dispatch spans, 1920x1080), 249 dispatches, a barrier after every launch` and
-  `production schedule (counter chaining): 249 dispatches, GPU X ms (min of 7, same graph and size, no
-  client in the loop)`. What it reads against, with the same two instruments and nothing chained: X sat
-  **0.173 ms above T at 1280x720** (3.558 against 3.385) and **0.395 ms below it at 2560x1440** (9.041
-  against 9.436), where the chained settings put them 0.128-0.694 ms apart at 1440p and 0.116 ms apart
-  fully on at 720p - so X near T at 1080p means the schedule is at baseline there and the chains-off
-  default is confirmed, while an X that stays near 9.2 means the production schedule itself is dear at 1080p
-  whatever is chained, which is a finding about `src/nr_schedule.cpp` in the same patch and not about
-  the default. Quote the gate lines (`gpu_before`, `gpu_after`, `idle_waited_s`) and the fixed-cost
-  probe (0.406-0.421 ms on a clean card) as the control that says the card was at baseline scale; a
-  BUSY before or a non-zero idle wait and neither number is compared. If a run dies with
-  `vkQueueWaitIdle(queue_) failed: -4`, stop queueing and report the card rather than escalating.
+* **Read the chains-off 1080p control on a warm card: does the production schedule sit near its own
+  barrier total at chainMask 0 the way it does at the other two sizes, or is that 2.855 ms gap the
+  schedule's cost at 1080p rather than the chain's?** Requeued as
+  `runs/queue/r2026-11-10-17-gap6-1-1080p.json` because the first attempt
+  (`runs/queue/r2026-11-10-16-gap5-1-1080p`) landed cold and its barrier total is quoted nowhere - the
+  same entry, argv and binary as before (`port-profile`, `bash tools/port_profile.sh 1920 1080`,
+  600 s, patch `e2c9ae674997` at port `9d08f41`, in sync). The default is no longer the question: the
+  cold sample's own schedule number, 7.164 ms, is an upper bound that already sits below the clean c32
+  X of 9.240 at the same size, so this run exists for the intra-run reading alone - `X` near its own
+  `T` means the production schedule is at baseline at 1080p, an X that stays near 9.2 means the
+  schedule itself is dear at the shipping size, which is a finding about `src/nr_schedule.cpp` in
+  `experiments/opendlss_port/linux-port.patch` and not about the default. Quote the gate lines
+  (`gpu_before`, `gpu_after`, `idle_waited_s`) and the fixed-cost probe (0.406-0.421 ms on a clean
+  card) as the control that says the card was at baseline scale; a BUSY before or a non-zero idle wait
+  and neither number is compared. If a run dies with `vkQueueWaitIdle(queue_) failed: -4`, stop
+  queueing and report the card rather than escalating.
+
+* learned: the chains-off 1080p control landed on a cold card, so its barrier total is not a reading -
+  but its schedule number is an upper bound, and that is enough to settle the default (2026-11-10 tick,
+  read of `r2026-11-10-16-gap5-1-1080p`, exit 0 after 4.7 s, entry `port-profile 1920 1080`, on the
+  binary `r2026-11-10-16-gap5-0-build` stamped **in sync** at patch `e2c9ae674997`, port `9d08f41`, 17
+  shader modules / 78 PTX kernels, policy `92cc2c01922f`). The two lines read `total 17.062 ms (sum of
+  per-dispatch spans, 1920x1080), 249 dispatches, a barrier after every launch` and `production
+  schedule (counter chaining): 249 dispatches, GPU 7.164 ms (min of 7, same graph and size, no client
+  in the loop)`. **T is quoted nowhere**: 17.062 against the 6.385 ms `r2026-11-10-15-gap4-1-1080p` read
+  on the same entry, with every row up by its own factor (`block32_ptx 34560w f74` 1.037 against 0.353,
+  `ffn_ptx 8640x256 e8 r4` 1.651 against 0.610), the fixed-cost probe unmoved at 0.406 ms, gate
+  `gpu_before` WARN (util 24%), `gpu_after` BUSY (51%), `idle_waited_s` 15.0 - the cold/throttled
+  signature `r2026-11-10-profile-large-1080p` wore at 17.056 ms, and this run is the first GPU work
+  after the box came back from being powered down overnight (the results commits land 06:21Z on
+  2026-11-11, hours after the box-off commit `87f41442bb81` at 23:17Z on 2026-11-10, and the gate
+  waited 15.0 s to get in), so the card was in a slower-than-baseline state - a cold clock woken after
+  the power-on, or a briefly contended card; both only inflate, which is all the bound below needs.
+  **X survives as an upper bound, and it settles the default**: 7.164 is below the clean c32 X of
+  9.240 at the same size (`r2026-11-10-15-gap4-1-1080p`, `idle_waited_s` 0.0, baseline-scale barrier
+  table), and a cold card makes numbers larger, never smaller, so chains off stays the right default at
+  the shipping size whatever the true warm value is - the 1920x1080 ladder now reads 9.240 with the c32
+  chain and <= 7.164 with chains off, against 6.385 for its own barrier total. What is still open is
+  only the intra-run T-against-X question, which is why the reading is requeued as
+  `runs/queue/r2026-11-10-17-gap6-1-1080p.json` rather than retired. NOT verified: no warm 1080p
+  chains-off sample exists, so the production schedule's own cost at that size is unread.
 * learned: the expert-stage chain was most but not all of the 1440p chaining penalty, and the
   small-size half of the pair is no read at all - it landed on a contended card (2026-11-10 tick,
   read of `r2026-11-10-13-gap2-1-1440p` and `-2-720p`, both exit 0 after 5.6 s / 5.0 s, entry
