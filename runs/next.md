@@ -319,31 +319,35 @@ anything there.
   (0%), `idle_waited_s` 0.0 on both. The switch stays unread and is re-aimed onto the pipe under the item
   below. NOT verified: no device here, so nothing was re-timed.
 
-* **Read the publish-work switch where the transport carries the bytes: re-run the pair with `--no-shm`.**
-  Files, and nothing else: `runs/queue/r2026-11-11-11-0-pub-pipe-on.json` (entry `minimal-small`,
-  `r2026-11-11-10-1-pub-on`'s argv character for character with `--no-shm` added before `--publish-work`,
-  `--save-after small-pub-pipe-on-after.png`, 900 s) and `runs/queue/r2026-11-11-11-1-pub-pipe-off.json`
-  (the same argv with no `--publish-work`, `--save-after small-pub-pipe-off-after.png`, the control). Both
-  keep `--worker-env DLSS5VK_SERVE_SPLIT=1` and `--work-scale 0.75`, and both take the pipe; the build they
-  need - `r2026-11-11-10-0-pub-build`, patch `58e98d824bce` at port `9d08f41`, **in sync** - is already in
-  place, so nothing is rebuilt. The route is the point: with `--shm` off the reply is framed by a byte count
-  and `protocol.py:805`'s `set_output_size` governs it, so the client's own frame is the work-size image
-  and the saving the 8.6 ms was priced at can reach it. **Read:** (1) `small-pub-pipe-on-after.png` must come
-  back **1920x1080 RGBA** (colortype 6) - the artifact is the published image, so its size is the check that
-  the switch took - while the control's `small-pub-pipe-off-after.png` must be **2560x1440 RGBA** and
-  byte-identical to the `7e6e13de` blob every shipping sample published; (2) the pair's medians and steady
-  rates against each other only - both halves take the pipe, whose medians sit above every `--shm` sample on
-  the record, so no number here is compared with an earlier run - and the four terms in each run's own log
-  (`readback` and `reply` in the worker's `serve frame N:` lines, the copy in the client's `recv split`, the
-  display in its `timing` line); (3) `gpu_before` / `gpu_after` / `idle_waited_s` on both, and nothing
-  compared whose before-gate is BUSY or whose idle wait is non-zero. Branch: if the switched artifact comes
-  back 1920x1080 with the four terms roughly in proportion, the byte saving is real on the transport that
-  carries it and the next reading is the window run that would show the SDL stretch; if it comes back
-  scrambled or frame-sized again, the switch needs the client's shared section opened at the work size, and
-  that file is `minimal/worker.py` - fenced, so the line authorising it has to be written in the interactive
-  session, not here. This item retires when the pair's numbers are read, whichever branch they take. NOT
-  verified: no device here, so nothing is timed and the visual cost of moving the upscale from the port's
-  bilinear to SDL's stays unmeasured.
+* learned: the publish-work pair cannot read the switch on the pipe either, and the reason is in the client -
+  its reader expectation is armed before the reader exists, so the first work-size reply is refused
+  (2026-11-11 tick, read of `r2026-11-11-11-0-pub-pipe-on` and `-11-1-pub-pipe-off`, exit **3** after 14.6 s
+  / exit 0 after 19.0 s, entry `minimal-small`, worker **in sync** on patch `58e98d824bce` at port `9d08f41`,
+  policy `92cc2c01922f`). **The control passes its check exactly**: `small-pub-pipe-off-after.png` is
+  **2560x1440 RGBA** (colortype 6, 3,494,079 bytes, sha256 `7e6e13de`, read from the results branch this tick),
+  byte-identical to the blob every shipping sample has published, so the default path is untouched and the
+  switch has not leaked. **The switched half never reached a frame**: the worker took the switch - its banner
+  prints `publish work (DLSS5VK_PUBLISH_WORK): the image is published at 1920x1080 and the client's present
+  does the upscale to 2560x1440` - and the client then refused its first reply: `pipeline failed: worker
+  returned 8294400 bytes instead of 14745600`, i.e. 1920x1080x4 where the frame is 2560x1440x4, so there is no
+  artifact, no median and no stage reading. **The cause is the same one that scrambled the shared-memory half,
+  and it is dead code**: `minimal/loop.py` arms `reader.set_output_size(self.work_w, self.work_h)` in
+  `Pipeline.__init__` (lines 251-257, whose comment says the loop reaches the reader "further down"), but
+  `self.reader` is created by `Worker.start()` (`minimal/worker.py:336`) and that only runs later, from
+  `Pipeline.run` (`minimal/loop.py:563`) - so `getattr(self.worker, "reader", None)` is `None` at arming time,
+  the expectation never moves, and the pipe reader's own byte-count check (`protocol.py:793`) rejects the
+  work-size reply. So the switch is unreadable on both transports until that arming moves after
+  `Worker.start()`, and on the shared-memory route the client's OUTS section is opened at the frame size
+  (`minimal/worker.py:365`) on top of that. Nothing is reverted, `chainMask` stays 0 and no default moves.
+
+* **Blocked, and it needs an authorising item rather than another run: the publish-work switch stays unread
+  until the client's reader expectation moves after `Worker.start()`.** The pair is spent - its reading is the
+  learned entry above (control byte-identical to `7e6e13de`, switched half exit 3 at frame 0 with no
+  artifact) - so no further queue request can read the switch. What would: in `minimal/loop.py`'s
+  `Pipeline.run`, arm the reader's output size at `work_w`/`work_h` after `self.worker.start()` when
+  `publish_work` is set (the same `set_output_size` call the `__init__` block already makes, moved to where
+  the reader exists). `minimal/loop.py` is fenced and this item deliberately does not authorise editing it -
+  that line has to be written in the interactive session. Nothing is queued and no default moves until it is.
 
 * learned: the change above is made, built and pushed, and its first pair was void for a route reason rather than a
   switch reason, so the pair was re-aimed off `--shm` and queued with fresh ids (2026-11-11 tick, read of
