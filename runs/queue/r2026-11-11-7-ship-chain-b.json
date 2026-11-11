@@ -1,0 +1,30 @@
+{
+  "id": "r2026-11-11-7-ship-chain-b",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--shm",
+    "--worker-env",
+    "DLSS5VK_SERVE_SPLIT=1",
+    "--worker-env",
+    "DLSS5VK_CHAIN_MASK=3",
+    "--worker-log",
+    "--save-after",
+    "small-ship-after-e.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-ship-after-e.png"
+  ],
+  "note": "The chainMask lever on the model that ships, second attempt: r2026-11-11-6-ship-chain's argv character for character, because that sample was void - its idle_waited_s read 15.0 (the only non-zero of the six runs of the day) with gpu_before WARN at 20% of the 25% bar against r2026-11-11-5-ship-split's 0.0 / 0%, and the whole run's stage sits lower than -5's, including its warm-up frames 0-2 (network 12.2 / 13.6 / 13.5 against 28.6 / 30.3 / 30.4, where chaining cannot act). Read: (1) the 'serve frame N:' lines' 'network X' at frames 0-2 and every 30th against r2026-11-11-5-ship-split's chainMask-0 split (network 9.1 / 9.2 / 8.4 / 8.2 / 8.2 / 8.4 / 8.5 / 8.5 / 8.5 / 8.6 ms across frames 29-299, composite 0.5 ms flat). A move of more than about 0.3 ms is the mask taken and its sign is the reading: chainMask 3 dearer keeps the default, cheaper makes the c32-only mask (DLSS5VK_CHAIN_MASK=2) the next request before any default move. A stage unchanged to within 0.3 ms is not a reading of chaining on the small network - but do NOT reach for the DLSS5VK_CHAIN=0 positive control the retired item named: the patch's src/main.cpp reads that variable only in runProfile (it gates the production-schedule measurement), so it is inert on this shape, and the flag-did-not-arrive hypothesis is already refuted inside -6's own run, where DLSS5VK_SERVE_SPLIT=1 travelled through the same --worker-env and visibly took (the stage lines are decomposed into network + composite). Read (2) The artifact small-ship-after-e.png must come back 2560x1440 RGBA (colortype 6) and byte-identical to the blob every shipping-frame sample has published (3,494,079 bytes, sha256 7e6e13de): a route change must not move a pixel. Read (3) Quote gpu_before / gpu_after / idle_waited_s, and compare nothing whose before-gate is BUSY or whose idle wait is non-zero - that is exactly what voided r2026-11-11-6-ship-chain. If this one is void the same way, queue nothing further and say so in runs/next.md: the card, not the mask, is then what stands in the way. Do NOT quote this run's frame rate or median: the split's two BOTTOM_OF_PIPE timestamps flush the queue by design, so only the worker's stage lines are readings. This run writes nothing but its own artifacts."
+}
