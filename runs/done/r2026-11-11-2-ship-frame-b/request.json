@@ -1,0 +1,26 @@
+{
+  "id": "r2026-11-11-2-ship-frame-b",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--shm",
+    "--worker-log",
+    "--save-after",
+    "small-ship-after-b.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-ship-after-b.png"
+  ],
+  "note": "Repeat of r2026-11-11-1-ship-frame, character for character, split only in --save-after. That sample read median 32.7 ms / 30.6 fps steady against the plan's 24.1 / 41.6 headline on the identical shape, with the worker's own mean up to 20.23 from 14.48 ms, network+composite 7.3-9.8 against 5.1-5.7, and the client's own capture / send / display medians up too (4.0 -> 4.9, 2.4 -> 2.7, 2.4 -> 2.9) - stages chainMask cannot touch - so the run does not separate a slower box from a dearer chains-off default. Read: median and steady rate against 32.7 / 30.6, the capture / send / display medians against 4.9 / 2.7 / 2.9, and the worker's own 'input stream closed' mean against 20.23. Quote gpu_before / gpu_after / idle_waited_s and do not compare the sample if the before-gate is BUSY or the idle wait is non-zero. The artifact small-ship-after-b.png must be 2560x1440 RGBA (colortype 6); r2026-11-11-1-ship-frame's small-ship-after.png is byte-identical to r2026-11-10-6-small-video's small-ws-after.png (3,494,079 bytes, sha256 7e6e13de), so a second identical blob confirms the pass's arithmetic. Nothing is written by this run but its own artifacts."
+}
