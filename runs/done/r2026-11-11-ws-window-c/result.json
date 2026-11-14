@@ -1,0 +1,40 @@
+{
+  "exit_code": 0,
+  "seconds": 17.673,
+  "argv": [
+    "uv",
+    "run",
+    "python",
+    "-m",
+    "minimal",
+    "--frames",
+    "120",
+    "--source",
+    "window",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--shm",
+    "--save-before",
+    "ws-window-c-before.png",
+    "--save-after",
+    "ws-window-c-after.png",
+    "--worker-log"
+  ],
+  "artifacts": [
+    "ws-window-c-before.png",
+    "ws-window-c-after.png"
+  ],
+  "runner": "6a0703c28681",
+  "entry_env": [
+    "NS_WORKER_CMD"
+  ],
+  "policy": {
+    "path": "/opt/neuralscreen/policy.toml",
+    "sha256": "92cc2c01922f9c548eacef313d94c12886c9dd6daee00715c02e5333b8dedf7a"
+  },
+  "gpu_before": "WARN [util 17% of the 25% bar] (resident but not contending: msedge (pid 3047582, 488.0 MiB); resident but not contending: chromium (pid 3225234, 215.0 MiB))",
+  "gpu_after": "WARN [util 4% of the 25% bar] (resident but not contending: msedge (pid 3047582, 507.0 MiB); resident but not contending: chromium (pid 3225234, 215.0 MiB))",
+  "idle_waited_s": 0.0
+}
