@@ -1,0 +1,11 @@
+{
+  "id": "r2026-11-11-ws-window-c",
+  "entry": "minimal",
+  "args": ["--frames", "120", "--source", "window", "--size", "2560x1440", "--work-scale", "0.75",
+           "--shm", "--save-before", "ws-window-c-before.png",
+           "--save-after", "ws-window-c-after.png", "--worker-log"],
+  "timeout_s": 900,
+  "artifacts": ["ws-window-c-before.png", "ws-window-c-after.png"],
+  "manual": true,
+  "note": "Fresh id because the previous attempt is spent: r2026-11-10-6-ws-window-b ran at 20:31 and died in the portal handshake - `startup failed: the portal handshake failed (TimeoutError)` after 121.8s, with stdout stopping at `Start  (the compositor will ask you to choose a screen)`. So the picker appeared and was never answered; the runner recorded it as done and the id is skipped now, which is why a manual run afterwards found nothing to do. That is the trap this id avoids rather than fixes: a manual request that reaches the picker and is not clicked is consumed. Same argv character for character, so the comparison against r2026-11-10-4-ws-window (93.9 ms median, one 5745.3 ms capture stall at frame 93) stays single-variable. **Click the dialog when it appears.** Read: whether a capture stall over 1 s appears at all - none, and the median against that run's 48.3 ms control is the live number; one, and its frame and duration are the finding and the median is discarded - then the capture split against 9.0 ms wait / 0.5 ms read, and both PNGs at 2560x1440. The worker log must carry 'serve: work scale: the client's frame is 2560x1440 and the network runs at 1920x1080'. Gate as usual."
+}
