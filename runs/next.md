@@ -2866,3 +2866,41 @@ section asks only what is still being asked.
   or copyleft) so no code was taken; the survey recorded precedent and one confirmation. **No run
   queued**: every idea above becomes a measurement only after a port change, and the queue's open
   item is the FFN sweep's 1080p repeat, which this tick does not disturb.
+
+* learned: the 2026-11-16 ecosystem survey adds **two independent sources that speak directly to
+  lever 3's blocker**, plus one line each for the rest (2026-11-16 tick, second run of the
+  `dlss5-ecosystem-survey` job; web search plus the GitHub REST API only, nothing built or run on
+  this box). **`iamwavecut/MLX-DLSS` (Apache-2.0, 135 stars, pushed 2026-10-17) recovers the small
+  network's graph and loads it.** Its `python/mlxdlss/topology.py` states the family is built from
+  **five stage depths**, one per encoder width (32/64/128/256 channels) plus the 512-channel split
+  stage, mirrored by the decoder around eight global blocks: HT is depths `(4,4,6,8,8)` = 71 blocks
+  = preset 1, and the small network is depths `(2,2,2,2,2)` = **31 blocks = preset 2**, the 310.9.16
+  shipping default `hnet-crazy-cuckoo-small-fp8`. Its `docs/recovery-notes.md` is explicit that
+  "both use the same kernel families, widths, head counts and layer packing, so one decoder and one
+  package architecture serve both", with the window-origin phase fixed by position: `i & 3` for the
+  i-th encoder block, `(depth + j) & 3` for the j-th decoder block of the mirrored stage, and phase
+  1 for the post block. That is exactly what `nr_graph.cpp`'s hardcoded layout and the compile-time
+  `kBlockCount` have to become: depths read from the weight shapes, block count derived, not
+  written. The licence is permissive (Apache-2.0, MIT-compatible), so the file is a clean reference,
+  and the repo's own `docs/small-network-layout.md` 31-block shape and the extracted
+  `/opt/neuralscreen/model-small` are the same artifact. **`uzbekunknown/dlss-nr-on-intel`
+  (Apache-2.0, 94 stars, pushed 2026-11-12) is a second Linux/Vulkan implementation of the same
+  network and hits the same wall.** It recovers the network (71 blocks, 145,755,123 params; the
+  310.9.16 preset B at "30 blocks, 113,893,343 B, 77 packed tensors") but its own WEIGHTS.md reads
+  "the unpacker's block contracts are HT's, so this one is extracted and recorded but **cannot be
+  loaded**" - an independent project with a different codebase arrives at the same structural
+  blocker, which says lever 3 is a real port change and not a local oversight. Its SETTINGS.md
+  measures network B against A on the same frames (~1.8x: Arc 140V A 51-52 ms vs B 27 ms at
+  1920x1080 scale 0.4; 279-284 vs 156 at scale 1.0), corroborating the ~2x claim, and its "render
+  scale" dial is lever 1 made a setting (1920x1080, network A: scale 1.0 279-284 ms vs 0.4 51-52
+  ms, ~5.5x). Its ARCHITECTURE.md also cross-checks the port's contract (16-channel input, 4-channel
+  residual head, the extent-alignment rule) against MLX-DLSS - 649 tensors, 0 mismatches - and
+  records `DLSSNR.MaskBlendMode` 1/2/3 as new in 310.9.16. **Nothing moved on upstream or the
+  model**: `maanHimself/OpenDLSS-NR` is still static at 2026-09-21T16:16Z; `WEIGHTS_HT` is
+  byte-identical between 310.8 and 310.9.16 (same resource sha256), so 310.9.16 remains the newest
+  NR DLL and no newer model exists. Forks `aloshdenny/open-dlss`, `rrui05/open-dlss` and
+  `pantsoftime/dlss5-linux` (a Proton NGX route-picker) touch no lever. **Nothing is directly
+  linkable as code**: MLX-DLSS is Apple/PyTorch, the Intel project is Mesa/XMX kernels - both
+  describe the network, neither is a drop-in for this port's NVIDIA Vulkan. **No run queued**:
+  every item above becomes a measurement only after a port change (depths-from-shapes), and the
+  queue's open item is the window repeat under a fresh id, which this tick does not disturb.
