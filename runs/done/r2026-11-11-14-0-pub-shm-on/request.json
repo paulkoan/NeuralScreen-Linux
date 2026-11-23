@@ -1,0 +1,28 @@
+{
+  "id": "r2026-11-11-14-0-pub-shm-on",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--worker-env",
+    "DLSS5VK_SERVE_SPLIT=1",
+    "--publish-work",
+    "--worker-log",
+    "--save-after",
+    "small-pub-shm14-on-after.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-pub-shm14-on-after.png"
+  ],
+  "note": "The switched half of the shared-memory publish-work pair, requeued on fresh ids because r2026-11-11-13-0-pub-shm-on is void on its gate: its artifact passed (1920x1080 RGBA, sha256 190e480a, the OUTS section opening at 8.3 MB), but idle_waited_s read 195.0 against the control half's 30.0, so the pair's timings compare nothing. This is r2026-11-11-13-0's argv character for character with the artifact renamed. Read: (1) the saved artifact must come back 1920x1080 RGBA (colortype 6), the published image, and expected byte-identical to the 2,615,161-byte, sha256 190e480a blob the 13-0 and 12-0 switched halves published; (2) this run's median and steady rate plus the worker's readback/reply lines and the client's recv copy and display lines, quoted as a pair only with r2026-11-11-14-1-pub-shm-off and never across routes; (3) gpu_before / gpu_after / idle_waited_s - if this half's before-gate is BUSY or its idle wait is non-zero, say so and compare nothing from the pair, and that is the last attempt: the plan retires the item rather than queueing a fourth pair. Nothing is written by this run but its own artifacts."
+}
