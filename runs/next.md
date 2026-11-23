@@ -39,12 +39,13 @@ anything there.
   reply; the shared-memory route still opens its OUTS section at the frame size in `minimal/worker.py:365`
   and stays unread until an item names that file.
 
-* **Re-run the pipe publish-work pair on the fixed client: one run with `--publish-work`, one without.**
-  The arming now happens after `Worker.start()`, so a `--publish-work` run at work scale 0.75 on the pipe
-  should return the work-size picture instead of exiting 3. Queue both as policy entries
-  `port-profile 2560 1440` with `--work-scale 0.75`, one with `--publish-work` and one without, same
-  binary and the same shm-off pipe route, so the only difference is the flag. Quote medians and the
-  spread, not headline fps. This is a run request: no code edit, no file besides `runs/queue/`.
+* learned: the pipe publish-work pair is queued on the fixed client as `r2026-11-11-12-0-pub-pipe-on`
+  and `r2026-11-11-12-1-pub-pipe-off`, both `minimal-small` at 2560x1440, work scale 0.75, `--no-shm`,
+  300 headless frames, one variable apart (`--publish-work`). The plan's "port-profile 2560 1440"
+  wording was read as the client pipe route, because the arming fix lives in `minimal/loop.py` and the
+  port-profile tool does not carry a client or a `--publish-work` flag. The pair's read is owed: the
+  on run's artifact must be 1920x1080 RGBA and the off run's 2560x1440, byte-identical to the
+  7e6e13de blob, with medians and spreads quoted against each other only.
 
 * learned: the chainMask-0 pair read clean and chaining's cost is size-dependent - chaining is the
   wrong route at the shipping size, but the small size is genuinely cheaper chained and the pair's
