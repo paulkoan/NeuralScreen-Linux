@@ -33,23 +33,44 @@ anything there.
 
 ## 1. Next work
 
-* **Price the publish-work switch on the shared-memory route and read both pairs.** The OUTS section
-  now opens at the work size when `--publish-work` is on (`minimal/worker.py` `_open_shared_channels`,
-  `Worker.publish_work` set from `Pipeline.__init__` in `minimal/loop.py`), but the only pair queued
-  so far is the pipe one (`r2026-11-11-12-0-pub-pipe-on` / `-1-pub-pipe-off`, `--no-shm`), and the
-  shipping config runs `--shm`. That pipe pair has now landed and is read: its artifacts pass exactly
-  (on **1920x1080 RGBA**, off **2560x1440**, sha256 `7e6e13de`, byte-identical to the shipping blob),
-  but both halves' before-gate was BUSY with `DyingLightGame` resident, so by this item's own clause
-  its medians are void and only the shared-memory pair can still price the switch. The shm pair is
-  already queued, its request files being
-  `runs/queue/r2026-11-11-13-0-pub-shm-on.json` and `runs/queue/r2026-11-11-13-1-pub-shm-off.json`
-  (`minimal-small`, 2560x1440, work scale 0.75, headless, 300 frames, `DLSS5VK_SERVE_SPLIT=1`, one
-  variable apart: `--publish-work`). Read both pairs when their results land: the on half's artifact
-  must be 1920x1080 RGBA and the off half's 2560x1440 byte-identical to the `7e6e13de` blob; quote
-  medians and spreads within each pair only, never across routes and never against a single
-  headline fps; record `gpu_before` / `gpu_after` / `idle_waited_s` and void a pair whose before-gate
-  is BUSY or whose idle wait is non-zero. Retire this item once both pairs have been read and the
-  shm saving is on the record. This is a run request: the only files it adds are the two queue JSONs.
+* **Price the publish-work switch on the shared-memory route, on the fresh shm pair.** The 13 pair landed
+  and its artifacts pass on both halves (on **1920x1080 RGBA**, 2,615,161 bytes, sha256 `190e480a` - the shm
+  OUTS section really opens at the work size now, 8.3 MB - and off **2560x1440**, sha256 `7e6e13de`,
+  byte-identical to the shipping blob), but its timings are void: `idle_waited_s` **195.0** on the on half
+  and **30.0** on the off, so by this item's clause nothing from the pair is compared and the shm saving is
+  still not on the record. Fresh ids are queued: `runs/queue/r2026-11-11-14-0-pub-shm-on.json` and
+  `runs/queue/r2026-11-11-14-1-pub-shm-off.json`, argv character for character the 13 pair's with the
+  artifacts renamed `small-pub-shm14-*-after.png` (`minimal-small`, 2560x1440, work scale 0.75, headless,
+  300 frames, `DLSS5VK_SERVE_SPLIT=1`, one variable apart: `--publish-work`). Read both halves when they
+  land: the on artifact must be 1920x1080 RGBA (expect sha256 `190e480a`) and the off 2560x1440
+  byte-identical to `7e6e13de`; quote median and spread within the pair only, never across routes and never
+  against a headline fps; record `gpu_before` / `gpu_after` / `idle_waited_s`. **If either half's idle wait
+  is again non-zero, retire this item with the artifact result on the record and the timing marked
+  unreadable on this card - do not queue a fourth pair**: the frame's own scatter is 5.8 ms across three
+  identical samples while the switch's effect is the client's display upload halving (1.7 ms against 3.7)
+  and the worker's reply term, so a delta under ~2 ms cannot be read at this instrument anyway. This is a
+  run request: the only files it adds are those two queue JSONs.
+
+* learned: the shm publish-work pair's artifacts pass on the shipping route and its timings are void - the
+  switch takes end to end through /dev/shm, and the pair's idle waits leave the price unread (2026-11-23
+  tick, read of `r2026-11-11-13-0-pub-shm-on` and `-13-1-pub-shm-off`, both exit 0 after 16.5 s / 18.1 s,
+  entry `minimal-small`, worker stamped patch `58e98d824bce` at port `9d08f41` **in sync** on both, policy
+  `92cc2c01922f`, results commits `93d716b` / `f63caf2` at 19:27Z / 19:29Z today, the two halves two
+  minutes apart). **The artifact check passes on both halves**: `small-pub-shm-on-after.png` is
+  **1920x1080 RGBA** (colortype 6, 2,615,161 bytes, sha256 `190e480a`), with the worker's own channel lines
+  reading `pixel channel open (1920x1080, 8.3 MB)` and `mid-frame channel open (8.3 MB)` where the control
+  opens 14.7 MB - the first shm run whose OUTS section is work-sized - and that image is **byte-identical
+  to the pipe pair's on artifact** (`190e480a`), so the switch publishes one image on both transports;
+  `small-pub-shm-off-after.png` is **2560x1440 RGBA** (3,494,079 bytes, sha256 `7e6e13de`), byte-identical
+  to the blob every shipping sample published, so the default path is untouched. **Clause (3) voids both
+  timings**: `gpu_before` WARN on both (8% and 13% of the 25% bar, `DyingLightGame` resident at 316.0 MiB
+  and not contending), but `idle_waited_s` **195.0** / **30.0** - the halves sat in different card states -
+  so the medians (on **33.6 ms / 29.8 fps steady**, off **36.6 ms / 27.3 fps**) are quoted nowhere as a
+  price of the switch. Recorded as mechanism and not as a measurement: the client's display uploaded half
+  the pixels, **1.7 ms against 3.7**, and the recv copy read **1.6 against 2.4**, while the worker's
+  `input stream closed` mean is 19.47 against 21.46 ms. A fresh pair is queued above because the shipping
+  route's price is still unread; the frame's 5.8 ms scatter is why that is the last attempt. NOT verified:
+  no device here, so nothing was re-timed.
 
 * learned: the pipe publish-work pair's artifacts pass exactly and its medians are void - the client
   fix works, the switch takes, and the card was held by a game on both halves (2026-11-23 tick, read of
