@@ -1,0 +1,41 @@
+{
+  "exit_code": 0,
+  "seconds": 33.682,
+  "argv": [
+    "uv",
+    "run",
+    "python",
+    "-m",
+    "minimal",
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--worker-env",
+    "DLSS5VK_SERVE_SPLIT=1",
+    "--worker-log",
+    "--save-after",
+    "small-pub-shm14-off-after.png"
+  ],
+  "artifacts": [
+    "small-pub-shm14-off-after.png"
+  ],
+  "runner": "6a0703c28681",
+  "entry_env": [
+    "NS_WORKER_CMD"
+  ],
+  "policy": {
+    "path": "/opt/neuralscreen/policy.toml",
+    "sha256": "92cc2c01922f9c548eacef313d94c12886c9dd6daee00715c02e5333b8dedf7a"
+  },
+  "gpu_before": "WARN [util 22% of the 25% bar] (resident but not contending: chromium (pid 77416, 212.0 MiB); resident but not contending: signal-desktop (pid 78898, 41.0 MiB); resident but not contending: shelly-ui (pid 1280821, 38.0 MiB); resident but not contending: fossilize_replay (pid 414831, 42.0 MiB); resident but not contending: fossilize_replay (pid 414830, 40.0 MiB); resident but not contending: fossilize_replay (pid 414833, 40.0 MiB); resident but not contending: fossilize_replay (pid 414834, 40.0 MiB); resident but not contending: fossilize_replay (pid 414832, 40.0 MiB))",
+  "gpu_after": "BUSY [util 29% of the 25% bar] (utilization 29%; chromium (pid 77416, 212.0 MiB); signal-desktop (pid 78898, 41.0 MiB); shelly-ui (pid 1280821, 38.0 MiB); fossilize_replay (pid 414831, 42.0 MiB); fossilize_replay (pid 414830, 40.0 MiB); fossilize_replay (pid 414833, 40.0 MiB); fossilize_replay (pid 414834, 40.0 MiB); fossilize_replay (pid 414832, 42.0 MiB))",
+  "idle_waited_s": 75.0
+}
