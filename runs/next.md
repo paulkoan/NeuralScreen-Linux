@@ -33,18 +33,18 @@ anything there.
 
 ## 1. Next work
 
-* **Read the publish-work switch on the pipe: move the reader's output-size arming after `Worker.start()`.**
-  Edit `minimal/loop.py` only. `Pipeline.__init__` arms `reader.set_output_size(self.work_w, self.work_h)`
-  at lines 252-257, but `Worker.reader` is `None` until `Worker.start()` creates it (`minimal/worker.py:336`),
-  so the call is dead and the pipe's byte-count check still expects the frame size - which is why
-  `r2026-11-11-11-0-pub-pipe-on` exited 3 at frame 0 with `worker returned 8294400 bytes instead of 14745600`.
-  Keep the `self.publish_work` flag where it is; move only the `if self.publish_work:` arming block into
-  `Pipeline.run` immediately after `self.worker.start()` (line 563), where the reader exists. Add a regression
-  test in `tests/` that builds a pipeline with `publish_work=True` and a work scale against a fake worker/reader
-  and asserts the reader's expected output size is work-sized once `run()` starts. Run
-  `.venv/bin/python -m pytest tests/ -q`; the same nine libGL/SDL2 environment failures are expected, so require
-  no new failures. Commit and push. This is the pipe route only: the shared-memory route still opens its OUTS
-  section at the frame size in `minimal/worker.py:365` and stays unread until an item names that file.
+* learned: the pipe's publish-work arming moved into `Pipeline.run` after `self.worker.start()`
+  (`minimal/loop.py`), with two regression tests in `tests/test_pipeline_mock.py`; suite 9 failed /
+  602 passed, the same nine libGL/SDL2 environment failures. The pipe route can now read a work-size
+  reply; the shared-memory route still opens its OUTS section at the frame size in `minimal/worker.py:365`
+  and stays unread until an item names that file.
+
+* **Re-run the pipe publish-work pair on the fixed client: one run with `--publish-work`, one without.**
+  The arming now happens after `Worker.start()`, so a `--publish-work` run at work scale 0.75 on the pipe
+  should return the work-size picture instead of exiting 3. Queue both as policy entries
+  `port-profile 2560 1440` with `--work-scale 0.75`, one with `--publish-work` and one without, same
+  binary and the same shm-off pipe route, so the only difference is the flag. Quote medians and the
+  spread, not headline fps. This is a run request: no code edit, no file besides `runs/queue/`.
 
 * learned: the chainMask-0 pair read clean and chaining's cost is size-dependent - chaining is the
   wrong route at the shipping size, but the small size is genuinely cheaper chained and the pair's
