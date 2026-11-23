@@ -37,7 +37,11 @@ anything there.
   now opens at the work size when `--publish-work` is on (`minimal/worker.py` `_open_shared_channels`,
   `Worker.publish_work` set from `Pipeline.__init__` in `minimal/loop.py`), but the only pair queued
   so far is the pipe one (`r2026-11-11-12-0-pub-pipe-on` / `-1-pub-pipe-off`, `--no-shm`), and the
-  shipping config runs `--shm`. This item queues the matching shm pair, whose request files are
+  shipping config runs `--shm`. That pipe pair has now landed and is read: its artifacts pass exactly
+  (on **1920x1080 RGBA**, off **2560x1440**, sha256 `7e6e13de`, byte-identical to the shipping blob),
+  but both halves' before-gate was BUSY with `DyingLightGame` resident, so by this item's own clause
+  its medians are void and only the shared-memory pair can still price the switch. The shm pair is
+  already queued, its request files being
   `runs/queue/r2026-11-11-13-0-pub-shm-on.json` and `runs/queue/r2026-11-11-13-1-pub-shm-off.json`
   (`minimal-small`, 2560x1440, work scale 0.75, headless, 300 frames, `DLSS5VK_SERVE_SPLIT=1`, one
   variable apart: `--publish-work`). Read both pairs when their results land: the on half's artifact
@@ -46,6 +50,25 @@ anything there.
   headline fps; record `gpu_before` / `gpu_after` / `idle_waited_s` and void a pair whose before-gate
   is BUSY or whose idle wait is non-zero. Retire this item once both pairs have been read and the
   shm saving is on the record. This is a run request: the only files it adds are the two queue JSONs.
+
+* learned: the pipe publish-work pair's artifacts pass exactly and its medians are void - the client
+  fix works, the switch takes, and the card was held by a game on both halves (2026-11-23 tick, read of
+  `r2026-11-11-12-0-pub-pipe-on` and `-12-1-pub-pipe-off`, both exit 0 after 46.7 s / 39.7 s, entry
+  `minimal-small`, worker stamped patch `58e98d824bce` at port `9d08f41` **in sync** on both, policy
+  `92cc2c01922f`). **The artifact check passes on both halves**: `small-pub-pipe-on-b-after.png` is
+  **1920x1080 RGBA** (colortype 6, 2,615,161 bytes, sha256 `190e480a`) - the published image really is
+  the work-size one, where `r2026-11-11-11-0`'s switched half died exit 3 with no artifact at all - and
+  `small-pub-pipe-off-b-after.png` is **2560x1440 RGBA** (colortype 6, 3,494,079 bytes, sha256
+  `7e6e13de`), byte-identical to the blob every shipping sample publishes, so the default path is
+  untouched. The arming move after `Worker.start()` is therefore correct on the pipe, and the worker
+  took the switch: its banner prints the publish-work line naming 1920x1080. **Clause (3) voids both
+  timings**: `gpu_before` BUSY on the on half (util 75% of the 25% bar) and on the off half (99%), with
+  `DyingLightGame_TheBeast_x64_rwdi.exe` resident at 6.5 GB pid 112259, and `idle_waited_s` 297.0 /
+  297.6 - the day's card was the game's, so nothing is compared and the two medians (on 73.4 ms /
+  13.6 fps steady, off 89.0 ms / 11.2 fps; worker means 37.43 against 47.23 ms) are quoted nowhere as
+  a reading of the switch. The shm pair `r2026-11-11-13-0` / `-1` was queued at 03:48Z today, after
+  these two, and is still unread; the item above stands until it lands on an idle card. NOT verified:
+  no device here, so nothing was re-timed and the pipe pair has no usable frame number.
 
 * learned: the shared-memory OUTS section now opens at the work size when `--publish-work` is on
   (`minimal/worker.py` `_open_shared_channels`, with `Worker.publish_work` set from `Pipeline.__init__`
