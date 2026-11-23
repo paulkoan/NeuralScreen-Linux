@@ -1,0 +1,29 @@
+{
+  "id": "r2026-11-11-12-0-pub-pipe-on",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--worker-env",
+    "DLSS5VK_SERVE_SPLIT=1",
+    "--no-shm",
+    "--publish-work",
+    "--worker-log",
+    "--save-after",
+    "small-pub-pipe-on-b-after.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-pub-pipe-on-b-after.png"
+  ],
+  "note": "The switched half of the publish-work pipe pair, re-run on the client that now arms the reader's output size after Worker.start() (minimal/loop.py). This is r2026-11-11-11-0-pub-pipe-on's argv with a fresh id and artifact name: --size 2560x1440 --work-scale 0.75 --headless --frames 300 --no-shm --publish-work. That earlier id exited 3 because the client armed the reader size before the reader existed; the fix is in the client, so this is the run that says whether the pipe now returns the work-size picture. Read: (1) the saved artifact must come back 1920x1080 RGBA (colortype 6) - the artifact IS the published image, so its size is the check that the switch took; (2) this run's median and steady rate plus the four terms in its own logs - readback and reply in the worker's `serve frame N:` lines, the copy in the client's `recv split`, the display in its `timing` line - quoted as a pair only with r2026-11-11-12-1-pub-pipe-off and never against a --shm sample: the pipe is the dearer route and its medians sit above every --shm sample on the record; (3) gpu_before / gpu_after / idle_waited_s, and if either half's before-gate is BUSY or its idle wait is non-zero, say so and compare nothing from the pair. The --headless run exercises the byte saving only: the SDL stretch itself is what a window run would show and it is unread here. Nothing is written by this run but its own artifacts."
+}

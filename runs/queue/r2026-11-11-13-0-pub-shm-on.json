@@ -1,0 +1,28 @@
+{
+  "id": "r2026-11-11-13-0-pub-shm-on",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--worker-env",
+    "DLSS5VK_SERVE_SPLIT=1",
+    "--publish-work",
+    "--worker-log",
+    "--save-after",
+    "small-pub-shm-on-after.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-pub-shm-on-after.png"
+  ],
+  "note": "The switched half of the shared-memory publish-work pair, the route the shipping config actually runs (--shm is the default; the 12-0/1 pair is the pipe control). Same argv as r2026-11-11-12-0-pub-pipe-on minus --no-shm: --size 2560x1440 --work-scale 0.75 --headless --frames 300 --publish-work. The OUTS section now opens at the work size in minimal/worker.py's _open_shared_channels when Worker.publish_work is set from Pipeline.__init__, so this is the first run that prices the shm route's work-size reply. Read: (1) the saved artifact must come back 1920x1080 RGBA (colortype 6) - the artifact IS the published image, so its size is the check that the switch took; (2) this run's median and steady rate plus the worker's readback/reply lines and the client's recv split and display lines, quoted as a pair only with r2026-11-11-13-1-pub-shm-off and never against a --no-shm sample; the shm figures on the record are the 1440p-with-pixels 26.4 ms / 37.9 fps (be) and 1080p 19.5 ms / 51.2 fps (bg) from 2026-11-02, but only this pair's own halves are comparable to each other; (3) gpu_before / gpu_after / idle_waited_s, and if either half's before-gate is BUSY or its idle wait is non-zero, say so and compare nothing from the pair. Nothing is written by this run but its own artifacts."
+}

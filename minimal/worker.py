@@ -245,6 +245,7 @@ class Worker:
                  full_w: int = 0, full_h: int = 0,
                  nr_small: bool = False, motion_small: bool = False,
                  no_motion: bool = False, shm: bool = False,
+                 publish_work: bool = False,
                  bypass: bool = False, writev: bool = False,
                  want_interp: bool = False,
                  echo_logs: bool = False, extra_env: dict | None = None):
@@ -268,6 +269,14 @@ class Worker:
         # Wine build, whose sections are its own namespace - leaves the pipe in place.
         self.use_shm = bool(shm)
         self.shm = None
+        # --publish-work: the worker answers with the work-size picture rather than the
+        # frame-size one. On the pipe the reader's expected size is what has to move; on the
+        # shared-memory route the OUTS section itself is opened at the frame size, so the
+        # work-size reply would land in a section the reader's set_output_size cannot reach.
+        # Opening OUTS at the work size when this is set is what makes the flag mean the same
+        # thing on both routes. The display already stretches a smaller frame, so nothing
+        # else changes.
+        self.publish_work = bool(publish_work)
         # NR OFF: the worker skips NGX and returns the capture unchanged. Not
         # the same as zeroed strengths — those still run the network, so this is
         # the control that separates the network from the texture path.
@@ -362,8 +371,13 @@ class Worker:
             # frame's header. Nothing else changes - every frame stays on the pipe.
             return
         try:
-            self.shm.open_out(self.width, self.height)
-            protocol.send_out(self.proc, self.width, self.height, self.shm.out_name)
+            # --publish-work: the reply is the work-size picture, so the OUTS section must be
+            # opened at that size too. The frame-size section would be larger than the reply
+            # and the reader's set_output_size could not reach the pixels in it.
+            out_w, out_h = ((self.work_w, self.work_h) if self.publish_work
+                            else (self.width, self.height))
+            self.shm.open_out(out_w, out_h)
+            protocol.send_out(self.proc, out_w, out_h, self.shm.out_name)
             self.reader.wait_oak(10.0)
             print(f"[main] shared memory: frames in and pixels out through "
                   f"/dev/shm (frame {self.shm.size / 1e6:.1f}MB, pixels {self.shm.out_bytes / 1e6:.1f}MB)",
