@@ -33,6 +33,17 @@ anything there.
 
 ## 1. Next work
 
+* **Open the shared-memory OUTS channel at the work size when `--publish-work` is on.** The switch
+  reads on the pipe now, but the shm route still opens the picture channel at the frame size:
+  `minimal/worker.py`'s `_open_shared_channels` calls `self.shm.open_out(self.width, self.height)` and
+  `protocol.send_out(self.proc, self.width, self.height, ...)`, so a work-size reply lands in a
+  full-size section and the reader's `set_output_size` cannot reach it. Give `Worker` a `publish_work`
+  flag, pass `self.publish_work` from `Pipeline.__init__` in `minimal/loop.py`, and when it is set open
+  OUTS and send its name at `self.work_w, self.work_h`; the display already stretches a smaller frame,
+  so no other client change is needed. Add `tests/test_worker_shm_output.py` covering both branches
+  (flag on opens work-size, flag off opens frame-size). This is a code change: edit `minimal/worker.py`,
+  `minimal/loop.py` and the new test file only. Suite must pass; commit and push.
+
 * learned: the pipe's publish-work arming moved into `Pipeline.run` after `self.worker.start()`
   (`minimal/loop.py`), with two regression tests in `tests/test_pipeline_mock.py`; suite 9 failed /
   602 passed, the same nine libGL/SDL2 environment failures. The pipe route can now read a work-size
