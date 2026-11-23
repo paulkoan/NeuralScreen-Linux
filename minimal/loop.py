@@ -227,6 +227,15 @@ class Pipeline:
         # Set by --hotkeys: polled between frames, so the window does not need focus.
         self.hotkey_poll = None
 
+        # --publish-work: the worker answers with the work-size picture instead of the frame-size
+        # one, so the reader's own expectation has to move with it. This is the pipe path's
+        # byte-count check (protocol.py's set_output_size, called by nothing until now), and the
+        # capture's own size check is untouched - the colour still goes in at the frame size and
+        # the port does the down-resize. At work scale 1.0 the two sizes are the same picture and
+        # the flag changes nothing, so it is only armed with a work scale.
+        # Assigned before Worker() because the worker needs it to size the OUTS section.
+        self.publish_work = bool(publish_work) and self.nr_small
+
         self.worker = Worker(
             self.width, self.height, self.work_w, self.work_h, self.params,
             warmup=self.warmup, cmd=worker_cmd, cwd=worker_cwd,
@@ -236,19 +245,13 @@ class Pipeline:
             motion_small=self.motion_small,
             no_motion=self.no_motion,
             shm=self.shm,
+            publish_work=self.publish_work,
             bypass=self.bypass,
             writev=self.writev,
             want_interp=self.interpolate,
             extra_env=worker_env_extra,
             echo_logs=worker_log)
 
-        # --publish-work: the worker answers with the work-size picture instead of the frame-size
-        # one, so the reader's own expectation has to move with it. This is the pipe path's
-        # byte-count check (protocol.py's set_output_size, called by nothing until now), and the
-        # capture's own size check is untouched - the colour still goes in at the frame size and
-        # the port does the down-resize. At work scale 1.0 the two sizes are the same picture and
-        # the flag changes nothing, so it is only armed with a work scale.
-        self.publish_work = bool(publish_work) and self.nr_small
         # The reader's expectation is armed in run(), after Worker.start() has created it:
         # Worker.reader does not exist yet here, so arming it now would be a dead call.
 
