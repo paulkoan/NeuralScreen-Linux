@@ -2936,3 +2936,33 @@ section asks only what is still being asked.
   describe the network, neither is a drop-in for this port's NVIDIA Vulkan. **No run queued**:
   every item above becomes a measurement only after a port change (depths-from-shapes), and the
   queue's open item is the window repeat under a fresh id, which this tick does not disturb.
+
+* learned: the 2026-11-23 ecosystem survey **corrects one line of the 11-16 entry and adds one
+  usable instrument** (third run of the `dlss5-ecosystem-survey` job; web search plus the GitHub
+  REST API only, nothing built or run on this box). **Correction - lever 3 is not stuck in the
+  field.** `Uzbekunknown/dlss-nr-on-intel` (Apache-2.0, 99 stars, pushed 2026-11-22T08:23Z, ~20
+  commits since 11-16) has been **running preset B on Linux since 2026-10-17** on branch `newnr`,
+  `NR_PRESET=B`; its `notes/HANDOFF.md` states B is "A's graph with every stage at depth 2, 31
+  blocks against 71", read out of `.text` with REA and run at **0.54-0.58 of A's time** on CPU and
+  device, 0.5-0.8 of A's round trip. The "cannot be loaded" line the 11-16 survey quoted is its
+  `docs/WEIGHTS.md`, which is stale and contradicts its own handoff - so the second independent
+  implementation does **not** hit the wall the 11-16 entry reported; it derived the layout and
+  landed B. That leaves MLX-DLSS's five-stage-depth description and this repo's working B as the
+  two references for `kBlockCount`/`nr_graph.cpp` becoming depths-from-shapes, and removes "the
+  blocker is structural for everyone" as a reason to defer. **New instrument for lever 2's ~5 ms
+  gap**: its phase74 commit (2026-11-21) runs **NVIDIA's own `nvngx_dlssnr.dll` under Wine on Linux
+  without a game** - the snippet in the NGX core's place, caller's name spoofed, a `VkDevice` with
+  `VK_NVX_binary_import`, the parameter block in MSVC's layout (resources through slot 8, ints 11
+  and 12, floats 14), NvAPI through DXVK/dxvk-nvapi - presets 1 and 2, and 310.8's A and 310.9.16's
+  A giving the same bytes. Its own A against the vendor's over eight frames: **0.989-0.997
+  correlation of the change, residual 6-13 % of it, 43.6-49.6 dB**. That is a same-machine,
+  same-frame vendor oracle on this port's own platform: the way to measure the 12.0 vs 7.1 ms gap
+  without the portal, and to score the port's output against NGX per frame instead of by eye. It
+  loads the vendor DLL, so it is a measurement harness only, never a runtime path. **Nothing else
+  moved**: `maanHimself/OpenDLSS-NR` still static at 2026-09-21T16:16Z (1051 stars); no
+  `nvngx_dlssnr.dll` newer than **310.9.16** (RankFTW/rhi-repo's newest NR release is still the
+  310.9.16 tag, 2026-11-16); `maximedgoulet/FoveatedDLSS5` still at its 2026-11-08 commit and
+  `ClarkCheekyKent/CheekyFoveatedDLSS` at 2026-11-07; `rrui05/open-dlss`'s 11-16 commit is a
+  showcase video, and `mochizuki0323/DLSSNR-AMD` is now **404** (its 310.9.16 NGX-verification note
+  is gone from GitHub). **No run queued**: the B and vendor-oracle items both need port work first,
+  and the queue's open item is the shm publish-work pair, which this tick does not disturb.
