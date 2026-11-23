@@ -1,0 +1,27 @@
+{
+  "id": "r2026-11-11-13-1-pub-shm-off",
+  "entry": "minimal-small",
+  "args": [
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--worker-env",
+    "DLSS5VK_SERVE_SPLIT=1",
+    "--worker-log",
+    "--save-after",
+    "small-pub-shm-off-after.png"
+  ],
+  "timeout_s": 900,
+  "artifacts": [
+    "small-pub-shm-off-after.png"
+  ],
+  "note": "The control for r2026-11-11-13-0-pub-shm-on, one variable apart on the same shared-memory route: the same argv without --publish-work. Read: (1) the saved artifact must come back 2560x1440 RGBA (colortype 6) and byte-identical to the 3,494,079-byte, sha256 7e6e13de blob every shipping-frame sample has published - the switch must not touch the default path, so no pixel may move; if it does not match, the work-size change has leaked into the default path and the patch comes back out; (2) this run's median and steady rate plus its worker readback/reply and client copy/display lines, quoted beside r2026-11-11-13-0-pub-shm-on's as a pair only - not against any --no-shm sample, which is the dearer route; (3) gpu_before / gpu_after / idle_waited_s, and if either half's before-gate is BUSY or its idle wait is non-zero, say so and compare nothing from the pair. Nothing is written by this run but its own artifacts."
+}

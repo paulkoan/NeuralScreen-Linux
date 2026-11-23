@@ -33,6 +33,20 @@ anything there.
 
 ## 1. Next work
 
+* **Price the publish-work switch on the shared-memory route and read both pairs.** The OUTS section
+  now opens at the work size when `--publish-work` is on (`minimal/worker.py` `_open_shared_channels`,
+  `Worker.publish_work` set from `Pipeline.__init__` in `minimal/loop.py`), but the only pair queued
+  so far is the pipe one (`r2026-11-11-12-0-pub-pipe-on` / `-1-pub-pipe-off`, `--no-shm`), and the
+  shipping config runs `--shm`. This item queues the matching shm pair, whose request files are
+  `runs/queue/r2026-11-11-13-0-pub-shm-on.json` and `runs/queue/r2026-11-11-13-1-pub-shm-off.json`
+  (`minimal-small`, 2560x1440, work scale 0.75, headless, 300 frames, `DLSS5VK_SERVE_SPLIT=1`, one
+  variable apart: `--publish-work`). Read both pairs when their results land: the on half's artifact
+  must be 1920x1080 RGBA and the off half's 2560x1440 byte-identical to the `7e6e13de` blob; quote
+  medians and spreads within each pair only, never across routes and never against a single
+  headline fps; record `gpu_before` / `gpu_after` / `idle_waited_s` and void a pair whose before-gate
+  is BUSY or whose idle wait is non-zero. Retire this item once both pairs have been read and the
+  shm saving is on the record. This is a run request: the only files it adds are the two queue JSONs.
+
 * learned: the shared-memory OUTS section now opens at the work size when `--publish-work` is on
   (`minimal/worker.py` `_open_shared_channels`, with `Worker.publish_work` set from `Pipeline.__init__`
   in `minimal/loop.py`, which now assigns `self.publish_work` before constructing the worker). Both
