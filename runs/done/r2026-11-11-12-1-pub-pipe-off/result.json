@@ -1,0 +1,42 @@
+{
+  "exit_code": 0,
+  "seconds": 39.673,
+  "argv": [
+    "uv",
+    "run",
+    "python",
+    "-m",
+    "minimal",
+    "--source",
+    "video",
+    "--input-video",
+    "fixtures/stream-1440p-2s.mp4",
+    "--size",
+    "2560x1440",
+    "--work-scale",
+    "0.75",
+    "--headless",
+    "--frames",
+    "300",
+    "--worker-env",
+    "DLSS5VK_SERVE_SPLIT=1",
+    "--no-shm",
+    "--worker-log",
+    "--save-after",
+    "small-pub-pipe-off-b-after.png"
+  ],
+  "artifacts": [
+    "small-pub-pipe-off-b-after.png"
+  ],
+  "runner": "6a0703c28681",
+  "entry_env": [
+    "NS_WORKER_CMD"
+  ],
+  "policy": {
+    "path": "/opt/neuralscreen/policy.toml",
+    "sha256": "92cc2c01922f9c548eacef313d94c12886c9dd6daee00715c02e5333b8dedf7a"
+  },
+  "gpu_before": "BUSY [util 99% of the 25% bar] (utilization 99%; chromium (pid 77416, 268.0 MiB); signal-desktop (pid 78898, 41.0 MiB); DyingLightGame_TheBeast_x64_rwdi.exe (pid 112259, 6476.0 MiB); shelly-ui (pid 1280821, 38.0 MiB))",
+  "gpu_after": "BUSY [util 82% of the 25% bar] (utilization 82%; chromium (pid 77416, 268.0 MiB); signal-desktop (pid 78898, 41.0 MiB); DyingLightGame_TheBeast_x64_rwdi.exe (pid 112259, 6476.0 MiB); shelly-ui (pid 1280821, 38.0 MiB))",
+  "idle_waited_s": 297.6
+}
