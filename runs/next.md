@@ -33,23 +33,25 @@ anything there.
 
 ## 1. Next work
 
-* **Price the publish-work switch on the shared-memory route, on the fresh shm pair.** The 13 pair landed
-  and its artifacts pass on both halves (on **1920x1080 RGBA**, 2,615,161 bytes, sha256 `190e480a` - the shm
-  OUTS section really opens at the work size now, 8.3 MB - and off **2560x1440**, sha256 `7e6e13de`,
-  byte-identical to the shipping blob), but its timings are void: `idle_waited_s` **195.0** on the on half
-  and **30.0** on the off, so by this item's clause nothing from the pair is compared and the shm saving is
-  still not on the record. Fresh ids are queued: `runs/queue/r2026-11-11-14-0-pub-shm-on.json` and
-  `runs/queue/r2026-11-11-14-1-pub-shm-off.json`, argv character for character the 13 pair's with the
-  artifacts renamed `small-pub-shm14-*-after.png` (`minimal-small`, 2560x1440, work scale 0.75, headless,
-  300 frames, `DLSS5VK_SERVE_SPLIT=1`, one variable apart: `--publish-work`). Read both halves when they
-  land: the on artifact must be 1920x1080 RGBA (expect sha256 `190e480a`) and the off 2560x1440
-  byte-identical to `7e6e13de`; quote median and spread within the pair only, never across routes and never
-  against a headline fps; record `gpu_before` / `gpu_after` / `idle_waited_s`. **If either half's idle wait
-  is again non-zero, retire this item with the artifact result on the record and the timing marked
-  unreadable on this card - do not queue a fourth pair**: the frame's own scatter is 5.8 ms across three
-  identical samples while the switch's effect is the client's display upload halving (1.7 ms against 3.7)
-  and the worker's reply term, so a delta under ~2 ms cannot be read at this instrument anyway. This is a
-  run request: the only files it adds are those two queue JSONs.
+* learned: the shm publish-work pair's artifacts pass exactly a second time and its timings are void again, so
+  the switch's price through /dev/shm is closed as unreadable on this card and no fourth pair is queued (2026-11-23
+  tick, read of `r2026-11-11-14-0-pub-shm-on` and `-14-1-pub-shm-off`, both exit 0 after 16.5 s / 33.7 s, entry
+  `minimal-small`, worker stamped patch `58e98d824bce` at port `9d08f41` **in sync** on both, policy
+  `92cc2c01922f`, repo `051c131`). **The artifact check passes on both halves, byte for byte**: the on artifact
+  `small-pub-shm14-on-after.png` is **1920x1080 RGBA** (colortype 6, 2,615,161 bytes, sha256 `190e480a`) - the shm
+  OUTS section really is work-sized (8.3 MB, its banner printing `pixel channel open (1920x1080, 8.3 MB)` and
+  `mid-frame channel open (8.3 MB)`) - and the off artifact is **2560x1440 RGBA** (3,494,079 bytes, sha256
+  `7e6e13de`), byte-identical to the blob every shipping sample publishes, so the default path is untouched and
+  the switch publishes one image on both transports. **Clause (3) voids both timings**: `idle_waited_s` reads
+  **15.0** on the on half and **75.0** on the off, and the card moved between them - `gpu_before` WARN at util 24%
+  / 22% of the 25% bar, `gpu_after` WARN 7% on the on half against **BUSY 29%** on the off - so the medians (on
+  **34.8 ms / 28.8 fps steady**, off **75.1 ms / 13.3 fps**, worker means 19.47 against 36.59 ms) are recorded as
+  mechanism, quoted nowhere as a price of the switch. This is the item's own retirement branch: the frame's
+  scatter is 5.8 ms across three identical samples while the switch's effect is the client's display upload
+  halving (1.7 against 3.7 ms), so a delta under ~2 ms cannot be read at this instrument and the fourth pair would
+  not read it either. What stands on the record: the switch is verified end to end on both transports by bytes,
+  and its cost remains unread - a card with `idle_waited_s` 0.0 on both halves of a pair is the only thing that
+  would change that. NOT verified: no device here, so nothing was re-timed this tick.
 
 * learned: the shm publish-work pair's artifacts pass on the shipping route and its timings are void - the
   switch takes end to end through /dev/shm, and the pair's idle waits leave the price unread (2026-11-23
