@@ -249,12 +249,8 @@ class Pipeline:
         # the port does the down-resize. At work scale 1.0 the two sizes are the same picture and
         # the flag changes nothing, so it is only armed with a work scale.
         self.publish_work = bool(publish_work) and self.nr_small
-        if self.publish_work:
-            # getattr, not an attribute: Worker.reader is declared optional, and this is how
-            # the loop already reaches it (see the reader lookup further down).
-            reader = getattr(self.worker, "reader", None)
-            if reader is not None:
-                reader.set_output_size(self.work_w, self.work_h)
+        # The reader's expectation is armed in run(), after Worker.start() has created it:
+        # Worker.reader does not exist yet here, so arming it now would be a dead call.
 
         if display is not None:
             self.display = display
@@ -561,6 +557,12 @@ class Pipeline:
         Returns a summary dict — the caller (or a test) can assert on it.
         """
         self.worker.start()
+        if self.publish_work:
+            # Now the reader exists (Worker.start creates it), so the byte-count check can be
+            # armed for the work-size picture the worker answers with under --publish-work.
+            reader = getattr(self.worker, "reader", None)
+            if reader is not None:
+                reader.set_output_size(self.work_w, self.work_h)
         if self.report_gpu:
             from minimal.gpustat import GpuSampler
             self.gpu = GpuSampler().start()

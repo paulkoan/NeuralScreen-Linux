@@ -639,3 +639,70 @@ def test_a_real_run_says_the_first_frame_is_the_warm_up(fake_capture, fake_displ
                       worker_cmd=mock_worker_cmd, worker_cwd=REPO, bypass=True)
     bypass.run(frames=1)
     assert "warm-up" not in capsys.readouterr().out
+
+
+class _SizeRecordingReader:
+    """A reader stand-in that records the output size it is told to expect."""
+
+    def __init__(self, width: int, height: int):
+        self._width = width
+        self._height = height
+        self.sizes: list[tuple[int, int]] = []
+
+    def set_output_size(self, width: int, height: int) -> None:
+        self._width = width
+        self._height = height
+        self.sizes.append((width, height))
+
+
+class _SizeRecordingWorker(_RecordingWorker):
+    """Like _RecordingWorker, but creates its reader in start(), as Worker does."""
+
+    def __init__(self, width: int, height: int):
+        super().__init__()
+        self._reader_w = width
+        self._reader_h = height
+        self.reader: _SizeRecordingReader | None = None
+
+    def start(self):
+        self.reader = _SizeRecordingReader(self._reader_w, self._reader_h)
+
+
+def test_publish_work_arms_the_reader_after_the_worker_starts(
+        fake_capture, fake_display, mock_worker_cmd):
+    """--publish-work answers with the work-size picture, so the reader must expect it.
+
+    The arming used to live in Pipeline.__init__, where Worker.reader is still None
+    (it is created in Worker.start()), so the call was dead and the pipe's byte-count
+    check kept expecting the frame size - the real run exited 3 at frame 0 with
+    "worker returned 8294400 bytes instead of 14745600". Moving the arming after
+    start() is what this asserts.
+    """
+    pipe = Pipeline(capture=fake_capture, display=fake_display, headless=True,
+                    worker_cmd=mock_worker_cmd, worker_cwd=REPO,
+                    work_scale=0.5, publish_work=True, want_pixels=False)
+    recorder = _SizeRecordingWorker(pipe.width, pipe.height)
+    pipe.worker = recorder
+
+    assert pipe.publish_work, "a work scale below 1 must arm publish_work"
+    pipe.run(frames=2)
+
+    assert recorder.reader is not None
+    assert recorder.reader.sizes == [(pipe.work_w, pipe.work_h)], (
+        "the reader's expected output size was not moved to the work size")
+    assert (recorder.reader._width, recorder.reader._height) == (pipe.work_w, pipe.work_h)
+    assert (pipe.work_w, pipe.work_h) != (pipe.width, pipe.height)
+
+
+def test_publish_work_is_off_without_a_work_scale(fake_capture, fake_display,
+                                                  mock_worker_cmd):
+    """At work scale 1.0 the two sizes are the same picture, so the flag stays inert."""
+    pipe = Pipeline(capture=fake_capture, display=fake_display, headless=True,
+                    worker_cmd=mock_worker_cmd, worker_cwd=REPO, publish_work=True)
+    recorder = _SizeRecordingWorker(pipe.width, pipe.height)
+    pipe.worker = recorder
+
+    assert not pipe.publish_work
+    pipe.run(frames=1)
+    assert recorder.reader is not None
+    assert recorder.reader.sizes == []
