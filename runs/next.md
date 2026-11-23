@@ -33,6 +33,19 @@ anything there.
 
 ## 1. Next work
 
+* **Read the publish-work switch on the pipe: move the reader's output-size arming after `Worker.start()`.**
+  Edit `minimal/loop.py` only. `Pipeline.__init__` arms `reader.set_output_size(self.work_w, self.work_h)`
+  at lines 252-257, but `Worker.reader` is `None` until `Worker.start()` creates it (`minimal/worker.py:336`),
+  so the call is dead and the pipe's byte-count check still expects the frame size - which is why
+  `r2026-11-11-11-0-pub-pipe-on` exited 3 at frame 0 with `worker returned 8294400 bytes instead of 14745600`.
+  Keep the `self.publish_work` flag where it is; move only the `if self.publish_work:` arming block into
+  `Pipeline.run` immediately after `self.worker.start()` (line 563), where the reader exists. Add a regression
+  test in `tests/` that builds a pipeline with `publish_work=True` and a work scale against a fake worker/reader
+  and asserts the reader's expected output size is work-sized once `run()` starts. Run
+  `.venv/bin/python -m pytest tests/ -q`; the same nine libGL/SDL2 environment failures are expected, so require
+  no new failures. Commit and push. This is the pipe route only: the shared-memory route still opens its OUTS
+  section at the frame size in `minimal/worker.py:365` and stays unread until an item names that file.
+
 * learned: the chainMask-0 pair read clean and chaining's cost is size-dependent - chaining is the
   wrong route at the shipping size, but the small size is genuinely cheaper chained and the pair's
   own conditional fired (2026-11-10 tick, read of `r2026-11-10-14-gap3-1-1440p` and `-2-720p`, both
@@ -340,14 +353,11 @@ anything there.
   `Worker.start()`, and on the shared-memory route the client's OUTS section is opened at the frame size
   (`minimal/worker.py:365`) on top of that. Nothing is reverted, `chainMask` stays 0 and no default moves.
 
-* **Blocked, and it needs an authorising item rather than another run: the publish-work switch stays unread
-  until the client's reader expectation moves after `Worker.start()`.** The pair is spent - its reading is the
-  learned entry above (control byte-identical to `7e6e13de`, switched half exit 3 at frame 0 with no
-  artifact) - so no further queue request can read the switch. What would: in `minimal/loop.py`'s
-  `Pipeline.run`, arm the reader's output size at `work_w`/`work_h` after `self.worker.start()` when
-  `publish_work` is set (the same `set_output_size` call the `__init__` block already makes, moved to where
-  the reader exists). `minimal/loop.py` is fenced and this item deliberately does not authorise editing it -
-  that line has to be written in the interactive session. Nothing is queued and no default moves until it is.
+* learned: the publish-work switch needs one client change and the pair is spent - the control was
+  byte-identical to `7e6e13de` and the switched half exited 3 at frame 0 with no artifact, so no further
+  queue request can read it. The change is in `minimal/loop.py`: `Pipeline.__init__` arms the reader's
+  output size before `Worker.start()` creates the reader, so the call is dead. The authorising item now
+  stands at the top of this section and names that file and the exact move.
 
 * learned: the change above is made, built and pushed, and its first pair was void for a route reason rather than a
   switch reason, so the pair was re-aimed off `--shm` and queued with fresh ids (2026-11-11 tick, read of
