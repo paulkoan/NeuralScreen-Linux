@@ -33,6 +33,18 @@ anything there.
 
 ## 1. Next work
 
+* **Blocked, and it needs an authorising item rather than another run: the next buildable change is the small
+  network, and every file it touches is fenced.** The port's loader still hardcodes the network's shape -
+  `kBlockCount` in `src/nr_graph.h` and the stage table in `src/nr_graph.cpp` - so `/opt/neuralscreen/model-small`'s
+  31-block graph cannot be loaded and ranked lever 3 (1.78x claimed on NVIDIA's own runtime, and the largest
+  multiplier left among the unread levers) stays unread. Making the block count and the stage ranges derive from the
+  model's own weight shapes is the change the 2026-11-23 survey says is unblocked, with two licence-clean
+  references (`iamwavecut/MLX-DLSS`'s five stage depths; `Uzbekunknown/dlss-nr-on-intel`'s working preset B).
+  Those files are inside `experiments/opendlss_port/linux-port.patch` (source of truth `/opt/data/tmp/odl-src`),
+  which this tick may not authorise - so nothing is queued off it and the loop has no item it can take. An item
+  naming that patch, and saying whether lever 2's vendor-DLL oracle (the same survey's measurement harness, which
+  also needs a box entry) should come first, is what starts the pipeline again.
+
 * learned: the shm publish-work pair's artifacts pass exactly a second time and its timings are void again, so
   the switch's price through /dev/shm is closed as unreadable on this card and no fourth pair is queued (2026-11-23
   tick, read of `r2026-11-11-14-0-pub-shm-on` and `-14-1-pub-shm-off`, both exit 0 after 16.5 s / 33.7 s, entry
