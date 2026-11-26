@@ -33,6 +33,33 @@ anything there.
 
 ## 1. Next work
 
+* **Load the small network: derive the block count from the model, so preset B (31 blocks) is a
+  model rather than a size error.** This item authorises `experiments/opendlss_port/linux-port.patch`
+  and, in the source of truth it is cut from, `src/nr_graph.h`, `src/nr_graph.cpp`,
+  `src/nr_schedule.h` and `src/main.cpp` - nothing else. What is still hardcoded, read from the tree
+  today: `nr_graph.h`'s `uint32_t blockCount_ = 71`, `nr_schedule.h`'s ViT chain ranges (`31..38`, its
+  `block < 38` chain constant, `40..47`), and `main.cpp`'s `blockCount == 71` reference check at
+  `main.cpp:796` and `:817`. The stage table already walks the model's block signatures, so the work
+  is to make the count and the chain ranges come from that table too rather than from constants.
+  Licence-clean reference for the shape of the answer: `iamwavecut/MLX-DLSS` (Apache-2.0) documents the
+  family as five stage depths - HT `(4,4,6,8,8)` = 71 blocks = preset 1; small `(2,2,2,2,2)` = **31
+  blocks = preset 2** = `hnet-crazy-cuckoo-small-fp8`, the 310.9.16 default - with the window phase
+  `i&3` for the encoder, `(depth+j)&3` for the decoder, and 1 for the post stage. Independent
+  corroboration that this is a structural change and not a local oversight: `uzbekunknown/dlss-nr-on-intel`
+  (also Apache-2.0) recovers preset B and hits the identical wall ("cannot be loaded - the unpacker's
+  block contracts are HT's").
+  Why this is worth a build beyond lever 3: the port has been quoting **1.88x** for "model-small"
+  (`r2026-11-10-profile-small-c`, 3.446 vs 6.296 ms) on a graph whose kernel table reaches `block 70`,
+  while `docs/small-network-layout.md` says the small network is 31 blocks. So that number may be
+  preset B's weights executing preset A's schedule, which is not the trained mapping - and if it is,
+  the timing is not the small network's and the picture is not the model's. The reading is therefore
+  two things before any fps claim: **the model loads with a block count of 31 reported in its own log
+  line, and the kernel table's highest block index is 30** - then `port-profile-small 1920 1080`
+  against the large network's 6.296 ms, with 720p as the reading and 1080p as corroboration at baseline
+  scale. Revert anything that kills the device on a clean card. Amend the patch's single commit and
+  re-cut with `git format-patch -1`, and make the same change in the source tree - a change made only
+  in the patch is lost the next time it is regenerated.
+
 * **Blocked, and it needs an authorising item rather than another run: the next buildable change is the small
   network, and every file it touches is fenced.** The port's loader still hardcodes the network's shape -
   `kBlockCount` in `src/nr_graph.h` and the stage table in `src/nr_graph.cpp` - so `/opt/neuralscreen/model-small`'s
